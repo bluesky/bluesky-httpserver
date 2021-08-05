@@ -5,6 +5,7 @@ exclude =
     build,
     dist,
     versioneer.py,
-    bluesky_httpserver/_version.py,
+    bluesky_queueserver/_version.py,
     docs/source/conf.py
+ignore = E203, W503  # There are some errors produced by 'black', therefore unavoidable
 max-line-length = 115
