@@ -14,7 +14,7 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
     set_qserver_zmq_address,
 )
 
-from bluesky_queueserver.server.tests.conftest import (  # noqa F401
+from bluesky_httpserver.server.tests.conftest import (  # noqa F401
     SERVER_ADDRESS,
     SERVER_PORT,
     add_plans_to_queue,
