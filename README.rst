@@ -55,7 +55,17 @@ and then kill the processes::
 
 Installation
 ------------
-(see documentation at https://blueskyproject.io/bluesky-queueserver)
+
+The latest released version of HTTP Server may be installed from PyPI::
+
+  pip install bluesky-httpserver
+
+This will also install the released version of `bluesky-queueserver`. The Queue Server is
+using Redis to store and manage the queue. See the Queue Server documentation for the instructions
+on Redis installation (https://blueskyproject.io/bluesky-queueserver/installation.html).
+
+Alternatively `bluesky-queueserver` and `bluesky-httpserver` may be installed from source
+from the respective GitHub repositories.
 
 Starting QueueServer
 --------------------
@@ -73,7 +83,7 @@ the available options.
 
 The Web Server should be started from the second shell as follows::
 
-  uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
+  uvicorn bluesky_httpserver.server.server:app --host localhost --port 60610
 
 The Web Server connects to RE Manager using Zero MQ. The default ZMQ address is 'tcp://localhost:60615'.
 A different ZMQ address may be passed to the Web Server by setting the *QSERVER_ZMQ_ADDRESS* environment
