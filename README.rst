@@ -62,10 +62,10 @@ The latest released version of HTTP Server may be installed from PyPI::
 
 This will also install the released version of `bluesky-queueserver`. The Queue Server is
 using Redis to store and manage the queue. See the Queue Server documentation for the instructions
-on Redis installation (https://blueskyproject.io/bluesky-queueserver).
+on Redis installation (https://blueskyproject.io/bluesky-queueserver/installation.html).
 
 Alternatively `bluesky-queueserver` and `bluesky-httpserver` may be installed from source
-from the respective GitHub repositories
+from the respective GitHub repositories.
 
 Starting QueueServer
 --------------------
