@@ -1,6 +1,6 @@
 import pytest
 
-from bluesky_queueserver.server.server import validate_payload_keys
+from bluesky_httpserver.server.server import validate_payload_keys
 
 
 # fmt: off

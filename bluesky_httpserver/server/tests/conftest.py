@@ -3,7 +3,7 @@ from xprocess import ProcessStarter
 import time as ttime
 import requests
 
-import bluesky_queueserver.server.server as bqss
+import bluesky_httpserver.server.server as bqss
 from bluesky_queueserver.manager.comms import zmq_single_request
 
 SERVER_ADDRESS = "localhost"
