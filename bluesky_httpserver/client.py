@@ -76,7 +76,10 @@ class Client:
     def start(self):
         self.request_json("POST", "/queue/start")
 
-    def stop(self):
+    def stop(self, wait=False):
+        if not wait:
+            # TODO Block until queue stops.
+            raise NotImplementedError
         self.request_json("POST", "/queue/stop")
 
     def cancel_stop(self):
@@ -88,10 +91,10 @@ class QueueItems:
         self._client = client
 
     def __repr__(self):
-        return f"<{type(self).__name__}>"
+        return f"<{type(self).__name__} {list(self)}>"
 
     def __iter__(self):
-        yield from [QueueItem(item) for item in self._client.request_json("GET", "/queue/get")["items"]]
+        yield from [build_item(item) for item in self._client.request_json("GET", "/queue/get")["items"]]
 
     def __len__(self):
         # TODO The server could provide a faster way to query
@@ -99,13 +102,32 @@ class QueueItems:
         return len(self._client.request_json("GET", "/queue/get"))
 
     def append(self, item):
-        ...
+        response = self._client.request_json("POST", "/queue/item/add", json={"item": item})
+        return build_item(response["item"])
+
+    def append_plan(self, plan_name, *args, **kwargs):
+        item = {"item_type": "plan", "name": plan_name, "args": args, "kwargs": kwargs}
+        return self.append(item)
+
+    def insert(self, index, item):
+        response = self._client.request_json("POST", "/queue/item/add", json={"pos": index, "item": item})
+        return build_item(response["item"])
+
+    def insert_plan(self, index, plan_name, *args, **kwargs):
+        item = {"item_type": "plan", "name": plan_name, "args": args, "kwargs": kwargs}
+        return self.insert(index, item)
 
     def remove(self, item):
-        ...
+        """
+        Remove an item.
+        """
+        return self._client.request_json("POST", "/queue/item/remove", json={"uid": item["item_uid"]})
+
+    def __delitem__(self, index):
+        return self._client.request_json("POST", "/queue/item/remove", json={"pos": index})
 
     def clear(self):
-        self._client("POST", "/queue/clear")
+        self._client.request_json("POST", "/queue/clear")
 
 
 class QueueItem:
@@ -113,17 +135,49 @@ class QueueItem:
         self._item = item
 
     def __repr__(self):
-        return f"<{type(self).__name__} {self.args!r} {self.kwargs!r}>"
+        return f"<{type(self).__name__} uid={self.uid[:8]}>"
+
+    @property
+    def uid(self):
+        return self._item["item_uid"]
+
+    @property
+    def user(self):
+        return self._item["user"]
+
+    @property
+    def user_group(self):
+        return self._item["user_group"]
+
+
+class PlanItem(QueueItem):
+    def __repr__(self):
+        return f"<{type(self).__name__} args={self.args!r} kwargs={self.kwargs!r} uid={self.uid[:8]}>"
 
     @property
     def plan(self):
-        self.item["name"]
+        return self._item["name"]
 
+    @property
     def args(self):
-        self.item["args"]
+        return tuple(self._item.get("args", ()))
 
+    @property
     def kwargs(self):
-        self.item["kwargs"]
+        return self._item.get("kwargs", {})
+
+
+_item_type_dispatch = {
+    "plan": PlanItem,
+}
+
+
+def build_item(item):
+    try:
+        class_ = _item_type_dispatch[item["item_type"]]
+    except KeyError:
+        class_ = QueueItem  # generic
+    return class_(item)
 
 
 def handle_error(response):
