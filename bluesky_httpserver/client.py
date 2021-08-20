@@ -2,10 +2,20 @@ import httpx
 
 
 def from_uri(uri):
+    """
+    Create a client connected to a bluesky HTTP server at the given URI.
+    """
     return Client(httpx.Client(base_url=uri, event_hooks=EVENT_HOOKS))
 
 
 class Client:
+    """
+    Client to a bluesky HTTP server
+
+    Use the function from_uri to build this object. It should generally not be
+    necessary to initialize it directly.
+    """
+
     def __init__(self, httpx_client):
         self._client = httpx_client
         self._queue_items = QueueItems(self)
@@ -22,10 +32,6 @@ class Client:
             f"re_state={status['re_state']!r}"
             ">"
         )
-
-    @property
-    def queue(self):
-        return self._queue
 
     def request_json(self, *args, **kwargs):
         "Send HTTP request; raise if errored; return JSON response as dict."
@@ -85,7 +91,7 @@ class QueueItems:
         return f"<{type(self).__name__}>"
 
     def __iter__(self):
-        yield from self._client.request_json("GET", "/queue/get")["items"]
+        yield from [QueueItem(item) for item in self._client.request_json("GET", "/queue/get")["items"]]
 
     def __len__(self):
         # TODO The server could provide a faster way to query
@@ -100,6 +106,24 @@ class QueueItems:
 
     def clear(self):
         self._client("POST", "/queue/clear")
+
+
+class QueueItem:
+    def __init__(self, item):
+        self._item = item
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self.args!r} {self.kwargs!r}>"
+
+    @property
+    def plan(self):
+        self.item["name"]
+
+    def args(self):
+        self.item["args"]
+
+    def kwargs(self):
+        self.item["kwargs"]
 
 
 def handle_error(response):
