@@ -92,7 +92,10 @@ def test_http_server_stream_console_output_1(
     assert resp1["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp1["item"]
 
-    ttime.sleep(1)  # Let output capture to complete
+    # Wait until capture is complete (2 message are expected) or timetout expires
+    t_start, t_timeout = ttime.time(), 10
+    while (len(rsc.received_data_buffer) < 2) and (ttime.time() - t_start < t_timeout):
+        pass
     rsc.stop()
     # Note, that some output from the server is is needed in order to exit the loop in the thread.
 
