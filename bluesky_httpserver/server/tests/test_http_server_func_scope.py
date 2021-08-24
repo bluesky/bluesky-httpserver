@@ -356,14 +356,14 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
 
 def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
     """
-    Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS' environment
-    variable. Start RE Manager and HTTP server with ZMQ address for control communication channel
-    different from default address, add and execute a plan.
+    Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS_CONTROL'
+    environment variable. Start RE Manager and HTTP server with ZMQ address for control communication
+    channel different from default address, add and execute a plan.
     """
 
     # Change ZMQ address to use port 60616 instead of the default port 60615.
     zmq_server_address = "tcp://localhost:60616"
-    monkeypatch.setenv("QSERVER_ZMQ_ADDRESS", zmq_server_address)  # RE Manager
+    monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONTROL", zmq_server_address)  # RE Manager
     fastapi_server_fs()
 
     set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_server_address)

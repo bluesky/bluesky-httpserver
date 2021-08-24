@@ -11,6 +11,8 @@ from typing import Optional
 from bluesky_queueserver.manager.comms import ZMQCommSendAsync, validate_zmq_key
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
+from .console_output import FetchPublishedConsoleOutput, ConsoleOutputEventStream, StreamingResponseFromClass
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -26,12 +28,14 @@ app = FastAPI()
 zmq_to_manager = None
 
 custom_code_module = None
+console_output_loader = None
 
 
 @app.on_event("startup")
 async def startup_event():
     global zmq_to_manager
     global custom_code_module
+    global console_output_loader
 
     # Read private key from the environment variable, then check if the CLI parameter exists
     zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
@@ -43,13 +47,26 @@ async def startup_event():
             raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
 
     # TODO: implement nicer exit with error reporting in case of failure
+    zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
+    if zmq_server_address_control is None:
+        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
+        # TODO: remove in one of the future versions
+        zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS", None)
+        if zmq_server_address_control is not None:
+            logger.warning(
+                "Environment variable QSERVER_ZMQ_ADDRESS is deprecated: use environment variable "
+                "QSERVER_ZMQ_ADDRESS_CONTROL to pass address of 0MQ control socket to HTTP Server."
+            )
 
-    zmq_server_address = os.getenv("QSERVER_ZMQ_ADDRESS", None)
+    zmq_server_address_console = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
 
     # ZMQCommSendAsync should be created from the event loop of FastAPI server.
     zmq_to_manager = ZMQCommSendAsync(
-        raise_exceptions=False, server_public_key=zmq_public_key, zmq_server_address=zmq_server_address
+        raise_exceptions=False, server_public_key=zmq_public_key, zmq_server_address=zmq_server_address_control
     )
+
+    console_output_loader = FetchPublishedConsoleOutput(zmq_addr=zmq_server_address_console)
+    console_output_loader.start()
 
     # Import module with custom code
     module_name = os.getenv("QSERVER_CUSTOM_MODULE", None)
@@ -71,7 +88,10 @@ async def startup_event():
 @app.on_event("shutdown")
 def shutdown_event():
     global zmq_to_manager
+    global console_output_loader
+
     zmq_to_manager.close()
+    console_output_loader.stop()
 
 
 class REPauseOptions(str, Enum):
@@ -585,3 +605,9 @@ async def test_manager_kill_handler():
     """
     msg = await zmq_to_manager.send_message(method="manager_kill")
     return msg
+
+
+@app.get("/stream_console_output")
+def stream():
+    sr = StreamingResponseFromClass(ConsoleOutputEventStream(), media_type="text/plain")
+    return sr
