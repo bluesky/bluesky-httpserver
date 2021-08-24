@@ -501,8 +501,8 @@ in the browser, e.g. ::
 
 Client application is responsible for processing JSON messages and displaying formatted output to users.
 
-HTTP Server is not performing caching of the console output, so streamed data contain only message
-received once the web client connects to the server.
+HTTP Server is not performing caching of the console output, so streamed data contain only messages
+received after the web client connects to the server.
 
 If RE Manager is configured to publish console address to 0MQ socket with port number different from
 default or HTTP server is running on a separate workstation/server, the address of 0MQ socket
