@@ -60,10 +60,12 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
 
 
 @pytest.mark.parametrize("zmq_port", (None, 60619))
-def test_http_server_capture_console_output_1(
+def test_http_server_stream_console_output_1(
     monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
 ):
-
+    """
+    Test for ``stream_console_output`` API
+    """
     # Start HTTP Server
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
@@ -99,6 +101,8 @@ def test_http_server_capture_console_output_1(
     assert resp2["running_item"] == {}
 
     rsc.join()
+
+    # Verify that expected messages ('strings') are contained in captured messages.
     expected_messages = {"Adding new item to the queue", "Item added"}
     buffer = rsc.received_data_buffer
     for msg in buffer:

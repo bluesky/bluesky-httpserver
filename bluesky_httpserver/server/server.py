@@ -608,6 +608,6 @@ async def test_manager_kill_handler():
 
 
 @app.get("/stream_console_output")
-def stream():
+def stream_console_output():
     sr = StreamingResponseFromClass(ConsoleOutputEventStream(), media_type="text/plain")
     return sr
