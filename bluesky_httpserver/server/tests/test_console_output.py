@@ -3,6 +3,7 @@ import json
 import threading
 import pprint
 import pytest
+import time as ttime
 
 from bluesky_httpserver.server.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
 from bluesky_httpserver.server.tests.conftest import fastapi_server_fs  # noqa F401
@@ -91,6 +92,7 @@ def test_http_server_stream_console_output_1(
     assert resp1["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp1["item"]
 
+    ttime.sleep(1)  # Let output capture to complete
     rsc.stop()
     # Note, that some output from the server is is needed in order to exit the loop in the thread.
 
@@ -112,4 +114,4 @@ def test_http_server_stream_console_output_1(
 
     assert (
         not expected_messages
-    ), f"Messages {expected_messages} were not found in captured output:\n {pprint.pformat(buffer)}"
+    ), f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
