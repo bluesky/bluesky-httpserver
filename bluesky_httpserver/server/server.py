@@ -11,7 +11,7 @@ from typing import Optional
 from bluesky_queueserver.manager.comms import ZMQCommSendAsync, validate_zmq_key
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
-from .console_output import FetchPublishedConsoleOutput, ConsoleOutputEventStream, StreamingResponseFromClass
+from .console_output import CollectPublishedConsoleOutput, ConsoleOutputEventStream, StreamingResponseFromClass
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -65,7 +65,7 @@ async def startup_event():
         raise_exceptions=False, server_public_key=zmq_public_key, zmq_server_address=zmq_server_address_control
     )
 
-    console_output_loader = FetchPublishedConsoleOutput(zmq_addr=zmq_server_address_console)
+    console_output_loader = CollectPublishedConsoleOutput(zmq_addr=zmq_server_address_console)
     console_output_loader.start()
 
     # Import module with custom code
@@ -609,5 +609,7 @@ async def test_manager_kill_handler():
 
 @app.get("/stream_console_output")
 def stream_console_output():
-    sr = StreamingResponseFromClass(ConsoleOutputEventStream(), media_type="text/plain")
+    queues_set = console_output_loader.queues_set
+    stm = ConsoleOutputEventStream(queues_set=queues_set)
+    sr = StreamingResponseFromClass(stm, media_type="text/plain")
     return sr

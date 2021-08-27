@@ -1,15 +1,15 @@
-import threading
 import json
-from bluesky_queueserver import ReceiveConsoleOutput
+import logging
 import queue
 from starlette.responses import StreamingResponse
 
+from bluesky_queueserver import ReceiveConsoleOutputAsync
 
-# The set of queues for console output
-queues_console_output = set()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-class FetchPublishedConsoleOutput(threading.Thread):
+class CollectPublishedConsoleOutput:
     """
     The class implements the code for fetching console output data published by Queue Server
     and adding the messages to the queues in the set (see parameter ``queues_set``). The
@@ -31,44 +31,49 @@ class FetchPublishedConsoleOutput(threading.Thread):
         Passed to ``threading.Thread``.
     """
 
-    def __init__(self, *, zmq_addr=None, **kwargs):
-        global queues_console_output
+    def __init__(self, *, zmq_addr=None):
+        self._queues_set = set()
+        self._rco = ReceiveConsoleOutputAsync(zmq_subscribe_addr=zmq_addr)
+        self._rco.set_callback(self._add_message)
 
-        kwargs.update({"name": "QServer HTTP Console Output Streaming", "daemon": True})
-        super().__init__(**kwargs)
-        self._exit = False
-        self._queues_set = queues_console_output
-        self._rco = ReceiveConsoleOutput(zmq_subscribe_addr=zmq_addr)
+    @property
+    def queues_set(self):
+        """
+        Get reference to the set of queues. Received messages are added to each queue in
+        in the set. Each independent consumer of messages is expected to add queue to the set.
+        This class does not distinguish between consumers and treat all queues identically.
+        """
+        return self._queues_set
 
-    def run(self):
-        while True:
-            try:
-                message = self._rco.recv(timeout=500)
-                for q in self._queues_set.copy():
-                    # Consume one message if the queue is full. Setting the maximum
-                    #   queue size may save from memory leaks in case queue is not
-                    #   removed from the set due to a bug.
-                    if q.full():
-                        q.get()
+    def _add_message(self, msg):
+        try:
+            for q in self._queues_set.copy():
+                # Consume one message if the queue is full. Setting the maximum
+                #   queue size may save from memory leaks in case queue is not
+                #   removed from the set due to a bug.
+                if q.full():
+                    q.get()
 
-                    q.put(message)
+                q.put(msg)
+        except Exception as ex:
+            logger.exception("Exception occurred while adding console output message to queues: %s", str(ex))
 
-            except TimeoutError:
-                # Timeout does not mean communication error!!!
-                pass
-
-            if self._exit:
-                break
+    def start(self):
+        """
+        Start collection of messages. Must be called from the loop!!!
+        """
+        self._rco.start()
 
     def stop(self):
-        self._exit = True
+        """
+        Stop collection of messages
+        """
+        self._rco.stop()
 
 
 class ConsoleOutputEventStream:
-    def __init__(self, *, queue_maxsize=1000):
-        global queues_console_output
-
-        self._queues_set = queues_console_output
+    def __init__(self, *, queues_set, queue_maxsize=1000):
+        self._queues_set = queues_set
 
         self._local_queue = queue.Queue(maxsize=queue_maxsize)
         self._queues_set.add(self._local_queue)
