@@ -86,10 +86,10 @@ The Web Server should be started from the second shell as follows::
   uvicorn bluesky_httpserver.server.server:app --host localhost --port 60610
 
 The Web Server connects to RE Manager using Zero MQ. The default ZMQ address is 'tcp://localhost:60615'.
-A different ZMQ address may be passed to the Web Server by setting the *QSERVER_ZMQ_ADDRESS* environment
-variable before starting the server::
+A different ZMQ address may be passed to the Web Server by setting the *QSERVER_ZMQ_ADDRESS_CONTROL*
+environment variable before starting the server::
 
-  export QSERVER_ZMQ_ADDRESS='tcp://localhost:60615'
+  export QSERVER_ZMQ_ADDRESS_CONTROL='tcp://localhost:60615'
 
 The Web Server supports using external modules for processing some requests. Those modules
 are optional and may contain custom instrument-specific processing code. The name of the external
@@ -475,3 +475,37 @@ is to test handling of communication timeouts, since RE Manager does not respond
 
   qserver manager kill test
   http POST http://localhost:60610/test/manager/kill
+
+Streaming Console Output of RE Manager
+--------------------------------------
+
+HTTP server provides streaming API ``stream_console_output`` that allows web applications to receive,
+process and display captured console output of RE manager. To test operation of the streaming API,
+enable publishing of console output by RE Manager::
+
+  start-re-manager --zmq-publish-console ON
+
+start HTTP Server, start Web Browser and type the following address::
+
+  http://localhost:60610/stream_console_output
+
+Then open a separate terminal and send a few requests to RE Manager using ``qserver`` tool, e.g. ::
+
+  qserver environment open
+  qserver environment close
+
+JSON representation of console output message (timestamp and text message) will be displayed
+in the browser, e.g. ::
+
+{"time": 1629816304.5475085, "msg": "INFO:bluesky_queueserver.manager.manager:Opening the new RE environment ...\n"}
+
+Client application is responsible for processing JSON messages and displaying formatted output to users.
+
+HTTP Server is not performing caching of the console output, so streamed data contain only messages
+received after the web client connects to the server.
+
+If RE Manager is configured to publish console address to 0MQ socket with port number different from
+default or HTTP server is running on a separate workstation/server, the address of 0MQ socket
+can be specified by setting the environment variable ``QSERVER_ZMQ_ADDRESS_CONSOLE``, e.g. ::
+
+  export QSERVER_ZMQ_ADDRESS_CONSOLE='tcp://localhost:60625'
