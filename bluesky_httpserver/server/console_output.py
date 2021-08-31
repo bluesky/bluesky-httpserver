@@ -11,24 +11,27 @@ logger.setLevel(logging.INFO)
 
 class CollectPublishedConsoleOutput:
     """
-    The class implements the code for fetching console output data published by Queue Server
-    and adding the messages to the queues in the set (see parameter ``queues_set``). The
-    code is executed in a separate thread.
+    The class implements the code for collecting messages with console output data published by
+    RE Manager and adding the messages to the queues in the set. The code is executed in a
+    separate thread.
 
     Examples
     --------
     .. code-block:: python
         # Instantiate the class and start the thread
-        gen_data = FetchPublishedConsoleOutput()
+        gen_data = CollectPublishedConsoleOutput()
         gen_data.start()
+        ...
+        q = queue.Queue(maxsize=queue_maxsize)
+        gen_data.queues_set.add(self._local_queue)
+        ...
+        get_data.stop()
 
     Parameters
     ----------
     zmq_addr : str or None
         0MQ address of the Queue Server socket where the console output messages are published.
         E.g. ``tcp://localhost:60625``. If ``None``, then default socket address is used.
-    **kwargs
-        Passed to ``threading.Thread``.
     """
 
     def __init__(self, *, zmq_addr=None):
