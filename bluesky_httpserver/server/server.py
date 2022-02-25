@@ -524,6 +524,18 @@ async def re_halt_handler():
     return msg
 
 
+@app.post("/re/runs")
+async def re_runs_handler(payload: dict):
+    """
+    Run Engine: download the list of active, open or closed runs (runs that were opened
+    during execution of the currently running plan and combines the subsets of 'open' and
+    'closed' runs.) The parameter ``options`` is used to select the category of runs
+    (``'active'``, ``'open'`` or ``'closed'``). By default the API returns the active runs.
+    """
+    msg = await zmq_to_manager.send_message(method="re_runs", params=payload)
+    return msg
+
+
 @app.get("/re/runs/active")
 async def re_runs_active_handler():
     """
