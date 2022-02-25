@@ -1278,9 +1278,9 @@ def test_http_server_queue_stop(re_manager, fastapi_server, deactivate):  # noqa
 
 # fmt: off
 @pytest.mark.parametrize("suffix, expected_n_items", [
-    ("/active", 1),
-    ("/open", 1),
-    ("/closed", 0),
+    ("active", 1),
+    ("open", 1),
+    ("closed", 0),
 ])
 # fmt: on
 def test_http_server_re_runs(re_manager, fastapi_server, suffix, expected_n_items):  # noqa F811
@@ -1302,11 +1302,18 @@ def test_http_server_re_runs(re_manager, fastapi_server, suffix, expected_n_item
     run_list_uid = status["run_list_uid"]
     assert isinstance(run_list_uid, str)
 
-    req = "/re/runs" + suffix
+    req = "/re/runs/" + suffix
+
     resp2 = request_to_json("get", req)
     assert resp2["success"] is True
     assert len(resp2["run_list"]) == expected_n_items
     assert resp2["run_list_uid"] == run_list_uid
+
+    kwargs = {"json": {"option": suffix}}
+    resp2a = request_to_json("post", "/re/runs", **kwargs)
+    assert resp2a["success"] is True
+    assert len(resp2a["run_list"]) == expected_n_items
+    assert resp2a["run_list_uid"] == run_list_uid
 
     assert wait_for_manager_state_idle(30), "Timeout"
 
