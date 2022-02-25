@@ -40,7 +40,7 @@ _instruction_stop = {"name": "queue_stop", "item_type": "instruction"}
 # fmt: on
 def test_http_server_ping_handler(re_manager, fastapi_server, api_call):  # noqa F811
     resp = request_to_json("get", api_call)
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -49,7 +49,7 @@ def test_http_server_ping_handler(re_manager, fastapi_server, api_call):  # noqa
 
 def test_http_server_status_handler(re_manager, fastapi_server):  # noqa F811
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -1166,7 +1166,7 @@ def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
     ttime.sleep(10)
 
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -1202,7 +1202,7 @@ def test_http_server_manager_stop_handler_2(re_manager, fastapi_server, option):
 
     ttime.sleep(2)
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "executing_queue"
     assert resp["items_in_queue"] == 2
     assert resp["running_item_uid"] is not None
@@ -1221,7 +1221,7 @@ def test_http_server_manager_stop_handler_2(re_manager, fastapi_server, option):
         # The queue is expected to be running
         ttime.sleep(15)
         resp = request_to_json("get", "/status")
-        assert resp["msg"] == "RE Manager"
+        assert resp["msg"].startswith("RE Manager")
         assert resp["manager_state"] == "idle"
         assert resp["items_in_queue"] == 0
         assert resp["items_in_history"] == 3
