@@ -481,15 +481,15 @@ Additional API
 --------------
 API that are implemented, but not listed in this document:
 
-- `/re/runs` - access to `re_runs`, combines `/re/runs/active`, `/re/runs/open`, `/re/runs/closed`
-- `/plans/existing` - access to `plans_existing` API
-- `/devices/existing` - access to `devices_existing` API
-- `/permissions/get` - access to `permissions_get` API
-- `/permissions/set` - access to `permissions_set` API
-- `/script/upload` - access to `script_upload` API
-- `/function/execute` - access to `function_execute` API
-- `/task/status` - access to `task_status` API
-- `/task/result` - access to `task_result` API
+- ``/re/runs`` - access to ``re_runs``, combines ``/re/runs/active``, ``/re/runs/open``, ``/re/runs/closed``
+- ``/plans/existing`` - access to ``plans_existing`` API
+- ``/devices/existing`` - access to ``devices_existing`` API
+- ``/permissions/get`` - access to ``permissions_get`` API
+- ``/permissions/set`` - access to ``permissions_set`` API
+- ``/script/upload`` - access to ``script_upload`` API
+- ``/function/execute`` - access to ``function_execute`` API
+- ``/task/status`` - access to ``task_status`` API
+- ``/task/result`` - access to ``task_result`` API
 
 
 Streaming Console Output of RE Manager
