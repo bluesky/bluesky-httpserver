@@ -504,12 +504,24 @@ def test_http_server_queue_item_get_remove_handler_1(re_manager, fastapi_server)
     assert resp2["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp2["item"]
 
-    resp3 = request_to_json("post", "/queue/item/remove", json={})
+    resp3 = request_to_json("post", "/queue/item/get")
     assert resp3["success"] is True
-    assert resp3["qsize"] == 2
     assert resp3["item"]["name"] == "count"
     assert resp3["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp3["item"]
+
+    resp4 = request_to_json("post", "/queue/item/get")
+    assert resp4["success"] is True
+    assert resp4["item"]["name"] == "count"
+    assert resp4["item"]["args"] == [["det1", "det2"]]
+    assert "item_uid" in resp4["item"]
+
+    resp5 = request_to_json("post", "/queue/item/remove", json={})
+    assert resp5["success"] is True
+    assert resp5["qsize"] == 2
+    assert resp5["item"]["name"] == "count"
+    assert resp5["item"]["args"] == [["det1", "det2"]]
+    assert "item_uid" in resp5["item"]
 
 
 # fmt: off

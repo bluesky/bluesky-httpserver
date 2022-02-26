@@ -165,7 +165,7 @@ async def status_handler():
 @app.post("/queue/mode/set")
 async def queue_mode_set_handler(payload: dict):
     """
-    Clear the plan queue.
+    Set queue mode.
     """
     params = payload
     msg = await zmq_to_manager.send_message(method="queue_mode_set", params=params)
@@ -408,7 +408,7 @@ async def queue_item_move_batch_handler(payload: dict):
 
 
 @app.post("/queue/item/get")
-async def queue_item_get_handler(payload: dict):
+async def queue_item_get_handler(payload: dict = {}):
     """
     Get a plan from the queue
     """
