@@ -525,7 +525,7 @@ async def re_halt_handler():
 
 
 @app.post("/re/runs")
-async def re_runs_handler(payload: dict):
+async def re_runs_handler(payload: dict={}):
     """
     Run Engine: download the list of active, open or closed runs (runs that were opened
     during execution of the currently running plan and combines the subsets of 'open' and
