@@ -622,6 +622,24 @@ async def permissions_reload_handler(payload: dict = {}):
     return msg
 
 
+@app.post("/permissions/get")
+async def permissions_get_handler():
+    """
+    Download the dictionary of user group permissions.
+    """
+    msg = await zmq_to_manager.send_message(method="permissions_get")
+    return msg
+
+
+@app.post("/permissions/set")
+async def permissions_set_handler(payload: dict):
+    """
+    Upload the dictionary of user group permissions (parameter: ``user_group_permissions``).
+    """
+    msg = await zmq_to_manager.send_message(method="permissions_set", params=payload)
+    return msg
+
+
 @app.post("/manager/stop")
 async def manager_stop_handler(payload: dict = {}):
     """

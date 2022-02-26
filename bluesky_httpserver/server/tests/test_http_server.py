@@ -1422,3 +1422,19 @@ def test_http_server_reload_permissions_02(re_manager_pc_copy, fastapi_server, t
     kwargs = {} if params is None else {"json": params}
     resp1 = request_to_json("post", "/permissions/reload", **kwargs)
     assert resp1["success"] is True, str(resp1)
+
+
+def test_http_server_permissions_get_set_01(re_manager, fastapi_server):  # noqa F811
+    """
+    Tests for ``/permissions/get`` and ``/permissions/set`` API.
+    """
+    resp1 = request_to_json("post", "/permissions/get")
+    assert resp1["success"] is True, str(resp1)
+    assert resp1["msg"] == ""
+    user_group_permissions = resp1["user_group_permissions"]
+    assert isinstance(user_group_permissions, dict)
+    assert user_group_permissions
+
+    resp2 = request_to_json("post", "/permissions/set", json={"user_group_permissions": user_group_permissions})
+    assert resp2["success"] is True, str(resp2)
+    assert resp2["msg"] == ""
