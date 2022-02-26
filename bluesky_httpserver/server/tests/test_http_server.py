@@ -40,7 +40,7 @@ _instruction_stop = {"name": "queue_stop", "item_type": "instruction"}
 # fmt: on
 def test_http_server_ping_handler(re_manager, fastapi_server, api_call):  # noqa F811
     resp = request_to_json("get", api_call)
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -49,7 +49,7 @@ def test_http_server_ping_handler(re_manager, fastapi_server, api_call):  # noqa
 
 def test_http_server_status_handler(re_manager, fastapi_server):  # noqa F811
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -102,13 +102,48 @@ def test_http_server_queue_get_handler(re_manager, fastapi_server):  # noqa F811
     assert resp["running_item"] == {}
 
 
-def test_http_server_plans_allowed_and_devices(re_manager, fastapi_server):  # noqa F811
-    resp1 = request_to_json("get", "/plans/allowed")
-    assert isinstance(resp1["plans_allowed"], dict)
-    assert len(resp1["plans_allowed"]) > 0
-    resp2 = request_to_json("get", "/devices/allowed")
-    assert isinstance(resp2["devices_allowed"], dict)
-    assert len(resp2["devices_allowed"]) > 0
+# fmt: off
+@pytest.mark.parametrize("reduced", [None, False, True])
+# fmt: on
+def test_http_server_plans_allowed_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
+    kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
+    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    assert "plans_allowed" in resp1, pprint.pformat(resp1)
+    assert isinstance(resp1["plans_allowed"], dict), pprint.pformat(resp1)
+    assert len(resp1["plans_allowed"]) > 0, pprint.pformat(resp1)
+    resp2 = request_to_json("post", "/devices/allowed")
+    assert "devices_allowed" in resp2, pprint.pformat(resp2)
+    assert isinstance(resp2["devices_allowed"], dict), pprint.pformat(resp2)
+    assert len(resp2["devices_allowed"]) > 0, pprint.pformat(resp2)
+
+
+def test_http_server_plans_allowed_and_devices_02(re_manager, fastapi_server):  # noqa F811
+    kwargs = {"json": {"unsupported": False}}
+    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    assert "detail" in resp1, pprint.pformat(resp1)
+    assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
+
+
+# fmt: off
+@pytest.mark.parametrize("reduced", [None, False, True])
+# fmt: on
+def test_http_server_plans_existing_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
+    kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
+    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    assert "plans_existing" in resp1, pprint.pformat(resp1)
+    assert isinstance(resp1["plans_existing"], dict), pprint.pformat(resp1)
+    assert len(resp1["plans_existing"]) > 0, pprint.pformat(resp1)
+    resp2 = request_to_json("post", "/devices/existing")
+    assert "devices_existing" in resp2, pprint.pformat(resp2)
+    assert isinstance(resp2["devices_existing"], dict), pprint.pformat(resp2)
+    assert len(resp2["devices_existing"]) > 0, pprint.pformat(resp2)
+
+
+def test_http_server_plans_existing_and_devices_02(re_manager, fastapi_server):  # noqa F811
+    kwargs = {"json": {"unsupported": False}}
+    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    assert "detail" in resp1, pprint.pformat(resp1)
+    assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
 
 
 def test_http_server_queue_item_add_handler_1(re_manager, fastapi_server):  # noqa F811
@@ -469,12 +504,24 @@ def test_http_server_queue_item_get_remove_handler_1(re_manager, fastapi_server)
     assert resp2["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp2["item"]
 
-    resp3 = request_to_json("post", "/queue/item/remove", json={})
+    resp3 = request_to_json("post", "/queue/item/get")
     assert resp3["success"] is True
-    assert resp3["qsize"] == 2
     assert resp3["item"]["name"] == "count"
     assert resp3["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp3["item"]
+
+    resp4 = request_to_json("post", "/queue/item/get")
+    assert resp4["success"] is True
+    assert resp4["item"]["name"] == "count"
+    assert resp4["item"]["args"] == [["det1", "det2"]]
+    assert "item_uid" in resp4["item"]
+
+    resp5 = request_to_json("post", "/queue/item/remove", json={})
+    assert resp5["success"] is True
+    assert resp5["qsize"] == 2
+    assert resp5["item"]["name"] == "count"
+    assert resp5["item"]["args"] == [["det1", "det2"]]
+    assert "item_uid" in resp5["item"]
 
 
 # fmt: off
@@ -1043,6 +1090,7 @@ def test_http_server_queue_start_handler(re_manager, fastapi_server):  # noqa F8
 # fmt: off
 @pytest.mark.parametrize("option_pause, option_continue", [
     ("deferred", "resume"),
+    (None, "resume"),
     ("immediate", "resume"),
     ("deferred", "stop"),
     ("deferred", "abort"),
@@ -1078,7 +1126,8 @@ def test_http_server_re_pause_continue_handlers(
     resp3 = request_to_json("post", "/queue/start")
     assert resp3 == {"success": True, "msg": ""}
     ttime.sleep(3.5)  # Let some time pass before pausing the plan (fractional number of seconds)
-    resp3a = request_to_json("post", "/re/pause", json={"option": option_pause})
+    kwargs = {} if option_pause is None else {"json": {"option": option_pause}}
+    resp3a = request_to_json("post", "/re/pause", **kwargs)
     assert resp3a == {"msg": "", "success": True}
     ttime.sleep(2)  # TODO: API is needed
     resp3b = request_to_json("get", "/queue/get")
@@ -1166,7 +1215,7 @@ def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
     ttime.sleep(10)
 
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
@@ -1181,7 +1230,7 @@ def test_http_server_manager_stop_handler_1(re_manager, fastapi_server, option):
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
-    kwargs = {"json": {"option": option} if option else {}}
+    kwargs = {"json": {"option": option}} if (option is not None) else {}
     resp1 = request_to_json("post", "/manager/stop", **kwargs)
     assert resp1["success"] is True
 
@@ -1202,7 +1251,7 @@ def test_http_server_manager_stop_handler_2(re_manager, fastapi_server, option):
 
     ttime.sleep(2)
     resp = request_to_json("get", "/status")
-    assert resp["msg"] == "RE Manager"
+    assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "executing_queue"
     assert resp["items_in_queue"] == 2
     assert resp["running_item_uid"] is not None
@@ -1221,7 +1270,7 @@ def test_http_server_manager_stop_handler_2(re_manager, fastapi_server, option):
         # The queue is expected to be running
         ttime.sleep(15)
         resp = request_to_json("get", "/status")
-        assert resp["msg"] == "RE Manager"
+        assert resp["msg"].startswith("RE Manager")
         assert resp["manager_state"] == "idle"
         assert resp["items_in_queue"] == 0
         assert resp["items_in_history"] == 3
@@ -1278,9 +1327,10 @@ def test_http_server_queue_stop(re_manager, fastapi_server, deactivate):  # noqa
 
 # fmt: off
 @pytest.mark.parametrize("suffix, expected_n_items", [
-    ("/active", 1),
-    ("/open", 1),
-    ("/closed", 0),
+    (None, 1),
+    ("active", 1),
+    ("open", 1),
+    ("closed", 0),
 ])
 # fmt: on
 def test_http_server_re_runs(re_manager, fastapi_server, suffix, expected_n_items):  # noqa F811
@@ -1302,11 +1352,18 @@ def test_http_server_re_runs(re_manager, fastapi_server, suffix, expected_n_item
     run_list_uid = status["run_list_uid"]
     assert isinstance(run_list_uid, str)
 
-    req = "/re/runs" + suffix
+    req = "/re/runs/" + (suffix if suffix is not None else "active")
+
     resp2 = request_to_json("get", req)
     assert resp2["success"] is True
     assert len(resp2["run_list"]) == expected_n_items
     assert resp2["run_list_uid"] == run_list_uid
+
+    kwargs = {"json": {"option": suffix}} if suffix is not None else {}
+    resp2a = request_to_json("post", "/re/runs", **kwargs)
+    assert resp2a["success"] is True
+    assert len(resp2a["run_list"]) == expected_n_items
+    assert resp2a["run_list_uid"] == run_list_uid
 
     assert wait_for_manager_state_idle(30), "Timeout"
 
@@ -1320,7 +1377,7 @@ def trivial_plan_for_unit_test():
 """
 
 
-def test_http_server_reload_permissions(re_manager_pc_copy, fastapi_server, tmp_path):  # noqa F811
+def test_http_server_reload_permissions_01(re_manager_pc_copy, fastapi_server, tmp_path):  # noqa F811
     """
     Tests for ``/permissions/reload`` API.
     """
@@ -1337,11 +1394,102 @@ def test_http_server_reload_permissions(re_manager_pc_copy, fastapi_server, tmp_
     resp1 = request_to_json("post", "/queue/item/add", json=plan)
     assert resp1["success"] is False, str(resp1)
 
-    # Reload profile collection
-    resp2 = request_to_json("post", "/permissions/reload")
+    # Reload profile collection. The new 'existing_plans_and_devices.yaml' was
+    #   generated externally and we need to reload it, which does not happen by default.
+    kwargs = {"json": {"reload_plans_devices": True}}
+    resp2 = request_to_json("post", "/permissions/reload", **kwargs)
     assert resp2["success"] is True, str(resp2)
 
     # Attempt to add the plan to the queue. It should be successful now.
     resp3 = request_to_json("post", "/queue/item/add", json=plan)
     assert resp3["success"] is True, str(resp3)
     assert resp3["qsize"] == 1, str(resp3)
+
+
+# fmt: off
+@pytest.mark.parametrize("params", [
+    None,
+    {"reload_plans_devices": False},
+    {"reload_plans_devices": True},
+    {"reload_permissions": False},
+    {"reload_permissions": True},
+])
+# fmt: on
+def test_http_server_reload_permissions_02(re_manager_pc_copy, fastapi_server, tmp_path, params):  # noqa F811
+    """
+    Tests for ``/permissions/reload`` API.
+    """
+    kwargs = {} if params is None else {"json": params}
+    resp1 = request_to_json("post", "/permissions/reload", **kwargs)
+    assert resp1["success"] is True, str(resp1)
+
+
+def test_http_server_permissions_get_set_01(re_manager, fastapi_server):  # noqa F811
+    """
+    Tests for ``/permissions/get`` and ``/permissions/set`` API.
+    """
+    resp1 = request_to_json("post", "/permissions/get")
+    assert resp1["success"] is True, str(resp1)
+    assert resp1["msg"] == ""
+    user_group_permissions = resp1["user_group_permissions"]
+    assert isinstance(user_group_permissions, dict)
+    assert user_group_permissions
+
+    resp2 = request_to_json("post", "/permissions/set", json={"user_group_permissions": user_group_permissions})
+    assert resp2["success"] is True, str(resp2)
+    assert resp2["msg"] == ""
+
+
+# fmt: off
+@pytest.mark.parametrize("test", ["script_upload", "function_execute"])
+# fmt: on
+def test_http_script_upload_function_execute_01(re_manager, fastapi_server, test):  # noqa F811
+    """
+    Tests for ``/script/upload``, ``/function/execute``, ``/task/status`` and ``/task/result`` API.
+    """
+
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    if test == "script_upload":
+        # The script defines a plan, then waits for 1 second.
+        script = "def test_plan():\n    yield from bps.sleep(1)\n\nttime.sleep(1)"
+        resp2 = request_to_json("post", "/script/upload", json={"script": script})
+    elif test == "function_execute":
+        func_params = {"item_type": "function", "name": "function_sleep", "args": [1.0]}
+        resp2 = request_to_json("post", "/function/execute", json={"item": func_params})
+    else:
+        assert False, f"Unknown test: {test!r}"
+    assert resp2["success"] is True, str(resp2)
+    assert resp2["msg"] == ""
+    assert "task_uid" in resp2, pprint.pformat(resp2)
+    task_uid = resp2["task_uid"]
+
+    ttime.sleep(0.2)
+
+    resp3 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    assert resp3["success"] is True, str(resp3)
+    assert resp3["msg"] == ""
+    assert "status" in resp3, pprint.pformat(resp3)
+    assert resp3["status"] == "running"
+
+    ttime.sleep(2)
+
+    resp4 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    assert resp4["success"] is True, str(resp4)
+    assert resp4["msg"] == ""
+    assert "status" in resp4, pprint.pformat(resp4)
+    assert resp4["status"] == "completed"
+
+    resp5 = request_to_json("post", "/task/result", json={"task_uid": task_uid})
+    assert resp5["success"] is True, str(resp4)
+    assert resp5["msg"] == ""
+    assert "status" in resp5, pprint.pformat(resp5)
+    assert resp5["status"] == "completed"
+    assert "result" in resp5, pprint.pformat(resp5)
+    assert resp5["result"]["success"] is True
+
+    resp10 = request_to_json("post", "/environment/close")
+    assert resp10["success"] is True
+    assert wait_for_environment_to_be_closed(10)

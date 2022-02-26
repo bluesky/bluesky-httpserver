@@ -323,10 +323,10 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
     resp2 = request_to_json("post", "/queue/item/add", json={"item": _plan2})
     assert resp2["success"] is True, str(resp2)
 
-    resp3 = request_to_json("get", "/plans/allowed")
+    resp3 = request_to_json("post", "/plans/allowed")
     assert isinstance(resp3["plans_allowed"], dict)
     assert len(resp3["plans_allowed"]) > 0
-    resp4 = request_to_json("get", "/devices/allowed")
+    resp4 = request_to_json("post", "/devices/allowed")
     assert isinstance(resp4["devices_allowed"], dict)
     assert len(resp4["devices_allowed"]) > 0
 
