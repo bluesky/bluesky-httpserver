@@ -1344,8 +1344,10 @@ def test_http_server_reload_permissions(re_manager_pc_copy, fastapi_server, tmp_
     resp1 = request_to_json("post", "/queue/item/add", json=plan)
     assert resp1["success"] is False, str(resp1)
 
-    # Reload profile collection
-    resp2 = request_to_json("post", "/permissions/reload")
+    # Reload profile collection. The new 'existing_plans_and_devices.yaml' was
+    #   generated externally and we need to reload it, which does not happen by default.
+    kwargs = {"json": {"reload_plans_devices": True}}
+    resp2 = request_to_json("post", "/permissions/reload", **kwargs)
     assert resp2["success"] is True, str(resp2)
 
     # Attempt to add the plan to the queue. It should be successful now.

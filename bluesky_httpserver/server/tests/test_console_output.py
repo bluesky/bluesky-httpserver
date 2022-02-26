@@ -92,10 +92,8 @@ def test_http_server_stream_console_output_1(
     assert resp1["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp1["item"]
 
-    # Wait until capture is complete (2 message are expected) or timetout expires
-    t_start, t_timeout = ttime.time(), 10
-    while (len(rsc.received_data_buffer) < 2) and (ttime.time() - t_start < t_timeout):
-        pass
+    # Wait until capture is complete (at least 2 message are expected) or timetout expires
+    ttime.sleep(5)
     rsc.stop()
     # Note, that some output from the server is is needed in order to exit the loop in the thread.
 
@@ -106,6 +104,8 @@ def test_http_server_stream_console_output_1(
     assert resp2["running_item"] == {}
 
     rsc.join()
+
+    assert len(rsc.received_data_buffer) >= 2, pprint.pformat(rsc.received_data_buffer)
 
     # Verify that expected messages ('strings') are contained in captured messages.
     expected_messages = {"Adding new item to the queue", "Item added"}
