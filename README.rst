@@ -169,8 +169,8 @@ Get the lists (JSON) of allowed plans and devices::
   qserver allowed plans
   qserver allowed devices
 
-  http GET http://localhost:60610/plans/allowed
-  http GET http://localhost:60610/devices/allowed
+  http POST http://localhost:60610/plans/allowed
+  http POST http://localhost:60610/devices/allowed
 
 The list of allowed plans and devices is generated based on the list of existing plans and devices
 ('existing_plans_and_devices.yaml' by default) and user group permissions ('user_group_permissions.yaml'
@@ -475,6 +475,22 @@ is to test handling of communication timeouts, since RE Manager does not respond
 
   qserver manager kill test
   http POST http://localhost:60610/test/manager/kill
+
+
+Additional API
+--------------
+API that are implemented, but not listed in this document:
+
+- `/re/runs` - access to `re_runs`, combines `/re/runs/active`, `/re/runs/open`, `/re/runs/closed`
+- `/plans/existing` - access to `plans_existing` API
+- `/devices/existing` - access to `devices_existing` API
+- `/permissions/get` - access to `permissions_get` API
+- `/permissions/set` - access to `permissions_set` API
+- `/script/upload` - access to `script_upload` API
+- `/function/execute` - access to `function_execute` API
+- `/task/status` - access to `task_status` API
+- `/task/result` - access to `task_result` API
+
 
 Streaming Console Output of RE Manager
 --------------------------------------
