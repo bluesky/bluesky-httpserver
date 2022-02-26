@@ -102,13 +102,34 @@ def test_http_server_queue_get_handler(re_manager, fastapi_server):  # noqa F811
     assert resp["running_item"] == {}
 
 
-def test_http_server_plans_allowed_and_devices(re_manager, fastapi_server):  # noqa F811
-    resp1 = request_to_json("get", "/plans/allowed")
-    assert isinstance(resp1["plans_allowed"], dict)
-    assert len(resp1["plans_allowed"]) > 0
-    resp2 = request_to_json("get", "/devices/allowed")
-    assert isinstance(resp2["devices_allowed"], dict)
-    assert len(resp2["devices_allowed"]) > 0
+# fmt: off
+@pytest.mark.parametrize("simplified", [None, False, True])
+# fmt: on
+def test_http_server_plans_allowed_and_devices(re_manager, fastapi_server, simplified):  # noqa F811
+    kwargs = {"json": {"simplified": simplified}} if (simplified is not None) else {}
+    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    assert "plans_allowed" in resp1, pprint.pformat(resp1)
+    assert isinstance(resp1["plans_allowed"], dict), pprint.pformat(resp1)
+    assert len(resp1["plans_allowed"]) > 0, pprint.pformat(resp1)
+    resp2 = request_to_json("post", "/devices/allowed")
+    assert "devices_allowed" in resp2, pprint.pformat(resp2)
+    assert isinstance(resp2["devices_allowed"], dict), pprint.pformat(resp2)
+    assert len(resp2["devices_allowed"]) > 0, pprint.pformat(resp2)
+
+
+# fmt: off
+@pytest.mark.parametrize("simplified", [None, False, True])
+# fmt: on
+def test_http_server_plans_existing_and_devices(re_manager, fastapi_server, simplified):  # noqa F811
+    kwargs = {"json": {"simplified": simplified}} if (simplified is not None) else {}
+    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    assert "plans_existing" in resp1, pprint.pformat(resp1)
+    assert isinstance(resp1["plans_existing"], dict), pprint.pformat(resp1)
+    assert len(resp1["plans_existing"]) > 0, pprint.pformat(resp1)
+    resp2 = request_to_json("post", "/devices/existing")
+    assert "devices_existing" in resp2, pprint.pformat(resp2)
+    assert isinstance(resp2["devices_existing"], dict), pprint.pformat(resp2)
+    assert len(resp2["devices_existing"]) > 0, pprint.pformat(resp2)
 
 
 def test_http_server_queue_item_add_handler_1(re_manager, fastapi_server):  # noqa F811

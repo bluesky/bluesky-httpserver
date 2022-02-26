@@ -567,25 +567,49 @@ async def re_runs_closed_handler():
     return msg
 
 
-@app.get("/plans/allowed")
-async def plans_allowed_handler():
+@app.post("/plans/allowed")
+async def plans_allowed_handler(payload: dict = {}):
     """
-    Returns the lists of allowed plans.
+    Returns the lists of allowed plans. If boolean optional parameter ``simplified``
+    is ``True``, then simplify plan descriptions before calling the API.
     """
+    simplify = payload.get("simplified", False)
     params = {"user_group": _login_data["user_group"]}
     msg = await zmq_to_manager.send_message(method="plans_allowed", params=params)
-    if "plans_allowed" in msg:
+    if simplify and ("plans_allowed" in msg):
         msg["plans_allowed"] = simplify_plan_descriptions(msg["plans_allowed"])
     return msg
 
 
-@app.get("/devices/allowed")
+@app.post("/devices/allowed")
 async def devices_allowed_handler():
     """
     Returns the lists of allowed devices.
     """
     params = {"user_group": _login_data["user_group"]}
     msg = await zmq_to_manager.send_message(method="devices_allowed", params=params)
+    return msg
+
+
+@app.post("/plans/existing")
+async def plans_existing_handler(payload: dict = {}):
+    """
+    Returns the lists of existing plans. If boolean optional parameter ``simplified``
+    is ``True``, then simplify plan descriptions before calling the API.
+    """
+    simplify = payload.get("simplified", False)
+    msg = await zmq_to_manager.send_message(method="plans_existing")
+    if simplify and ("plans_existing" in msg):
+        msg["plans_existing"] = simplify_plan_descriptions(msg["plans_existing"])
+    return msg
+
+
+@app.post("/devices/existing")
+async def devices_existing_handler():
+    """
+    Returns the lists of existing devices.
+    """
+    msg = await zmq_to_manager.send_message(method="devices_existing")
     return msg
 
 
