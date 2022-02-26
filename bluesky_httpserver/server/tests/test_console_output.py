@@ -93,7 +93,7 @@ def test_http_server_stream_console_output_1(
     assert "item_uid" in resp1["item"]
 
     # Wait until capture is complete (at least 2 message are expected) or timetout expires
-    ttime.sleep(5)
+    ttime.sleep(10)
     rsc.stop()
     # Note, that some output from the server is is needed in order to exit the loop in the thread.
 
