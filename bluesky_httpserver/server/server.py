@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 
 # Login and authentication are not implemented, but some API methods require
 #   login data. So for now we set up fixed user name and group
-_login_data = {"user": "John Doe", "user_group": "admin"}
+_login_data = {"user": "Default HTTP User", "user_group": "admin"}
 
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
