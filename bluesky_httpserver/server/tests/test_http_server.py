@@ -1438,3 +1438,58 @@ def test_http_server_permissions_get_set_01(re_manager, fastapi_server):  # noqa
     resp2 = request_to_json("post", "/permissions/set", json={"user_group_permissions": user_group_permissions})
     assert resp2["success"] is True, str(resp2)
     assert resp2["msg"] == ""
+
+
+# fmt: off
+@pytest.mark.parametrize("test", ["script_upload", "function_execute"])
+# fmt: on
+def test_http_script_upload_function_execute_01(re_manager, fastapi_server, test):  # noqa F811
+    """
+    Tests for ``/script/upload``, ``/function/execute``, ``/task/status`` and ``/task/result`` API.
+    """
+
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    if test == "script_upload":
+        # The script defines a plan, then waits for 1 second.
+        script = "def test_plan():\n    yield from bps.sleep(1)\n\nttime.sleep(1)"
+        resp2 = request_to_json("post", "/script/upload", json={"script": script})
+    elif test == "function_execute":
+        func_params = {"item_type": "function", "name": "function_sleep", "args": [1.0]}
+        resp2 = request_to_json("post", "/function/execute", json={"item": func_params})
+    else:
+        assert False, f"Unknown test: {test!r}"
+    assert resp2["success"] is True, str(resp2)
+    assert resp2["msg"] == ""
+    assert "task_uid" in resp2, pprint.pformat(resp2)
+    task_uid = resp2["task_uid"]
+
+    ttime.sleep(0.2)
+
+    resp3 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    assert resp3["success"] is True, str(resp3)
+    assert resp3["msg"] == ""
+    assert "status" in resp3, pprint.pformat(resp3)
+    assert resp3["status"] == "running"
+
+    ttime.sleep(2)
+
+    resp4 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    assert resp4["success"] is True, str(resp4)
+    assert resp4["msg"] == ""
+    assert "status" in resp4, pprint.pformat(resp4)
+    assert resp4["status"] == "completed"
+
+    resp5 = request_to_json("post", "/task/result", json={"task_uid": task_uid})
+    assert resp5["success"] is True, str(resp4)
+    assert resp5["msg"] == ""
+    assert "status" in resp5, pprint.pformat(resp5)
+    assert resp5["status"] == "completed"
+    assert "result" in resp5, pprint.pformat(resp5)
+    assert resp5["result"]["success"] is True
+
+    resp10 = request_to_json("post", "/environment/close")
+    assert resp10["success"] is True
+    assert wait_for_environment_to_be_closed(10)

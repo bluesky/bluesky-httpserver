@@ -640,6 +640,45 @@ async def permissions_set_handler(payload: dict):
     return msg
 
 
+@app.post("/function/execute")
+async def function_execute_handler(payload: dict):
+    """
+    Execute function defined in startup scripts in RE Worker environment.
+    """
+    params = payload
+    params["user"] = _login_data["user"]
+    params["user_group"] = _login_data["user_group"]
+    msg = await zmq_to_manager.send_message(method="function_execute", params=params)
+    return msg
+
+
+@app.post("/script/upload")
+async def script_upload_handler(payload: dict):
+    """
+    Upload and execute script in RE Worker environment.
+    """
+    msg = await zmq_to_manager.send_message(method="script_upload", params=payload)
+    return msg
+
+
+@app.post("/task/status")
+async def script_task_status(payload: dict):
+    """
+    Return status of one or more running tasks.
+    """
+    msg = await zmq_to_manager.send_message(method="task_status", params=payload)
+    return msg
+
+
+@app.post("/task/result")
+async def script_task_result(payload: dict):
+    """
+    Return result of execution of a running or completed task.
+    """
+    msg = await zmq_to_manager.send_message(method="task_result", params=payload)
+    return msg
+
+
 @app.post("/manager/stop")
 async def manager_stop_handler(payload: dict = {}):
     """
