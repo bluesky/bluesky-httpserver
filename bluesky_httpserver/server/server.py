@@ -1,5 +1,4 @@
 import logging
-from enum import Enum
 import io
 import pprint
 import os
@@ -92,11 +91,6 @@ def shutdown_event():
 
     zmq_to_manager.close()
     console_output_loader.stop()
-
-
-class REPauseOptions(str, Enum):
-    deferred = "deferred"
-    immediate = "immediate"
 
 
 def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):
@@ -470,20 +464,10 @@ async def environment_destroy_handler():
 
 
 @app.post("/re/pause")
-async def re_pause_handler(payload: dict):
+async def re_pause_handler(payload: dict = {}):
     """
     Pause Run Engine.
     """
-    try:
-        validate_payload_keys(payload, required_keys=["option"])
-        if not hasattr(REPauseOptions, payload["option"]):
-            raise ValueError(
-                f'The specified option "{payload["option"]}" is not allowed.\n'
-                f"Allowed options: {list(REPauseOptions.__members__.keys())}"
-            )
-    except Exception as ex:
-        raise HTTPException(status_code=444, detail=str(ex))
-
     msg = await zmq_to_manager.send_message(method="re_pause", params=payload)
     return msg
 
@@ -525,7 +509,7 @@ async def re_halt_handler():
 
 
 @app.post("/re/runs")
-async def re_runs_handler(payload: dict={}):
+async def re_runs_handler(payload: dict = {}):
     """
     Run Engine: download the list of active, open or closed runs (runs that were opened
     during execution of the currently running plan and combines the subsets of 'open' and
@@ -570,13 +554,21 @@ async def re_runs_closed_handler():
 @app.post("/plans/allowed")
 async def plans_allowed_handler(payload: dict = {}):
     """
-    Returns the lists of allowed plans. If boolean optional parameter ``simplified``
-    is ``True``, then simplify plan descriptions before calling the API.
+    Returns the lists of allowed plans. If boolean optional parameter ``reduced``
+    is ``True``(default value is ``False`), then simplify plan descriptions before
+    calling the API.
     """
-    simplify = payload.get("simplified", False)
+
+    try:
+        validate_payload_keys(payload, optional_keys=["reduced"])
+    except Exception as ex:
+        raise HTTPException(status_code=444, detail=str(ex))
+
+    reduced = payload.get("reduced", False)
+
     params = {"user_group": _login_data["user_group"]}
     msg = await zmq_to_manager.send_message(method="plans_allowed", params=params)
-    if simplify and ("plans_allowed" in msg):
+    if reduced and ("plans_allowed" in msg):
         msg["plans_allowed"] = simplify_plan_descriptions(msg["plans_allowed"])
     return msg
 
@@ -594,12 +586,18 @@ async def devices_allowed_handler():
 @app.post("/plans/existing")
 async def plans_existing_handler(payload: dict = {}):
     """
-    Returns the lists of existing plans. If boolean optional parameter ``simplified``
-    is ``True``, then simplify plan descriptions before calling the API.
+    Returns the lists of existing plans. If boolean optional parameter ``reduced``
+    is ``True``(default value is ``False`), then simplify plan descriptions before
+    calling the API.
     """
-    simplify = payload.get("simplified", False)
+    try:
+        validate_payload_keys(payload, optional_keys=["reduced"])
+    except Exception as ex:
+        raise HTTPException(status_code=444, detail=str(ex))
+
+    reduced = payload.get("reduced", False)
     msg = await zmq_to_manager.send_message(method="plans_existing")
-    if simplify and ("plans_existing" in msg):
+    if reduced and ("plans_existing" in msg):
         msg["plans_existing"] = simplify_plan_descriptions(msg["plans_existing"])
     return msg
 
@@ -614,7 +612,7 @@ async def devices_existing_handler():
 
 
 @app.post("/permissions/reload")
-async def permissions_reload_handler(payload: dict):
+async def permissions_reload_handler(payload: dict = {}):
     """
     Reloads the list of allowed plans and devices and user group permission from the default location
     or location set using command line parameters of RE Manager. Use this request to reload the data
@@ -625,7 +623,7 @@ async def permissions_reload_handler(payload: dict):
 
 
 @app.post("/manager/stop")
-async def manager_stop_handler(payload: dict):
+async def manager_stop_handler(payload: dict = {}):
     """
     Stops of RE Manager. RE Manager will not be restarted after it is stoped.
     """

@@ -103,10 +103,10 @@ def test_http_server_queue_get_handler(re_manager, fastapi_server):  # noqa F811
 
 
 # fmt: off
-@pytest.mark.parametrize("simplified", [None, False, True])
+@pytest.mark.parametrize("reduced", [None, False, True])
 # fmt: on
-def test_http_server_plans_allowed_and_devices(re_manager, fastapi_server, simplified):  # noqa F811
-    kwargs = {"json": {"simplified": simplified}} if (simplified is not None) else {}
+def test_http_server_plans_allowed_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
+    kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
     resp1 = request_to_json("post", "/plans/allowed", **kwargs)
     assert "plans_allowed" in resp1, pprint.pformat(resp1)
     assert isinstance(resp1["plans_allowed"], dict), pprint.pformat(resp1)
@@ -117,11 +117,18 @@ def test_http_server_plans_allowed_and_devices(re_manager, fastapi_server, simpl
     assert len(resp2["devices_allowed"]) > 0, pprint.pformat(resp2)
 
 
+def test_http_server_plans_allowed_and_devices_02(re_manager, fastapi_server):  # noqa F811
+    kwargs = {"json": {"unsupported": False}}
+    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    assert "detail" in resp1, pprint.pformat(resp1)
+    assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
+
+
 # fmt: off
-@pytest.mark.parametrize("simplified", [None, False, True])
+@pytest.mark.parametrize("reduced", [None, False, True])
 # fmt: on
-def test_http_server_plans_existing_and_devices(re_manager, fastapi_server, simplified):  # noqa F811
-    kwargs = {"json": {"simplified": simplified}} if (simplified is not None) else {}
+def test_http_server_plans_existing_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
+    kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
     resp1 = request_to_json("post", "/plans/existing", **kwargs)
     assert "plans_existing" in resp1, pprint.pformat(resp1)
     assert isinstance(resp1["plans_existing"], dict), pprint.pformat(resp1)
@@ -130,6 +137,13 @@ def test_http_server_plans_existing_and_devices(re_manager, fastapi_server, simp
     assert "devices_existing" in resp2, pprint.pformat(resp2)
     assert isinstance(resp2["devices_existing"], dict), pprint.pformat(resp2)
     assert len(resp2["devices_existing"]) > 0, pprint.pformat(resp2)
+
+
+def test_http_server_plans_existing_and_devices_02(re_manager, fastapi_server):  # noqa F811
+    kwargs = {"json": {"unsupported": False}}
+    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    assert "detail" in resp1, pprint.pformat(resp1)
+    assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
 
 
 def test_http_server_queue_item_add_handler_1(re_manager, fastapi_server):  # noqa F811
@@ -1064,6 +1078,7 @@ def test_http_server_queue_start_handler(re_manager, fastapi_server):  # noqa F8
 # fmt: off
 @pytest.mark.parametrize("option_pause, option_continue", [
     ("deferred", "resume"),
+    (None, "resume"),
     ("immediate", "resume"),
     ("deferred", "stop"),
     ("deferred", "abort"),
@@ -1099,7 +1114,8 @@ def test_http_server_re_pause_continue_handlers(
     resp3 = request_to_json("post", "/queue/start")
     assert resp3 == {"success": True, "msg": ""}
     ttime.sleep(3.5)  # Let some time pass before pausing the plan (fractional number of seconds)
-    resp3a = request_to_json("post", "/re/pause", json={"option": option_pause})
+    kwargs = {} if option_pause is None else {"json": {"option": option_pause}}
+    resp3a = request_to_json("post", "/re/pause", **kwargs)
     assert resp3a == {"msg": "", "success": True}
     ttime.sleep(2)  # TODO: API is needed
     resp3b = request_to_json("get", "/queue/get")
@@ -1202,7 +1218,7 @@ def test_http_server_manager_stop_handler_1(re_manager, fastapi_server, option):
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
-    kwargs = {"json": {"option": option} if option else {}}
+    kwargs = {"json": {"option": option}} if (option is not None) else {}
     resp1 = request_to_json("post", "/manager/stop", **kwargs)
     assert resp1["success"] is True
 
@@ -1349,7 +1365,7 @@ def trivial_plan_for_unit_test():
 """
 
 
-def test_http_server_reload_permissions(re_manager_pc_copy, fastapi_server, tmp_path):  # noqa F811
+def test_http_server_reload_permissions_01(re_manager_pc_copy, fastapi_server, tmp_path):  # noqa F811
     """
     Tests for ``/permissions/reload`` API.
     """
@@ -1376,3 +1392,21 @@ def test_http_server_reload_permissions(re_manager_pc_copy, fastapi_server, tmp_
     resp3 = request_to_json("post", "/queue/item/add", json=plan)
     assert resp3["success"] is True, str(resp3)
     assert resp3["qsize"] == 1, str(resp3)
+
+
+# fmt: off
+@pytest.mark.parametrize("params", [
+    None,
+    {"reload_plans_devices": False},
+    {"reload_plans_devices": True},
+    {"reload_permissions": False},
+    {"reload_permissions": True},
+])
+# fmt: on
+def test_http_server_reload_permissions_02(re_manager_pc_copy, fastapi_server, tmp_path, params):  # noqa F811
+    """
+    Tests for ``/permissions/reload`` API.
+    """
+    kwargs = {} if params is None else {"json": params}
+    resp1 = request_to_json("post", "/permissions/reload", **kwargs)
+    assert resp1["success"] is True, str(resp1)
