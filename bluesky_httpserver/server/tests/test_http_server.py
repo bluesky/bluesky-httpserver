@@ -176,9 +176,10 @@ def test_http_server_queue_item_add_handler_1(re_manager, fastapi_server):  # no
     (2, 2, True),
     (3, 2, True),
     (100, 2, True),
-    (-1, 1, True),
-    (-2, 0, True),
+    (-1, 2, True),
+    (-2, 1, True),
     (-3, 0, True),
+    (-4, 0, True),
     (-100, 0, True),
 ])
 # fmt: on
