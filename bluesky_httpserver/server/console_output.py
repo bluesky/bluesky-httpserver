@@ -69,6 +69,10 @@ class CollectPublishedConsoleOutput:
 
         self._text_buffer.extend(line_list)
 
+        # Remove extra lines
+        while len(self._text_buffer) > self._text_buffer_max:
+            self._text_buffer.pop(0)
+
     def _add_message(self, msg):
         try:
             for q in self._queues_set.copy():
