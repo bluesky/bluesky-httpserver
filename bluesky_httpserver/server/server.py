@@ -709,5 +709,6 @@ def stream_console_output():
 @app.get("/console_output")
 def console_output(payload: dict = {}):
     n_lines = payload.get("lines", 200)
-    text = "Console output ...\n" * n_lines
+    text = console_output_loader.get_text_buffer(n_lines)
+    # text = "Console output ...\n" * n_lines
     return text

@@ -39,6 +39,9 @@ class CollectPublishedConsoleOutput:
         self._rco = ReceiveConsoleOutputAsync(zmq_subscribe_addr=zmq_addr)
         self._rco.set_callback(self._add_message)
 
+        self._text_buffer_max = 2000
+        self._text_buffer = []
+
     @property
     def queues_set(self):
         """
@@ -47,6 +50,24 @@ class CollectPublishedConsoleOutput:
         This class does not distinguish between consumers and treat all queues identically.
         """
         return self._queues_set
+
+    @property
+    def get_text_buffer(self, n_lines):
+        return "".join(self._text_buffer[-n_lines:])
+
+    def _add_to_text_buffer(self, msg):
+        msg = msg["msg"]
+        ends_with_new_line = msg.endswith("\n")
+        line_list = msg.split("\n")
+        if ends_with_new_line and len(line_list):
+            if not line_list[-1]:
+                line_list = line_list[:-1]
+                line_list = [_ + "\n" for _ in line_list]
+            else:
+                line_list = [_ + "\n" for _ in line_list]
+                line_list[-1] = line_list[-1].replace("\n", "")
+
+        self._text_buffer.extend(line_list)
 
     def _add_message(self, msg):
         try:
@@ -58,6 +79,10 @@ class CollectPublishedConsoleOutput:
                     q.get()
 
                 q.put(msg)
+
+            # Always add to text buffer
+            self._add_to_text_buffer(msg)
+
         except Exception as ex:
             logger.exception("Exception occurred while adding console output message to queues: %s", str(ex))
 
