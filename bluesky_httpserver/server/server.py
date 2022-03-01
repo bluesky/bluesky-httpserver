@@ -551,7 +551,7 @@ async def re_runs_closed_handler():
     return msg
 
 
-@app.post("/plans/allowed")
+@app.get("/plans/allowed")
 async def plans_allowed_handler(payload: dict = {}):
     """
     Returns the lists of allowed plans. If boolean optional parameter ``reduced``
@@ -573,7 +573,7 @@ async def plans_allowed_handler(payload: dict = {}):
     return msg
 
 
-@app.post("/devices/allowed")
+@app.get("/devices/allowed")
 async def devices_allowed_handler():
     """
     Returns the lists of allowed devices.
@@ -583,7 +583,7 @@ async def devices_allowed_handler():
     return msg
 
 
-@app.post("/plans/existing")
+@app.get("/plans/existing")
 async def plans_existing_handler(payload: dict = {}):
     """
     Returns the lists of existing plans. If boolean optional parameter ``reduced``
@@ -602,7 +602,7 @@ async def plans_existing_handler(payload: dict = {}):
     return msg
 
 
-@app.post("/devices/existing")
+@app.get("/devices/existing")
 async def devices_existing_handler():
     """
     Returns the lists of existing devices.
@@ -704,3 +704,9 @@ def stream_console_output():
     stm = ConsoleOutputEventStream(queues_set=queues_set)
     sr = StreamingResponseFromClass(stm, media_type="text/plain")
     return sr
+
+@app.get("/console_output")
+def stream_console_output(payload: dict):
+    n_lines = payload.get("lines", 200)
+    text = "Some output"
+    return text
