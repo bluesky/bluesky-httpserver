@@ -107,11 +107,11 @@ def test_http_server_queue_get_handler(re_manager, fastapi_server):  # noqa F811
 # fmt: on
 def test_http_server_plans_allowed_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
     kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
-    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    resp1 = request_to_json("get", "/plans/allowed", **kwargs)
     assert "plans_allowed" in resp1, pprint.pformat(resp1)
     assert isinstance(resp1["plans_allowed"], dict), pprint.pformat(resp1)
     assert len(resp1["plans_allowed"]) > 0, pprint.pformat(resp1)
-    resp2 = request_to_json("post", "/devices/allowed")
+    resp2 = request_to_json("get", "/devices/allowed")
     assert "devices_allowed" in resp2, pprint.pformat(resp2)
     assert isinstance(resp2["devices_allowed"], dict), pprint.pformat(resp2)
     assert len(resp2["devices_allowed"]) > 0, pprint.pformat(resp2)
@@ -119,7 +119,7 @@ def test_http_server_plans_allowed_and_devices_01(re_manager, fastapi_server, re
 
 def test_http_server_plans_allowed_and_devices_02(re_manager, fastapi_server):  # noqa F811
     kwargs = {"json": {"unsupported": False}}
-    resp1 = request_to_json("post", "/plans/allowed", **kwargs)
+    resp1 = request_to_json("get", "/plans/allowed", **kwargs)
     assert "detail" in resp1, pprint.pformat(resp1)
     assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
 
@@ -129,11 +129,11 @@ def test_http_server_plans_allowed_and_devices_02(re_manager, fastapi_server):  
 # fmt: on
 def test_http_server_plans_existing_and_devices_01(re_manager, fastapi_server, reduced):  # noqa F811
     kwargs = {"json": {"reduced": reduced}} if (reduced is not None) else {}
-    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    resp1 = request_to_json("get", "/plans/existing", **kwargs)
     assert "plans_existing" in resp1, pprint.pformat(resp1)
     assert isinstance(resp1["plans_existing"], dict), pprint.pformat(resp1)
     assert len(resp1["plans_existing"]) > 0, pprint.pformat(resp1)
-    resp2 = request_to_json("post", "/devices/existing")
+    resp2 = request_to_json("get", "/devices/existing")
     assert "devices_existing" in resp2, pprint.pformat(resp2)
     assert isinstance(resp2["devices_existing"], dict), pprint.pformat(resp2)
     assert len(resp2["devices_existing"]) > 0, pprint.pformat(resp2)
@@ -141,7 +141,7 @@ def test_http_server_plans_existing_and_devices_01(re_manager, fastapi_server, r
 
 def test_http_server_plans_existing_and_devices_02(re_manager, fastapi_server):  # noqa F811
     kwargs = {"json": {"unsupported": False}}
-    resp1 = request_to_json("post", "/plans/existing", **kwargs)
+    resp1 = request_to_json("get", "/plans/existing", **kwargs)
     assert "detail" in resp1, pprint.pformat(resp1)
     assert "Request contains keys the are not supported: {'unsupported'}" in resp1["detail"]
 
