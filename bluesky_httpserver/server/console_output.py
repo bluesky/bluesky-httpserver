@@ -51,7 +51,6 @@ class CollectPublishedConsoleOutput:
         """
         return self._queues_set
 
-    @property
     def get_text_buffer(self, n_lines):
         return "".join(self._text_buffer[-n_lines:])
 
