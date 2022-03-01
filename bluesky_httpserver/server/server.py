@@ -705,8 +705,9 @@ def stream_console_output():
     sr = StreamingResponseFromClass(stm, media_type="text/plain")
     return sr
 
+
 @app.get("/console_output")
-def stream_console_output(payload: dict):
+def console_output(payload: dict):
     n_lines = payload.get("lines", 200)
-    text = "Some output"
+    text = "Console output ...\n" * n_lines
     return text
