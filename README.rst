@@ -525,3 +525,14 @@ default or HTTP server is running on a separate workstation/server, the address 
 can be specified by setting the environment variable ``QSERVER_ZMQ_ADDRESS_CONSOLE``, e.g. ::
 
   export QSERVER_ZMQ_ADDRESS_CONSOLE='tcp://localhost:60625'
+
+
+Console Output of RE Manager
+----------------------------
+In some cases, using streaming console output is inconvenient or difficult. The server
+provides endpoint ``/console_output`` returns the last ``nlines`` of the console output
+represented as a text string. The parameter ``nlines`` is optional with the default value of 200.
+The maximum number of returned lines is limited (currently to 2000 lines). ::
+
+  http GET http://localhost:60610/console_output
+  http GET http://localhost:60610/console_output lines=500

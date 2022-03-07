@@ -1397,7 +1397,7 @@ def test_http_server_reload_permissions_01(re_manager_pc_copy, fastapi_server, t
 
     # Reload profile collection. The new 'existing_plans_and_devices.yaml' was
     #   generated externally and we need to reload it, which does not happen by default.
-    kwargs = {"json": {"reload_plans_devices": True}}
+    kwargs = {"json": {"restore_plans_devices": True}}
     resp2 = request_to_json("post", "/permissions/reload", **kwargs)
     assert resp2["success"] is True, str(resp2)
 
@@ -1410,10 +1410,10 @@ def test_http_server_reload_permissions_01(re_manager_pc_copy, fastapi_server, t
 # fmt: off
 @pytest.mark.parametrize("params", [
     None,
-    {"reload_plans_devices": False},
-    {"reload_plans_devices": True},
-    {"reload_permissions": False},
-    {"reload_permissions": True},
+    {"restore_plans_devices": False},
+    {"restore_plans_devices": True},
+    {"restore_permissions": False},
+    {"restore_permissions": True},
 ])
 # fmt: on
 def test_http_server_reload_permissions_02(re_manager_pc_copy, fastapi_server, tmp_path, params):  # noqa F811
