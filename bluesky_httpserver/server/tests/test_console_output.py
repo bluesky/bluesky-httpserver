@@ -186,7 +186,7 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
 
     assert expected_output in console_output
 
-    resp3b = request_to_json("get", "/console_output", json={"lines": 300})
+    resp3b = request_to_json("get", "/console_output", json={"nlines": 300})
     assert resp3b["success"] is True
     console_output = resp3b["text"]
 
