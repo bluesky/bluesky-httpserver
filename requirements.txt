@@ -1,4 +1,5 @@
 bluesky-queueserver
+bluesky-queueserver-api
 fastapi
 pyzmq
 requests

@@ -32,6 +32,12 @@ jobs:
         pip install .
         popd
 
+        pushd ..
+        git clone https://github.com/bluesky/bluesky-queueserver-api.git
+        cd bluesky-queueserver-api
+        pip install .
+        popd
+
         pip install .
         pip install -r requirements-dev.txt
         pip list
