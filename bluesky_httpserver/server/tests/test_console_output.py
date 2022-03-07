@@ -6,8 +6,15 @@ import pytest
 import time as ttime
 
 from bluesky_httpserver.server.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
-from bluesky_httpserver.server.tests.conftest import fastapi_server_fs  # noqa F401
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
+
+from bluesky_httpserver.server.tests.conftest import (  # noqa F401
+    request_to_json,
+    fastapi_server_fs,
+    wait_for_environment_to_be_created,
+    wait_for_environment_to_be_closed,
+    wait_for_manager_state_idle,
+)
 
 
 class _ReceiveStreamedConsoleOutput(threading.Thread):
@@ -118,3 +125,72 @@ def test_http_server_stream_console_output_1(
     assert (
         not expected_messages
     ), f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
+
+
+_script1 = r"""
+print("=====")
+print("Beginning of the line. ", end="")
+print("End of the line.")
+print("Print\n multiple\n\nlines\n\n", end=""),
+"""
+
+_script1_output = """=====
+Beginning of the line. End of the line.
+Print
+ multiple
+
+lines
+
+"""
+
+
+@pytest.mark.parametrize("zmq_port", (None, 60619))
+def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port):  # noqa F811
+    """
+    Test for ``console_output`` API (not a streaming version).
+    """
+    # Start HTTP Server
+    if zmq_port is not None:
+        monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
+    fastapi_server_fs()
+
+    # Start RE Manager
+    params = ["--zmq-publish-console", "ON"]
+    if zmq_port is not None:
+        params.extend(["--zmq-publish-console-addr", f"tcp://*:{zmq_port}"])
+    re_manager_cmd(params)
+
+    script = _script1
+    expected_output = _script1_output
+
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True, pprint.pformat(resp1)
+
+    assert wait_for_environment_to_be_created(timeout=10)
+
+    resp2 = request_to_json("post", "/script/upload", json={"script": script})
+    assert resp2["success"] is True, pprint.pformat(resp2)
+
+    assert wait_for_manager_state_idle(timeout=10)
+    # The console output should be available instantly, but there could be delays
+    #   when the tests are running on CI
+    ttime.sleep(5)
+
+    resp3a = request_to_json("get", "/console_output")
+    assert resp3a["success"] is True
+    console_output = resp3a["text"]
+
+    print(f"console_output={console_output}")
+    print(f"expected_output={expected_output}")
+    print(f"script={script}")
+
+    assert expected_output in console_output
+
+    resp3b = request_to_json("get", "/console_output", json={"lines": 300})
+    assert resp3b["success"] is True
+    console_output = resp3b["text"]
+
+    resp4 = request_to_json("post", "/environment/close")
+    assert resp4["success"] is True, pprint.pformat(resp4)
+
+    assert wait_for_environment_to_be_closed(timeout=10)
