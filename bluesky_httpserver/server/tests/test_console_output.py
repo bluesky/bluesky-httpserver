@@ -168,8 +168,12 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
 
     assert wait_for_environment_to_be_created(timeout=10)
 
-    resp2 = request_to_json("post", "/script/upload", json={"script": script})
-    assert resp2["success"] is True, pprint.pformat(resp2)
+    resp2 = request_to_json("get", "/console_output/uid")
+    assert resp2["success"] is True
+    console_output_uid = resp2["console_output_uid"]
+
+    resp2a = request_to_json("post", "/script/upload", json={"script": script})
+    assert resp2a["success"] is True, pprint.pformat(resp2a)
 
     assert wait_for_manager_state_idle(timeout=10)
     # The console output should be available instantly, but there could be delays
@@ -186,9 +190,13 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
 
     assert expected_output in console_output
 
-    resp3b = request_to_json("get", "/console_output", json={"nlines": 300})
+    resp3b = request_to_json("get", "/console_output/uid")
     assert resp3b["success"] is True
-    console_output = resp3b["text"]
+    assert resp3b["console_output_uid"] != console_output_uid
+
+    resp3c = request_to_json("get", "/console_output", json={"nlines": 300})
+    assert resp3c["success"] is True
+    console_output = resp3c["text"]
 
     resp4 = request_to_json("post", "/environment/close")
     assert resp4["success"] is True, pprint.pformat(resp4)

@@ -61,7 +61,8 @@ def add_plans_to_queue():
 
 
 def request_to_json(request_type, path, **kwargs):
-    resp = getattr(requests, request_type)(f"http://{SERVER_ADDRESS}:{SERVER_PORT}{path}", **kwargs).json()
+    resp = getattr(requests, request_type)(f"http://{SERVER_ADDRESS}:{SERVER_PORT}{path}", **kwargs)
+    resp = resp.json()
     return resp
 
 
