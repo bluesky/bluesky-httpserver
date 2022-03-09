@@ -1210,8 +1210,8 @@ def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
     assert wait_for_environment_to_be_created(10), "Timeout"
 
     resp = request_to_json("post", "/test/manager/kill")
-    assert resp["success"] is False
-    assert "ZMQ communication error:" in resp["msg"]
+    assert "success" not in resp
+    assert "Request timeout: ZMQ communication error: timeout occurred" in resp["detail"]
 
     ttime.sleep(10)
 

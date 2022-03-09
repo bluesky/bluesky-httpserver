@@ -7,7 +7,10 @@ import importlib
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from typing import Optional
 
-from bluesky_queueserver.manager.comms import ZMQCommSendAsync, validate_zmq_key
+from bluesky_queueserver_api.zmq.aio import REManagerAPI
+
+# from bluesky_queueserver.manager.comms import ZMQCommSendAsync, validate_zmq_key
+from bluesky_queueserver.manager.comms import validate_zmq_key
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
 from .console_output import CollectPublishedConsoleOutput, ConsoleOutputEventStream, StreamingResponseFromClass
@@ -24,15 +27,26 @@ logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
 
 # Use FastAPI
 app = FastAPI()
-zmq_to_manager = None
 
 custom_code_module = None
 console_output_loader = None
+
+RM = None
+
+
+def _process_exception():
+    try:
+        raise
+    except REManagerAPI.RequestTimeoutError as ex:
+        raise HTTPException(status_code=408, detail=str(ex))
+    except Exception as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
 
 
 @app.on_event("startup")
 async def startup_event():
     global zmq_to_manager
+    global RM
     global custom_code_module
     global console_output_loader
 
@@ -59,10 +73,14 @@ async def startup_event():
 
     zmq_server_address_console = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
 
-    # ZMQCommSendAsync should be created from the event loop of FastAPI server.
-    zmq_to_manager = ZMQCommSendAsync(
-        raise_exceptions=False, server_public_key=zmq_public_key, zmq_server_address=zmq_server_address_control
+    RM = REManagerAPI(
+        zmq_server_address=zmq_server_address_control,
+        server_public_key=zmq_public_key,
+        request_fail_exceptions=False,
     )
+
+    RM._user = _login_data["user"]
+    RM._user_group = _login_data["user_group"]
 
     console_output_loader = CollectPublishedConsoleOutput(zmq_addr=zmq_server_address_console)
     console_output_loader.start()
@@ -85,11 +103,8 @@ async def startup_event():
 
 
 @app.on_event("shutdown")
-def shutdown_event():
-    global zmq_to_manager
-    global console_output_loader
-
-    zmq_to_manager.close()
+async def shutdown_event():
+    await RM.close()
     console_output_loader.stop()
 
 
@@ -145,20 +160,26 @@ def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):
 
 @app.get("/")
 @app.get("/ping")
-async def ping_handler():
+async def ping_handler(payload: dict = {}):
     """
     May be called to get some response from the server. Currently returns status of RE Manager.
     """
-    msg = await zmq_to_manager.send_message(method="ping")
+    try:
+        msg = await RM.ping(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
 @app.get("/status")
-async def status_handler():
+async def status_handler(payload: dict = {}):
     """
     Returns status of RE Manager.
     """
-    msg = await zmq_to_manager.send_message(method="status")
+    try:
+        msg = await RM.status(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -167,17 +188,22 @@ async def queue_mode_set_handler(payload: dict):
     """
     Set queue mode.
     """
-    params = payload
-    msg = await zmq_to_manager.send_message(method="queue_mode_set", params=params)
+    try:
+        msg = await RM.queue_mode_set(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
 @app.get("/queue/get")
-async def queue_get_handler():
+async def queue_get_handler(payload: dict = {}):
     """
     Returns the contents of the current queue.
     """
-    msg = await zmq_to_manager.send_message(method="queue_get")
+    try:
+        msg = await RM.queue_get(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -186,7 +212,10 @@ async def queue_clear_handler():
     """
     Clear the plan queue.
     """
-    msg = await zmq_to_manager.send_message(method="queue_clear")
+    try:
+        msg = await RM.queue_clear()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -196,7 +225,10 @@ async def queue_start_handler():
     Start execution of the loaded queue. Additional runs can be added to the queue while
     it is executed. If the queue is empty, then nothing will happen.
     """
-    msg = await zmq_to_manager.send_message(method="queue_start")
+    try:
+        msg = await RM.queue_start()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -207,7 +239,10 @@ async def queue_stop():
     but the next plan will not be started. The request will be rejected if no plans are currently
     running
     """
-    msg = await zmq_to_manager.send_message(method="queue_stop")
+    try:
+        msg = await RM.queue_stop()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -221,20 +256,28 @@ async def queue_stop_cancel():
     the queue. The command always succeeds, but it has no effect if no queue stop
     requests are pending.
     """
-    msg = await zmq_to_manager.send_message(method="queue_stop_cancel")
+    try:
+        msg = await RM.queue_stop_cancel()
+    except Exception:
+        _process_exception()
     return msg
 
 
 @app.post("/queue/item/add")
-async def queue_item_add_handler(payload: dict):
+async def queue_item_add_handler(payload: dict = {}):
     """
     Adds new plan to the queue
     """
-    # TODO: validate inputs!
-    params = payload
-    params["user"] = _login_data["user"]
-    params["user_group"] = _login_data["user_group"]
-    msg = await zmq_to_manager.send_message(method="queue_item_add", params=params)
+    try:
+        if "item" not in payload:
+            # We can not use API, so let the server handle the parameters
+            # payload["user"] = RM._user
+            # payload["user_group"] = RM._user_group
+            msg = await RM.send_request(method="queue_item_add", params=payload)
+        else:
+            msg = await RM.item_add(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -243,11 +286,16 @@ async def queue_item_execute_handler(payload: dict):
     """
     Immediately execute an item
     """
-    # TODO: validate inputs!
-    params = payload
-    params["user"] = _login_data["user"]
-    params["user_group"] = _login_data["user_group"]
-    msg = await zmq_to_manager.send_message(method="queue_item_execute", params=params)
+    try:
+        if "item" not in payload:
+            # We can not use API, so let the server handle the parameters
+            # payload["user"] = _login_data["user"]
+            # payload["user_group"] = _login_data["user_group"]
+            msg = await RM.send_request(method="queue_item_execute", params=payload)
+        else:
+            msg = await RM.item_execute(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -256,11 +304,17 @@ async def queue_item_add_batch_handler(payload: dict):
     """
     Adds new plan to the queue
     """
-    # TODO: validate inputs!
-    params = payload
-    params["user"] = _login_data["user"]
-    params["user_group"] = _login_data["user_group"]
-    msg = await zmq_to_manager.send_message(method="queue_item_add_batch", params=params)
+    try:
+        if "items" not in payload:
+            # We can not use API, so let the server handle the parameters
+            # payload["user"] = _login_data["user"]
+            # payload["user_group"] = _login_data["user_group"]
+            msg = await RM.send_request(method="queue_item_add_batch", params=payload)
+        else:
+            msg = await RM.item_add_batch(**payload)
+    except Exception:
+        _process_exception()
+
     return msg
 
 
@@ -344,16 +398,15 @@ async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_typ
                 item["item_type"] = "plan"
 
         logger.debug("The following plans were created: %s", pprint.pformat(item_list))
-
-        params = dict()
-        params["user"] = _login_data["user"]
-        params["user_group"] = _login_data["user_group"]
-        params["items"] = item_list
-        msg = await zmq_to_manager.send_message(method="queue_item_add_batch", params=params)
-
     except Exception as ex:
         msg = {"success": False, "msg": str(ex), "items": [], "results": []}
-
+    else:
+        try:
+            params = dict()
+            params["items"] = item_list
+            msg = await RM.item_add_batch(**params)
+        except Exception:
+            _process_exception()
     return msg
 
 
@@ -362,12 +415,10 @@ async def queue_item_update_handler(payload: dict):
     """
     Update existing plan in the queue
     """
-    # TODO: validate inputs! Also: payload["replace"] parameter may be used to change what metadata
-    #   is added to the plan (or whether metadata is changed at all)
-    params = payload
-    params["user"] = _login_data["user"]
-    params["user_group"] = _login_data["user_group"]
-    msg = await zmq_to_manager.send_message(method="queue_item_update", params=params)
+    try:
+        msg = await RM.item_update(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -376,7 +427,10 @@ async def queue_item_remove_handler(payload: dict):
     """
     Remove plan from the queue
     """
-    msg = await zmq_to_manager.send_message(method="queue_item_remove", params=payload)
+    try:
+        msg = await RM.item_remove(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -385,7 +439,14 @@ async def queue_item_remove_batch_handler(payload: dict):
     """
     Remove a batch of plans from the queue
     """
-    msg = await zmq_to_manager.send_message(method="queue_item_remove_batch", params=payload)
+    try:
+        if "uids" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="queue_item_remove_batch", params=payload)
+        else:
+            msg = await RM.item_remove_batch(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -394,7 +455,10 @@ async def queue_item_move_handler(payload: dict):
     """
     Move plan in the queue
     """
-    msg = await zmq_to_manager.send_message(method="queue_item_move", params=payload)
+    try:
+        msg = await RM.item_move(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -403,7 +467,10 @@ async def queue_item_move_batch_handler(payload: dict):
     """
     Move a batch of plans in the queue
     """
-    msg = await zmq_to_manager.send_message(method="queue_item_move_batch", params=payload)
+    try:
+        msg = await RM.item_move_batch(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -412,16 +479,22 @@ async def queue_item_get_handler(payload: dict = {}):
     """
     Get a plan from the queue
     """
-    msg = await zmq_to_manager.send_message(method="queue_item_get", params=payload)
+    try:
+        msg = await RM.item_get(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
 @app.get("/history/get")
-async def history_get_handler():
+async def history_get_handler(payload: dict = {}):
     """
     Returns the plan history (list of dicts).
     """
-    msg = await zmq_to_manager.send_message(method="history_get")
+    try:
+        msg = await RM.history_get(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -430,7 +503,11 @@ async def history_clear_handler():
     """
     Clear plan history.
     """
-    msg = await zmq_to_manager.send_message(method="history_clear")
+    try:
+        msg = await RM.history_clear()
+    except Exception:
+        _process_exception()
+
     return msg
 
 
@@ -439,7 +516,10 @@ async def environment_open_handler():
     """
     Creates RE environment: creates RE Worker process, starts and configures Run Engine.
     """
-    msg = await zmq_to_manager.send_message(method="environment_open")
+    try:
+        msg = await RM.environment_open()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -449,7 +529,10 @@ async def environment_close_handler():
     Orderly closes of RE environment. The command returns success only if no plan is running,
     i.e. RE Manager is in the idle state. The command is rejected if a plan is running.
     """
-    msg = await zmq_to_manager.send_message(method="environment_close")
+    try:
+        msg = await RM.environment_close()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -459,7 +542,10 @@ async def environment_destroy_handler():
     Destroys RE environment by killing RE Worker process. This is a last resort command which
     should be made available only to expert level users.
     """
-    msg = await zmq_to_manager.send_message(method="environment_destroy")
+    try:
+        msg = await RM.environment_destroy()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -468,7 +554,10 @@ async def re_pause_handler(payload: dict = {}):
     """
     Pause Run Engine.
     """
-    msg = await zmq_to_manager.send_message(method="re_pause", params=payload)
+    try:
+        msg = await RM.re_pause(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -477,7 +566,10 @@ async def re_resume_handler():
     """
     Run Engine: resume execution of a paused plan
     """
-    msg = await zmq_to_manager.send_message(method="re_resume")
+    try:
+        msg = await RM.re_resume()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -486,7 +578,10 @@ async def re_stop_handler():
     """
     Run Engine: stop execution of a paused plan
     """
-    msg = await zmq_to_manager.send_message(method="re_stop")
+    try:
+        msg = await RM.re_stop()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -495,7 +590,10 @@ async def re_abort_handler():
     """
     Run Engine: abort execution of a paused plan
     """
-    msg = await zmq_to_manager.send_message(method="re_abort")
+    try:
+        msg = await RM.re_abort()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -504,7 +602,10 @@ async def re_halt_handler():
     """
     Run Engine: halt execution of a paused plan
     """
-    msg = await zmq_to_manager.send_message(method="re_halt")
+    try:
+        msg = await RM.re_halt()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -516,7 +617,10 @@ async def re_runs_handler(payload: dict = {}):
     'closed' runs.) The parameter ``options`` is used to select the category of runs
     (``'active'``, ``'open'`` or ``'closed'``). By default the API returns the active runs.
     """
-    msg = await zmq_to_manager.send_message(method="re_runs", params=payload)
+    try:
+        msg = await RM.re_runs(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -526,8 +630,11 @@ async def re_runs_active_handler():
     Run Engine: download the list of active runs (runs that were opened during execution of
     the currently running plan and combines the subsets of 'open' and 'closed' runs.)
     """
-    params = {"option": "active"}
-    msg = await zmq_to_manager.send_message(method="re_runs", params=params)
+    try:
+        params = {"option": "active"}
+        msg = await RM.re_runs(**params)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -536,8 +643,11 @@ async def re_runs_open_handler():
     """
     Run Engine: download the subset of active runs that includes runs that were open, but not yet closed.
     """
-    params = {"option": "open"}
-    msg = await zmq_to_manager.send_message(method="re_runs", params=params)
+    try:
+        params = {"option": "open"}
+        msg = await RM.re_runs(**params)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -546,8 +656,11 @@ async def re_runs_closed_handler():
     """
     Run Engine: download the subset of active runs that includes runs that were already closed.
     """
-    params = {"option": "closed"}
-    msg = await zmq_to_manager.send_message(method="re_runs", params=params)
+    try:
+        params = {"option": "closed"}
+        msg = await RM.re_runs(**params)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -561,25 +674,30 @@ async def plans_allowed_handler(payload: dict = {}):
 
     try:
         validate_payload_keys(payload, optional_keys=["reduced"])
-    except Exception as ex:
-        raise HTTPException(status_code=444, detail=str(ex))
 
-    reduced = payload.get("reduced", False)
+        if "reduced" in payload:
+            reduced = payload["reduced"]
+            del payload["reduced"]
+        else:
+            reduced = False
 
-    params = {"user_group": _login_data["user_group"]}
-    msg = await zmq_to_manager.send_message(method="plans_allowed", params=params)
-    if reduced and ("plans_allowed" in msg):
-        msg["plans_allowed"] = simplify_plan_descriptions(msg["plans_allowed"])
+        msg = await RM.plans_allowed(**payload)
+        if reduced and ("plans_allowed" in msg):
+            msg["plans_allowed"] = simplify_plan_descriptions(msg["plans_allowed"])
+    except Exception:
+        _process_exception()
     return msg
 
 
 @app.get("/devices/allowed")
-async def devices_allowed_handler():
+async def devices_allowed_handler(payload: dict = {}):
     """
     Returns the lists of allowed devices.
     """
-    params = {"user_group": _login_data["user_group"]}
-    msg = await zmq_to_manager.send_message(method="devices_allowed", params=params)
+    try:
+        msg = await RM.devices_allowed(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -592,22 +710,31 @@ async def plans_existing_handler(payload: dict = {}):
     """
     try:
         validate_payload_keys(payload, optional_keys=["reduced"])
-    except Exception as ex:
-        raise HTTPException(status_code=444, detail=str(ex))
 
-    reduced = payload.get("reduced", False)
-    msg = await zmq_to_manager.send_message(method="plans_existing")
-    if reduced and ("plans_existing" in msg):
-        msg["plans_existing"] = simplify_plan_descriptions(msg["plans_existing"])
+        if "reduced" in payload:
+            reduced = payload["reduced"]
+            del payload["reduced"]
+        else:
+            reduced = False
+
+        msg = await RM.plans_existing(**payload)
+        if reduced and ("plans_existing" in msg):
+            msg["plans_existing"] = simplify_plan_descriptions(msg["plans_existing"])
+    except Exception:
+        _process_exception()
+
     return msg
 
 
 @app.get("/devices/existing")
-async def devices_existing_handler():
+async def devices_existing_handler(payload: dict = {}):
     """
     Returns the lists of existing devices.
     """
-    msg = await zmq_to_manager.send_message(method="devices_existing")
+    try:
+        msg = await RM.devices_existing(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -618,7 +745,10 @@ async def permissions_reload_handler(payload: dict = {}):
     or location set using command line parameters of RE Manager. Use this request to reload the data
     if the respective files were changed on disk.
     """
-    msg = await zmq_to_manager.send_message(method="permissions_reload", params=payload)
+    try:
+        msg = await RM.permissions_reload(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -627,7 +757,10 @@ async def permissions_get_handler():
     """
     Download the dictionary of user group permissions.
     """
-    msg = await zmq_to_manager.send_message(method="permissions_get")
+    try:
+        msg = await RM.permissions_get()
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -636,7 +769,14 @@ async def permissions_set_handler(payload: dict):
     """
     Upload the dictionary of user group permissions (parameter: ``user_group_permissions``).
     """
-    msg = await zmq_to_manager.send_message(method="permissions_set", params=payload)
+    try:
+        if "user_group_permissions" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="permissions_set", params=payload)
+        else:
+            msg = await RM.permissions_set(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -645,10 +785,14 @@ async def function_execute_handler(payload: dict):
     """
     Execute function defined in startup scripts in RE Worker environment.
     """
-    params = payload
-    params["user"] = _login_data["user"]
-    params["user_group"] = _login_data["user_group"]
-    msg = await zmq_to_manager.send_message(method="function_execute", params=params)
+    try:
+        if "item" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="function_execute", params=payload)
+        else:
+            msg = await RM.function_execute(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -657,7 +801,14 @@ async def script_upload_handler(payload: dict):
     """
     Upload and execute script in RE Worker environment.
     """
-    msg = await zmq_to_manager.send_message(method="script_upload", params=payload)
+    try:
+        if "script" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="script_upload", params=payload)
+        else:
+            msg = await RM.script_upload(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -666,7 +817,14 @@ async def script_task_status(payload: dict):
     """
     Return status of one or more running tasks.
     """
-    msg = await zmq_to_manager.send_message(method="task_status", params=payload)
+    try:
+        if "task_uid" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="task_status", params=payload)
+        else:
+            msg = await RM.task_status(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -675,7 +833,14 @@ async def script_task_result(payload: dict):
     """
     Return result of execution of a running or completed task.
     """
-    msg = await zmq_to_manager.send_message(method="task_result", params=payload)
+    try:
+        if "task_uid" not in payload:
+            # We can not use API, so let the server handle the parameters
+            msg = await RM.send_request(method="task_result", params=payload)
+        else:
+            msg = await RM.task_result(**payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -684,7 +849,10 @@ async def manager_stop_handler(payload: dict = {}):
     """
     Stops of RE Manager. RE Manager will not be restarted after it is stoped.
     """
-    msg = await zmq_to_manager.send_message(method="manager_stop", params=payload)
+    try:
+        msg = await RM.send_request(method="manager_stop", params=payload)
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -694,7 +862,10 @@ async def test_manager_kill_handler():
     The command stops event loop of RE Manager process. Used for testing of RE Manager
     stability and handling of communication timeouts.
     """
-    msg = await zmq_to_manager.send_message(method="manager_kill")
+    try:
+        msg = await RM.send_request(method="manager_kill")
+    except Exception:
+        _process_exception()
     return msg
 
 
@@ -708,7 +879,20 @@ def stream_console_output():
 
 @app.get("/console_output")
 def console_output(payload: dict = {}):
-    n_lines = payload.get("nlines", 200)
-    text = console_output_loader.get_text_buffer(n_lines)
+    try:
+        n_lines = payload.get("nlines", 200)
+        text = console_output_loader.get_text_buffer(n_lines)
+    except Exception:
+        _process_exception()
+
     # Add 'success' and 'msg' so that the API is compatible with other QServer API.
     return {"success": True, "msg": "", "text": text}
+
+
+@app.get("/console_output/uid")
+def console_output_uid():
+    try:
+        uid = console_output_loader.text_buffer_uid
+    except Exception:
+        _process_exception()
+    return {"success": True, "msg": "", "console_output_uid": uid}

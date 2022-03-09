@@ -2,6 +2,7 @@ import json
 import logging
 import queue
 from starlette.responses import StreamingResponse
+import uuid
 
 from bluesky_queueserver import ReceiveConsoleOutputAsync
 
@@ -42,6 +43,8 @@ class CollectPublishedConsoleOutput:
         self._text_buffer_max = 2000
         self._text_buffer = []
 
+        self._text_buffer_uid = str(uuid.uuid4())
+
     @property
     def queues_set(self):
         """
@@ -50,6 +53,10 @@ class CollectPublishedConsoleOutput:
         This class does not distinguish between consumers and treat all queues identically.
         """
         return self._queues_set
+
+    @property
+    def text_buffer_uid(self):
+        return self._text_buffer_uid
 
     def get_text_buffer(self, n_lines):
         return "".join(self._text_buffer[-n_lines:])
@@ -71,6 +78,8 @@ class CollectPublishedConsoleOutput:
         # Remove extra lines
         while len(self._text_buffer) > self._text_buffer_max:
             self._text_buffer.pop(0)
+
+        self._text_buffer_uid = str(uuid.uuid4())
 
     def _add_message(self, msg):
         try:
