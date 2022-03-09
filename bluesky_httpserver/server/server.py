@@ -77,6 +77,7 @@ async def startup_event():
         zmq_server_address=zmq_server_address_control,
         server_public_key=zmq_public_key,
         request_fail_exceptions=False,
+        status_expiration_period=0.4,  # Make it smaller than default
     )
 
     RM._user = _login_data["user"]
