@@ -131,7 +131,7 @@ _script1 = r"""
 print("=====")
 print("Beginning of the line. ", end="")
 print("End of the line.")
-print("Print\n multiple\n\nlines\n\n", end=""),
+print("Print\n multiple\n\nlines\n\n"),
 """
 
 _script1_output = """=====
