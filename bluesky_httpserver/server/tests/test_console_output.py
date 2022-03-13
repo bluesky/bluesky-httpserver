@@ -176,6 +176,12 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     assert resp2a["success"] is True, pprint.pformat(resp2a)
 
     assert wait_for_manager_state_idle(timeout=10)
+
+    resp2b = request_to_json("post", "/environment/close")
+    assert resp2b["success"] is True, pprint.pformat(resp2b)
+
+    assert wait_for_environment_to_be_closed(timeout=10)
+
     # The console output should be available instantly, but there could be delays
     #   when the tests are running on CI
     ttime.sleep(5)
@@ -197,8 +203,3 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     resp3c = request_to_json("get", "/console_output", json={"nlines": 300})
     assert resp3c["success"] is True
     console_output = resp3c["text"]
-
-    resp4 = request_to_json("post", "/environment/close")
-    assert resp4["success"] is True, pprint.pformat(resp4)
-
-    assert wait_for_environment_to_be_closed(timeout=10)
