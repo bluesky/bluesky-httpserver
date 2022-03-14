@@ -129,6 +129,7 @@ def test_http_server_stream_console_output_1(
 
 
 _script1 = r"""
+ttime.sleep(0.5)  # Leave some time for other messages to be printed
 print("=====")
 print("Beginning of the line. ", end="")
 print("End of the line.")
@@ -176,6 +177,10 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     resp2a = request_to_json("post", "/script/upload", json={"script": script})
     assert resp2a["success"] is True, pprint.pformat(resp2a)
 
+    # Do not poll status while the script is executed to avoid contaminating
+    #   the printed message with logging messages
+    ttime.sleep(3)
+
     assert wait_for_manager_state_idle(timeout=10)
 
     resp2b = request_to_json("post", "/environment/close")
@@ -185,7 +190,7 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
 
     # The console output should be available instantly, but there could be delays
     #   when the tests are running on CI
-    ttime.sleep(5)
+    # ttime.sleep(5)
 
     resp3a = request_to_json("get", "/console_output")
     assert resp3a["success"] is True
