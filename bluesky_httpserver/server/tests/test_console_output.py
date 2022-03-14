@@ -191,9 +191,13 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     assert resp3a["success"] is True
     console_output = resp3a["text"]
 
-    print(f"console_output={console_output}")
-    print(f"expected_output={expected_output}")
-    print(f"script={script}")
+    print("*******************************************************")
+    print(f"console_output =\n{console_output}")
+    print("*******************************************************")
+    print(f"expected_output =\n{expected_output}")
+    print("*******************************************************")
+    print(f"script =\n{script}")
+    print("*******************************************************")
 
     assert re.search(expected_output, console_output)
 
