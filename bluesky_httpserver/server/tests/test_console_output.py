@@ -3,6 +3,7 @@ import json
 import threading
 import pprint
 import pytest
+import re
 import time as ttime
 
 from bluesky_httpserver.server.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
@@ -194,7 +195,7 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     print(f"expected_output={expected_output}")
     print(f"script={script}")
 
-    assert expected_output in console_output
+    assert re.search(expected_output, console_output)
 
     resp3b = request_to_json("get", "/console_output/uid")
     assert resp3b["success"] is True
