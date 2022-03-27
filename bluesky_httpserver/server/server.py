@@ -892,8 +892,36 @@ def console_output(payload: dict = {}):
 
 @app.get("/console_output/uid")
 def console_output_uid():
+    """
+    UID of the text buffer. Use with ``console_output`` API.
+    """
     try:
         uid = console_output_loader.text_buffer_uid
     except Exception:
         _process_exception()
     return {"success": True, "msg": "", "console_output_uid": uid}
+
+
+@app.get("/console_output_update")
+def console_output_update(payload: dict):
+    """
+    Download the list of new messages that were accumulated at the server. The API
+    accepts a require parameter ``last_msg_uid`` with UID of the last downloaded message.
+    If the UID is not found in the buffer, an empty message list and valid UID is
+    returned. If UID is ``"ALL"``, then all accumulated messages in the buffer is
+    returned. If UID is found in the buffer, then the list of new messages is returned.
+
+    At the client: initialize the system by sending request with ``last_msg_uid`` set
+    to random string or ``"ALL"``. In each request use ``last_msg_uid`` returned by the previous
+    request to download new messages.
+    """
+    try:
+        validate_payload_keys(payload, required_keys=["last_msg_uid"])
+
+        response = console_output_loader.get_new_msgs(last_msg_uid=payload["last_msg_uid"])
+        # Add 'success' and 'msg' so that the API is compatible with other QServer API.
+        response.update({"success": True, "msg": ""})
+    except Exception:
+        _process_exception()
+
+    return response

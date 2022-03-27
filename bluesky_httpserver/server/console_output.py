@@ -40,6 +40,11 @@ class CollectPublishedConsoleOutput:
         self._rco = ReceiveConsoleOutputAsync(zmq_subscribe_addr=zmq_addr)
         self._rco.set_callback(self._add_message)
 
+        self._msg_buffer_max = 2000
+        self._msg_uid_buffer = []
+        self._msg_buffer = []
+        self._last_msg_uid = str(uuid.uuid4())
+
         self._text_buffer_max = 2000
         self._text_buffer = []
 
@@ -60,6 +65,29 @@ class CollectPublishedConsoleOutput:
 
     def get_text_buffer(self, n_lines):
         return "".join(self._text_buffer[-n_lines:])
+
+    def get_new_msgs(self, last_msg_uid):
+        msg_list = []
+        try:
+            if last_msg_uid == "ALL":
+                last_ind = -1  # Return all messages saved in the buffer
+            else:
+                last_ind = self._msg_uid_buffer.index(last_msg_uid)
+            msg_list = self._msg_buffer[last_ind + 1 :]
+        except ValueError:
+            pass
+        return {"last_msg_uid": self._last_msg_uid, "console_output_msgs": msg_list}
+
+    def _add_to_msg_buffer(self, msg):
+        uid = str(uuid.uuid4())
+        self._msg_buffer.append(msg)
+        self._msg_uid_buffer.append(uid)
+        self._last_msg_uid = uid
+
+        # Remove extra messages
+        while len(self._msg_buffer) > self._msg_buffer_max:
+            self._msg_buffer.pop(0)
+            self._msg_uid_buffer.pop(0)
 
     def _add_to_text_buffer(self, msg):
         msg = msg["msg"]
@@ -92,8 +120,9 @@ class CollectPublishedConsoleOutput:
 
                 q.put(msg)
 
-            # Always add to text buffer
+            # Always add to text and msg buffers
             self._add_to_text_buffer(msg)
+            self._add_to_msg_buffer(msg)
 
         except Exception as ex:
             logger.exception("Exception occurred while adding console output message to queues: %s", str(ex))
