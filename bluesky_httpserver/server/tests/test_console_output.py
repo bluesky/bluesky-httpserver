@@ -213,3 +213,106 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     resp3c = request_to_json("get", "/console_output", json={"nlines": 300})
     assert resp3c["success"] is True
     console_output = resp3c["text"]
+
+
+@pytest.mark.parametrize("zmq_port", (None, 60619))
+def test_http_server_console_output_update_1(
+    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
+):
+    """
+    Test for ``console_output`` API (not a streaming version).
+    """
+    # Start HTTP Server
+    if zmq_port is not None:
+        monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
+    fastapi_server_fs()
+
+    # Start RE Manager
+    params = ["--zmq-publish-console", "ON"]
+    if zmq_port is not None:
+        params.extend(["--zmq-publish-console-addr", f"tcp://*:{zmq_port}"])
+    re_manager_cmd(params)
+
+    script = _script1
+    expected_output = _script1_output
+
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True, pprint.pformat(resp1)
+
+    assert wait_for_environment_to_be_created(timeout=10)
+
+    # Save initial 'last_msg_uid'
+    resp2a = request_to_json("get", "/console_output_update", json={"last_msg_uid": ""})
+    assert resp2a["success"] is True
+    assert resp2a["msg"] == ""
+    last_msg_uid_1 = resp2a["last_msg_uid"]
+    assert resp2a["console_output_msgs"] == []
+
+    # Download ALL existing messages
+    resp2b = request_to_json("get", "/console_output_update", json={"last_msg_uid": "ALL"})
+    assert resp2b["success"] is True
+    assert resp2b["msg"] == ""
+    assert resp2b["last_msg_uid"] == last_msg_uid_1
+    assert isinstance(resp2b["console_output_msgs"], list)
+    assert len(resp2b["console_output_msgs"]) > 0
+
+    # Upload the script the 1st time
+    resp3 = request_to_json("post", "/script/upload", json={"script": script})
+    assert resp3["success"] is True, pprint.pformat(resp2a)
+
+    # Do not poll status while the script is executed to avoid contaminating
+    #   the printed message with logging messages.
+    ttime.sleep(3)
+    assert wait_for_manager_state_idle(timeout=10)
+
+    resp4a = request_to_json("get", "/console_output_update", json={"last_msg_uid": last_msg_uid_1})
+    last_msg_uid_2 = resp4a["last_msg_uid"]
+    assert last_msg_uid_2 != last_msg_uid_1
+    console_output = resp4a["console_output_msgs"]
+    console_output_text = "".join([_["msg"] for _ in console_output])
+    assert expected_output in console_output_text
+    assert console_output_text.count(expected_output) == 1
+
+    resp4b = request_to_json("get", "/console_output_update", json={"last_msg_uid": "ALL"})
+    assert resp4b["last_msg_uid"] == last_msg_uid_2
+    console_output = resp4b["console_output_msgs"]
+    console_output_text = "".join([_["msg"] for _ in console_output])
+    assert expected_output in console_output_text
+    assert console_output_text.count(expected_output) == 1
+
+    # Upload the script the 2nd time
+    resp5 = request_to_json("post", "/script/upload", json={"script": script})
+    assert resp5["success"] is True, pprint.pformat(resp2a)
+
+    # Do not poll status while the script is executed to avoid contaminating
+    #   the printed message with logging messages.
+    ttime.sleep(3)
+    assert wait_for_manager_state_idle(timeout=10)
+
+    # Download the lastest updates
+    resp6a = request_to_json("get", "/console_output_update", json={"last_msg_uid": last_msg_uid_2})
+    last_msg_uid_3 = resp6a["last_msg_uid"]
+    assert last_msg_uid_3 != last_msg_uid_2
+    console_output = resp6a["console_output_msgs"]
+    console_output_text = "".join([_["msg"] for _ in console_output])
+    assert expected_output in console_output_text
+    assert console_output_text.count(expected_output) == 1
+
+    # Download the updates using 'old' UID. The script was uploaded twice, so the output should
+    #   contain two copies of the printed output
+    resp6b = request_to_json("get", "/console_output_update", json={"last_msg_uid": last_msg_uid_1})
+    assert resp6b["last_msg_uid"] == last_msg_uid_3
+    console_output = resp6b["console_output_msgs"]
+    console_output_text = "".join([_["msg"] for _ in console_output])
+    assert expected_output in console_output_text
+    assert console_output_text.count(expected_output) == 2
+
+    # No updates are expected since last request
+    resp6c = request_to_json("get", "/console_output_update", json={"last_msg_uid": last_msg_uid_3})
+    assert resp6c["last_msg_uid"] == last_msg_uid_3
+    assert resp6c["console_output_msgs"] == []
+
+    resp7 = request_to_json("post", "/environment/close")
+    assert resp7["success"] is True, pprint.pformat(resp7)
+
+    assert wait_for_environment_to_be_closed(timeout=10)
