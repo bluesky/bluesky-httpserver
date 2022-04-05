@@ -2,6 +2,16 @@
 Release History
 ===============
 
+
+v0.0.4 (2022-04-05)
+===================
+
+Added
+-----
+
+- ``console_output_update`` endpoint for monitoring of console output in polling mode.
+
+
 v0.0.3 (2022-03-08)
 ===================
 
@@ -29,6 +39,7 @@ Changed
 
 * HTTP Server is now using ``bluesky-queueserver-api`` for most of communication with
   RE Manager.
+
 
 v0.0.2 (2021-10-06)
 ===================
