@@ -75,15 +75,17 @@ async def startup_event():
 
     RM = REManagerAPI(
         zmq_server_address=zmq_server_address_control,
+        zmq_subscribe_addr=zmq_server_address_console,
         server_public_key=zmq_public_key,
         request_fail_exceptions=False,
         status_expiration_period=0.4,  # Make it smaller than default
+        console_monitor_max_lines=2000,
     )
 
     RM._user = _login_data["user"]
     RM._user_group = _login_data["user_group"]
 
-    console_output_loader = CollectPublishedConsoleOutput(zmq_addr=zmq_server_address_console)
+    console_output_loader = CollectPublishedConsoleOutput(rm_ref=RM)
     console_output_loader.start()
 
     # Import module with custom code
@@ -106,7 +108,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await RM.close()
-    console_output_loader.stop()
+    await console_output_loader.stop()
 
 
 def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):
@@ -879,10 +881,10 @@ def stream_console_output():
 
 
 @app.get("/console_output")
-def console_output(payload: dict = {}):
+async def console_output(payload: dict = {}):
     try:
         n_lines = payload.get("nlines", 200)
-        text = console_output_loader.get_text_buffer(n_lines)
+        text = await console_output_loader.get_text_buffer(n_lines)
     except Exception:
         _process_exception()
 

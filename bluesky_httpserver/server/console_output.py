@@ -1,10 +1,9 @@
+import asyncio
 import json
 import logging
 import queue
 from starlette.responses import StreamingResponse
 import uuid
-
-from bluesky_queueserver import ReceiveConsoleOutputAsync
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -19,8 +18,11 @@ class CollectPublishedConsoleOutput:
     Examples
     --------
     .. code-block:: python
+        from bluesky_queueserver_api.zmq.aio import REManagerAPI
+        RM = REManagerAPI()
+
         # Instantiate the class and start the thread
-        gen_data = CollectPublishedConsoleOutput()
+        gen_data = CollectPublishedConsoleOutput(rm_api=RM)
         gen_data.start()
         ...
         q = queue.Queue(maxsize=queue_maxsize)
@@ -30,25 +32,23 @@ class CollectPublishedConsoleOutput:
 
     Parameters
     ----------
-    zmq_addr : str or None
-        0MQ address of the Queue Server socket where the console output messages are published.
-        E.g. ``tcp://localhost:60625``. If ``None``, then default socket address is used.
+    rm_ref : bluesky_queueserver_api.REManagerAPI
+        Reference to configured REManagerAPI object (0MQ, asyncio)
     """
 
-    def __init__(self, *, zmq_addr=None):
+    def __init__(self, *, rm_ref):
+        self._RM = rm_ref
         self._queues_set = set()
-        self._rco = ReceiveConsoleOutputAsync(zmq_subscribe_addr=zmq_addr)
-        self._rco.set_callback(self._add_message)
 
         self._msg_buffer_max = 2000
         self._msg_uid_buffer = []
         self._msg_buffer = []
         self._last_msg_uid = str(uuid.uuid4())
 
-        self._text_buffer_max = 2000
-        self._text_buffer = []
-
-        self._text_buffer_uid = str(uuid.uuid4())
+        self._background_task = None
+        self._background_task_running = False
+        self._background_task_stopped = asyncio.Event()
+        self._background_task_stopped.set()
 
     @property
     def queues_set(self):
@@ -61,10 +61,10 @@ class CollectPublishedConsoleOutput:
 
     @property
     def text_buffer_uid(self):
-        return self._text_buffer_uid
+        return self._RM.console_monitor.text_uid
 
-    def get_text_buffer(self, n_lines):
-        return "".join(self._text_buffer[-n_lines:])
+    async def get_text_buffer(self, n_lines):
+        return await self._RM.console_monitor.text(n_lines)
 
     def get_new_msgs(self, last_msg_uid):
         msg_list = []
@@ -78,6 +78,25 @@ class CollectPublishedConsoleOutput:
             pass
         return {"last_msg_uid": self._last_msg_uid, "console_output_msgs": msg_list}
 
+    def _start_background_task(self):
+        if not self._background_task_running:
+            self._background_task = asyncio.create_task(self._load_msgs_task())
+
+    async def _stop_background_task(self):
+        self._background_task_running = False
+        await self._background_task_stopped.wait()
+
+    async def _load_msgs_task(self):
+        self._background_task_stopped.clear()
+        self._background_task_running = True
+        while self._background_task_running:
+            try:
+                msg = await self._RM.console_monitor.next_msg(timeout=0.5)
+                self._add_message(msg=msg)
+            except self._RM.RequestTimeoutError:
+                pass
+        self._background_task_stopped.set()
+
     def _add_to_msg_buffer(self, msg):
         uid = str(uuid.uuid4())
         self._msg_buffer.append(msg)
@@ -88,26 +107,6 @@ class CollectPublishedConsoleOutput:
         while len(self._msg_buffer) > self._msg_buffer_max:
             self._msg_buffer.pop(0)
             self._msg_uid_buffer.pop(0)
-
-    def _add_to_text_buffer(self, msg):
-        msg = msg["msg"]
-        ends_with_new_line = msg.endswith("\n")
-        line_list = msg.split("\n")
-        if ends_with_new_line and len(line_list):
-            if not line_list[-1]:
-                line_list = line_list[:-1]
-                line_list = [_ + "\n" for _ in line_list]
-            else:
-                line_list = [_ + "\n" for _ in line_list]
-                line_list[-1] = line_list[-1].replace("\n", "")
-
-        self._text_buffer.extend(line_list)
-
-        # Remove extra lines
-        while len(self._text_buffer) > self._text_buffer_max:
-            self._text_buffer.pop(0)
-
-        self._text_buffer_uid = str(uuid.uuid4())
 
     def _add_message(self, msg):
         try:
@@ -120,8 +119,7 @@ class CollectPublishedConsoleOutput:
 
                 q.put(msg)
 
-            # Always add to text and msg buffers
-            self._add_to_text_buffer(msg)
+            # Always add to msg buffer
             self._add_to_msg_buffer(msg)
 
         except Exception as ex:
@@ -131,13 +129,15 @@ class CollectPublishedConsoleOutput:
         """
         Start collection of messages. Must be called from the loop!!!
         """
-        self._rco.start()
+        self._RM.console_monitor.enable()
+        self._start_background_task()
 
-    def stop(self):
+    async def stop(self):
         """
         Stop collection of messages
         """
-        self._rco.stop()
+        await self._stop_background_task()
+        await self._RM.console_monitor.disable_wait()
 
 
 class ConsoleOutputEventStream:
