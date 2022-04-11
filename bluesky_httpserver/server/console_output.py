@@ -39,8 +39,6 @@ class CollectPublishedConsoleOutput:
     def __init__(self, *, rm_ref):
         self._RM = rm_ref
         self._queues_set = set()
-        # self._rco = ReceiveConsoleOutputAsync(zmq_subscribe_addr=zmq_addr)
-        # self._rco.set_callback(self._add_message)
 
         self._msg_buffer_max = 2000
         self._msg_uid_buffer = []
@@ -81,7 +79,8 @@ class CollectPublishedConsoleOutput:
         return {"last_msg_uid": self._last_msg_uid, "console_output_msgs": msg_list}
 
     def _start_background_task(self):
-        self._background_task = asyncio.create_task(self._load_msgs_task())
+        if not self._background_task_running:
+            self._background_task = asyncio.create_task(self._load_msgs_task())
 
     async def _stop_background_task(self):
         self._background_task_running = False
@@ -96,7 +95,6 @@ class CollectPublishedConsoleOutput:
                 self._add_message(msg=msg)
             except self._RM.RequestTimeoutError:
                 pass
-        self._background_task_running = True
         self._background_task_stopped.set()
 
     def _add_to_msg_buffer(self, msg):
