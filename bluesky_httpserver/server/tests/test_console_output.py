@@ -171,6 +171,7 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     assert wait_for_environment_to_be_created(timeout=10)
 
     resp2 = request_to_json("get", "/console_output/uid")
+    assert "success" in resp2, pprint.pformat(resp2)
     assert resp2["success"] is True
     console_output_uid = resp2["console_output_uid"]
 
