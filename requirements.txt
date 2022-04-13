@@ -2,7 +2,6 @@ bluesky-queueserver
 bluesky-queueserver-api
 fastapi
 pyzmq
-requests
 typing-extensions;python_version<'3.8'
 uvicorn
 starlette
