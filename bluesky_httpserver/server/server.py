@@ -60,23 +60,39 @@ async def startup_event():
             raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
 
     # TODO: implement nicer exit with error reporting in case of failure
-    zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
-    if zmq_server_address_control is None:
+    zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
+    if zmq_control_addr is None:
+        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
+        if zmq_control_addr is not None:
+            logger.warning(
+                "Environment variable QSERVER_ZMQ_ADDRESS_CONTROL is deprecated: use environment variable "
+                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
+            )
+    if zmq_control_addr is None:
         # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
         # TODO: remove in one of the future versions
-        zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS", None)
-        if zmq_server_address_control is not None:
+        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS", None)
+        if zmq_control_addr is not None:
             logger.warning(
                 "Environment variable QSERVER_ZMQ_ADDRESS is deprecated: use environment variable "
-                "QSERVER_ZMQ_ADDRESS_CONTROL to pass address of 0MQ control socket to HTTP Server."
+                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
             )
 
-    zmq_server_address_console = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
+    zmq_info_addr = os.getenv("QSERVER_ZMQ_INFO_ADDRESS", None)
+    if zmq_info_addr is None:
+        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
+        # TODO: remove in one of the future versions
+        zmq_info_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
+        if zmq_info_addr is not None:
+            logger.warning(
+                "Environment variable QSERVER_ZMQ_ADDRESS_CONSOLE is deprecated: use environment variable "
+                "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
+            )
 
     RM = REManagerAPI(
-        zmq_server_address=zmq_server_address_control,
-        zmq_subscribe_addr=zmq_server_address_console,
-        server_public_key=zmq_public_key,
+        zmq_control_addr=zmq_control_addr,
+        zmq_info_addr=zmq_info_addr,
+        zmq_public_key=zmq_public_key,
         request_fail_exceptions=False,
         status_expiration_period=0.4,  # Make it smaller than default
         console_monitor_max_lines=2000,
