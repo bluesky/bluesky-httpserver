@@ -25,7 +25,7 @@ from bluesky_httpserver.server.tests.conftest import (  # noqa F401
     wait_for_manager_state_idle,
 )
 
-from bluesky_queueserver.manager.comms import generate_new_zmq_key_pair
+from bluesky_queueserver import generate_zmq_keys
 
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
@@ -301,14 +301,14 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
     Test operation of HTTP server with enabled encryption. Security of HTTP server can be enabled
     only by setting the environment variable to the value of the public key.
     """
-    public_key, private_key = generate_new_zmq_key_pair()
+    public_key, private_key = generate_zmq_keys()
 
     if test_mode == "none":
         # No encryption
         pass
     elif test_mode == "ev":
         # Set server private key using environment variable
-        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY", private_key)  # RE Manager
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", public_key)  # HTTP server
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     else:

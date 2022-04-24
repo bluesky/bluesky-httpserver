@@ -31,10 +31,10 @@ def fastapi_server_fs(xprocess):
     to perform additional steps (such as setting environmental variables) before the server is started.
     """
 
-    def start():
+    def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT):
         class Starter(ProcessStarter):
             pattern = "Bluesky HTTP Server started successfully"
-            args = f"uvicorn --host={SERVER_ADDRESS} --port {SERVER_PORT} {bqss.__name__}:app".split()
+            args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
         xprocess.ensure("fastapi_server", Starter)
 
