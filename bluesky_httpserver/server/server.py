@@ -28,7 +28,7 @@ logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
 # Use FastAPI
 app = FastAPI()
 
-custom_code_modules = None
+custom_code_modules = []
 console_output_loader = None
 
 RM = None
@@ -122,6 +122,7 @@ async def startup_event():
     logger.info(f"The following custom modules will be imported: {module_names}")
 
     # Import all listed custom modules
+    custom_code_modules.clear()
     for name in module_names:
         try:
             logger.info("Importing custom module '%s' ...", name)

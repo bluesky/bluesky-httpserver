@@ -78,7 +78,7 @@ def test_http_server_queue_upload_spreasheet_1(re_manager, fastapi_server_fs, tm
     completed.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -139,7 +139,7 @@ def test_http_server_queue_upload_spreasheet_2(re_manager, fastapi_server_fs, tm
     return error message. Verify that correct error message is returned.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -165,7 +165,7 @@ def test_http_server_queue_upload_spreasheet_3(re_manager, fastapi_server_fs, tm
     on file extension) and check the returned error message.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -202,7 +202,7 @@ def test_http_server_queue_upload_spreasheet_4(
     """
     if use_custom:
         monkeypatch.setenv(
-            "QSERVER_CUSTOM_MODULE",
+            "QSERVER_CUSTOM_MODULES",
             "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
             prepend=False,
         )
@@ -256,7 +256,7 @@ def test_http_server_queue_upload_spreasheet_5(re_manager, fastapi_server_fs, tm
     will contain ``success`` status and error message for each plan.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
