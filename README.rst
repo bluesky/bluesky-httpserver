@@ -93,11 +93,13 @@ environment variable before starting the server::
 
 The Web Server supports using external modules for processing some requests. Those modules
 are optional and may contain custom instrument-specific processing code. The name of the external
-module may be passed to HTTP server by setting **QSERVER_CUSTOM_MODULE** environment
+modules may be passed to HTTP server by setting **QSERVER_CUSTOM_MODULES** environment
 variable::
 
-  QSERVER_CUSTOM_MODULE=<name-of-external-module> uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
+  QSERVER_CUSTOM_MODULES=<name-of-external-module> uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
 
+The value of the environment variable is a string containing a list of comma-separated module names.
+The first module that contains the required functions is selected and used by the server.
 If the module name contains '-' (dash) characters, they will be automatically converted to '_'
 (underscore) characters. If the server fails to load custom external module, the server
 will support only default functionality and may reject the requests that require custom processing.
