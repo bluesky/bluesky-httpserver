@@ -1,6 +1,7 @@
 import logging
 import io
 import pprint
+import re
 import os
 import importlib
 
@@ -110,11 +111,11 @@ async def startup_event():
         logger.warning(
             "Environment variable QSERVER_CUSTOM_MODULE is deprecated and will be removed. "
             "Use the environment variable QSERVER_CUSTOM_MODULES, which accepts a string with "
-            "comma-separated modules."
+            "comma or colon-separated module names."
         )
     module_names = module_names or os.getenv("QSERVER_CUSTOM_MODULE", None)
     if isinstance(module_names, str):
-        module_names = module_names.split(",")
+        module_names = re.split(":|,", module_names)
     else:
         logger.info("The value of environment variable QSERVER_CUSTOM_MODULES is not a string")
         module_names = []

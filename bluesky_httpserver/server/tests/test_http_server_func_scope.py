@@ -71,17 +71,27 @@ def _create_test_excel_file1(tmp_path, *, plan_params, col_names):
     return ss_path, plans_expected
 
 
-def test_http_server_queue_upload_spreasheet_1(re_manager, fastapi_server_fs, tmp_path, monkeypatch):  # noqa F811
+# fmt: off
+@pytest.mark.parametrize("custom_module_list", [
+    # Colon-separated string
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions:bluesky_queueserver_api",
+    "bluesky_queueserver_api:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions:non.existing.package",
+    "non.existing.package:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    # Comma-separated string
+    "bluesky_queueserver_api:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+])
+# fmt: on
+def test_http_server_queue_upload_spreasheet_1(
+    re_manager, fastapi_server_fs, tmp_path, monkeypatch, custom_module_list  # noqa F811
+):
     """
     Test for ``/queue/upload/spreadsheet`` API: generate .xlsx file, upload it to the server, verify
     the contents of the queue, run the queue and verify that the required number of plans were successfully
     completed.
     """
-    monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULES",
-        "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
-        prepend=False,
-    )
+    monkeypatch.setenv("QSERVER_CUSTOM_MODULES", custom_module_list, prepend=False)
     fastapi_server_fs()
 
     plan_params = [["count", 5, 1], ["count", 6, 0.5]]
