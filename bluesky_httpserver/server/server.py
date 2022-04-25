@@ -1,6 +1,7 @@
 import logging
 import io
 import pprint
+import re
 import os
 import importlib
 
@@ -28,7 +29,7 @@ logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
 # Use FastAPI
 app = FastAPI()
 
-custom_code_module = None
+custom_code_modules = []
 console_output_loader = None
 
 RM = None
@@ -47,7 +48,7 @@ def _process_exception():
 async def startup_event():
     global zmq_to_manager
     global RM
-    global custom_code_module
+    global custom_code_modules
     global console_output_loader
 
     # Read private key from the environment variable, then check if the CLI parameter exists
@@ -60,23 +61,44 @@ async def startup_event():
             raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
 
     # TODO: implement nicer exit with error reporting in case of failure
-    zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
-    if zmq_server_address_control is None:
+    zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
+    if zmq_control_addr is None:
+        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
+        if zmq_control_addr is not None:
+            logger.warning(
+                "Environment variable QSERVER_ZMQ_ADDRESS_CONTROL is deprecated: use environment variable "
+                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
+            )
+    if zmq_control_addr is None:
         # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
         # TODO: remove in one of the future versions
-        zmq_server_address_control = os.getenv("QSERVER_ZMQ_ADDRESS", None)
-        if zmq_server_address_control is not None:
+        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS", None)
+        if zmq_control_addr is not None:
             logger.warning(
                 "Environment variable QSERVER_ZMQ_ADDRESS is deprecated: use environment variable "
-                "QSERVER_ZMQ_ADDRESS_CONTROL to pass address of 0MQ control socket to HTTP Server."
+                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
             )
 
-    zmq_server_address_console = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
+    zmq_info_addr = os.getenv("QSERVER_ZMQ_INFO_ADDRESS", None)
+    if zmq_info_addr is None:
+        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
+        # TODO: remove in one of the future versions
+        zmq_info_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
+        if zmq_info_addr is not None:
+            logger.warning(
+                "Environment variable QSERVER_ZMQ_ADDRESS_CONSOLE is deprecated: use environment variable "
+                "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
+            )
+
+    logger.info(
+        f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
+        f"Information 0MQ socket address: {zmq_info_addr}"
+    )
 
     RM = REManagerAPI(
-        zmq_server_address=zmq_server_address_control,
-        zmq_subscribe_addr=zmq_server_address_console,
-        server_public_key=zmq_public_key,
+        zmq_control_addr=zmq_control_addr,
+        zmq_info_addr=zmq_info_addr,
+        zmq_public_key=zmq_public_key,
         request_fail_exceptions=False,
         status_expiration_period=0.4,  # Make it smaller than default
         console_monitor_max_lines=2000,
@@ -89,16 +111,31 @@ async def startup_event():
     console_output_loader.start()
 
     # Import module with custom code
-    module_name = os.getenv("QSERVER_CUSTOM_MODULE", None)
+    module_names = os.getenv("QSERVER_CUSTOM_MODULES", None)
+    if (module_names is None) and (os.getenv("QSERVER_CUSTOM_MODULE", None) is not None):
+        logger.warning(
+            "Environment variable QSERVER_CUSTOM_MODULE is deprecated and will be removed. "
+            "Use the environment variable QSERVER_CUSTOM_MODULES, which accepts a string with "
+            "comma or colon-separated module names."
+        )
+    module_names = module_names or os.getenv("QSERVER_CUSTOM_MODULE", None)
+    if isinstance(module_names, str):
+        module_names = re.split(":|,", module_names)
+    else:
+        logger.info("The value of environment variable QSERVER_CUSTOM_MODULES is not a string")
+        module_names = []
 
-    if module_name:
+    logger.info(f"The following custom modules will be imported: {module_names}")
+
+    # Import all listed custom modules
+    custom_code_modules.clear()
+    for name in module_names:
         try:
-            logger.info("Importing custom module '%s' ...", module_name)
-            custom_code_module = importlib.import_module(module_name.replace("-", "_"))
-            logger.info("Module '%s' was imported successfully.", module_name)
+            logger.info("Importing custom module '%s' ...", name)
+            custom_code_modules.append(importlib.import_module(name.replace("-", "_")))
+            logger.info("Module '%s' was imported successfully.", name)
         except Exception as ex:
-            custom_code_module = None
-            logger.error("Failed to import custom instrument module '%s': %s", module_name, ex)
+            logger.error("Failed to import custom instrument module '%s': %s", name, ex)
 
     # The following message is used in unit tests to detect when HTTP server is started.
     #   Unit tests need to be modified if this message is modified.
@@ -362,11 +399,19 @@ async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_typ
         # Determine which processing function should be used
         item_list = []
         processed = False
-        if custom_code_module and ("spreadsheet_to_plan_list" in custom_code_module.__dict__):
+
+        # Select custom module from the list of loaded modules
+        custom_module = None
+        for module in custom_code_modules:
+            if "spreadsheet_to_plan_list" in module.__dict__:
+                custom_module = module
+                break
+
+        if custom_module:
             logger.info("Processing spreadsheet using function from external module ...")
             # Try applying  the custom processing function. Some additional useful data is passed to
             #   the function. Unnecessary parameters can be ignored.
-            item_list = custom_code_module.spreadsheet_to_plan_list(
+            item_list = custom_module.spreadsheet_to_plan_list(
                 spreadsheet_file=f, file_name=f_name, data_type=data_type, user=_login_data["user"]
             )
             # The function is expected to return None if it rejects the file (based on 'data_type').

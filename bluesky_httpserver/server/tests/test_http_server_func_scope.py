@@ -25,7 +25,7 @@ from bluesky_httpserver.server.tests.conftest import (  # noqa F401
     wait_for_manager_state_idle,
 )
 
-from bluesky_queueserver.manager.comms import generate_new_zmq_key_pair
+from bluesky_queueserver import generate_zmq_keys
 
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
@@ -71,17 +71,27 @@ def _create_test_excel_file1(tmp_path, *, plan_params, col_names):
     return ss_path, plans_expected
 
 
-def test_http_server_queue_upload_spreasheet_1(re_manager, fastapi_server_fs, tmp_path, monkeypatch):  # noqa F811
+# fmt: off
+@pytest.mark.parametrize("custom_module_list", [
+    # Colon-separated string
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions:bluesky_queueserver_api",
+    "bluesky_queueserver_api:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    "bluesky_queueserver.manager.tests.spreadsheet_custom_functions:non.existing.package",
+    "non.existing.package:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+    # Comma-separated string
+    "bluesky_queueserver_api:bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
+])
+# fmt: on
+def test_http_server_queue_upload_spreasheet_1(
+    re_manager, fastapi_server_fs, tmp_path, monkeypatch, custom_module_list  # noqa F811
+):
     """
     Test for ``/queue/upload/spreadsheet`` API: generate .xlsx file, upload it to the server, verify
     the contents of the queue, run the queue and verify that the required number of plans were successfully
     completed.
     """
-    monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
-        "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
-        prepend=False,
-    )
+    monkeypatch.setenv("QSERVER_CUSTOM_MODULES", custom_module_list, prepend=False)
     fastapi_server_fs()
 
     plan_params = [["count", 5, 1], ["count", 6, 0.5]]
@@ -139,7 +149,7 @@ def test_http_server_queue_upload_spreasheet_2(re_manager, fastapi_server_fs, tm
     return error message. Verify that correct error message is returned.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -165,7 +175,7 @@ def test_http_server_queue_upload_spreasheet_3(re_manager, fastapi_server_fs, tm
     on file extension) and check the returned error message.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -202,7 +212,7 @@ def test_http_server_queue_upload_spreasheet_4(
     """
     if use_custom:
         monkeypatch.setenv(
-            "QSERVER_CUSTOM_MODULE",
+            "QSERVER_CUSTOM_MODULES",
             "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
             prepend=False,
         )
@@ -256,7 +266,7 @@ def test_http_server_queue_upload_spreasheet_5(re_manager, fastapi_server_fs, tm
     will contain ``success`` status and error message for each plan.
     """
     monkeypatch.setenv(
-        "QSERVER_CUSTOM_MODULE",
+        "QSERVER_CUSTOM_MODULES",
         "bluesky_queueserver.manager.tests.spreadsheet_custom_functions",
         prepend=False,
     )
@@ -301,14 +311,14 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
     Test operation of HTTP server with enabled encryption. Security of HTTP server can be enabled
     only by setting the environment variable to the value of the public key.
     """
-    public_key, private_key = generate_new_zmq_key_pair()
+    public_key, private_key = generate_zmq_keys()
 
     if test_mode == "none":
         # No encryption
         pass
     elif test_mode == "ev":
         # Set server private key using environment variable
-        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY", private_key)  # RE Manager
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", public_key)  # HTTP server
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     else:
@@ -362,12 +372,22 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     """
 
     # Change ZMQ address to use port 60616 instead of the default port 60615.
-    zmq_server_address = "tcp://localhost:60616"
-    monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONTROL", zmq_server_address)  # RE Manager
+    zmq_control_address_server = "tcp://*:60616"
+    zmq_info_address_server = "tcp://*:60617"
+    zmq_control_address = "tcp://localhost:60616"
+    zmq_info_address = "tcp://localhost:60617"
+    monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
+    monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
     fastapi_server_fs()
 
-    set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_server_address)
-    re_manager_cmd(["--zmq-addr", "tcp://*:60616"])
+    set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_control_address)
+    re_manager_cmd(
+        [
+            f"--zmq-control-addr={zmq_control_address_server}",
+            f"--zmq-info-addr={zmq_info_address_server}",
+            "--zmq-publish-console=ON",
+        ]
+    )
 
     # Now execute a plan to make sure everything works as expected
     resp1 = request_to_json("post", "/queue/item/add", json={"item": _plan1})
@@ -395,3 +415,11 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     assert resp9 == {"success": True, "msg": ""}
 
     wait_for_manager_state_idle(10)
+
+    import time as ttime
+
+    ttime.sleep(2)
+    resp10 = request_to_json("get", "/console_output", json={"nlines": 1000})
+    assert resp10["success"] is True
+    assert len(resp10["text"]) > 0
+    assert "RE Environment is ready" in resp10["text"], resp10["text"]

@@ -77,13 +77,13 @@ def test_http_server_stream_console_output_1(
     """
     # Start HTTP Server
     if zmq_port is not None:
-        monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
 
     # Start RE Manager
     params = ["--zmq-publish-console", "ON"]
     if zmq_port is not None:
-        params.extend(["--zmq-publish-console-addr", f"tcp://*:{zmq_port}"])
+        params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
     re_manager_cmd(params)
 
     rsc = _ReceiveStreamedConsoleOutput()
@@ -153,13 +153,13 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     """
     # Start HTTP Server
     if zmq_port is not None:
-        monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
 
     # Start RE Manager
     params = ["--zmq-publish-console", "ON"]
     if zmq_port is not None:
-        params.extend(["--zmq-publish-console-addr", f"tcp://*:{zmq_port}"])
+        params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
     re_manager_cmd(params)
 
     script = _script1
@@ -214,6 +214,7 @@ def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_serve
     resp3c = request_to_json("get", "/console_output", json={"nlines": 300})
     assert resp3c["success"] is True
     console_output = resp3c["text"]
+    assert re.search(expected_output, console_output)
 
 
 @pytest.mark.parametrize("zmq_port", (None, 60619))
@@ -225,13 +226,13 @@ def test_http_server_console_output_update_1(
     """
     # Start HTTP Server
     if zmq_port is not None:
-        monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONSOLE", f"tcp://localhost:{zmq_port}")
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
 
     # Start RE Manager
     params = ["--zmq-publish-console", "ON"]
     if zmq_port is not None:
-        params.extend(["--zmq-publish-console-addr", f"tcp://*:{zmq_port}"])
+        params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
     re_manager_cmd(params)
 
     script = _script1

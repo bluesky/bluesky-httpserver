@@ -93,11 +93,13 @@ environment variable before starting the server::
 
 The Web Server supports using external modules for processing some requests. Those modules
 are optional and may contain custom instrument-specific processing code. The name of the external
-module may be passed to HTTP server by setting **QSERVER_CUSTOM_MODULE** environment
+modules may be passed to HTTP server by setting **QSERVER_CUSTOM_MODULES** environment
 variable::
 
-  QSERVER_CUSTOM_MODULE=<name-of-external-module> uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
+  QSERVER_CUSTOM_MODULES=<name-of-external-module> uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
 
+The value of the environment variable is a string containing a comma or column-separated list of
+module names. The first module that contains the required functions is selected and used by the server.
 If the module name contains '-' (dash) characters, they will be automatically converted to '_'
 (underscore) characters. If the server fails to load custom external module, the server
 will support only default functionality and may reject the requests that require custom processing.
@@ -522,9 +524,9 @@ received after the web client connects to the server.
 
 If RE Manager is configured to publish console address to 0MQ socket with port number different from
 default or HTTP server is running on a separate workstation/server, the address of 0MQ socket
-can be specified by setting the environment variable ``QSERVER_ZMQ_ADDRESS_CONSOLE``, e.g. ::
+can be specified by setting the environment variable ``QSERVER_ZMQ_INFO_ADDRESS``, e.g. ::
 
-  export QSERVER_ZMQ_ADDRESS_CONSOLE='tcp://localhost:60625'
+  export QSERVER_ZMQ_INFO_ADDRESS='tcp://localhost:60625'
 
 
 Console Output of RE Manager
