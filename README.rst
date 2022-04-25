@@ -524,9 +524,9 @@ received after the web client connects to the server.
 
 If RE Manager is configured to publish console address to 0MQ socket with port number different from
 default or HTTP server is running on a separate workstation/server, the address of 0MQ socket
-can be specified by setting the environment variable ``QSERVER_ZMQ_ADDRESS_CONSOLE``, e.g. ::
+can be specified by setting the environment variable ``QSERVER_ZMQ_INFO_ADDRESS``, e.g. ::
 
-  export QSERVER_ZMQ_ADDRESS_CONSOLE='tcp://localhost:60625'
+  export QSERVER_ZMQ_INFO_ADDRESS='tcp://localhost:60625'
 
 
 Console Output of RE Manager

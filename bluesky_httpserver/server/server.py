@@ -90,6 +90,11 @@ async def startup_event():
                 "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
             )
 
+    logger.info(
+        f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
+        f"Information 0MQ socket address: {zmq_info_addr}"
+    )
+
     RM = REManagerAPI(
         zmq_control_addr=zmq_control_addr,
         zmq_info_addr=zmq_info_addr,

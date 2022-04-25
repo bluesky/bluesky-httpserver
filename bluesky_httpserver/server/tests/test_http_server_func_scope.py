@@ -372,12 +372,22 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     """
 
     # Change ZMQ address to use port 60616 instead of the default port 60615.
-    zmq_server_address = "tcp://localhost:60616"
-    monkeypatch.setenv("QSERVER_ZMQ_ADDRESS_CONTROL", zmq_server_address)  # RE Manager
+    zmq_control_address_server = "tcp://*:60616"
+    zmq_info_address_server = "tcp://*:60617"
+    zmq_control_address = "tcp://localhost:60616"
+    zmq_info_address = "tcp://localhost:60617"
+    monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
+    monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
     fastapi_server_fs()
 
-    set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_server_address)
-    re_manager_cmd(["--zmq-addr", "tcp://*:60616"])
+    set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_control_address)
+    re_manager_cmd(
+        [
+            f"--zmq-control-addr={zmq_control_address_server}",
+            f"--zmq-info-addr={zmq_info_address_server}",
+            "--zmq-publish-console=ON",
+        ]
+    )
 
     # Now execute a plan to make sure everything works as expected
     resp1 = request_to_json("post", "/queue/item/add", json={"item": _plan1})
@@ -405,3 +415,11 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     assert resp9 == {"success": True, "msg": ""}
 
     wait_for_manager_state_idle(10)
+
+    import time as ttime
+
+    ttime.sleep(2)
+    resp10 = request_to_json("get", "/console_output", json={"nlines": 1000})
+    assert resp10["success"] is True
+    assert len(resp10["text"]) > 0
+    assert "RE Environment is ready" in resp10["text"], resp10["text"]
