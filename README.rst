@@ -83,7 +83,7 @@ the available options.
 
 The Web Server should be started from the second shell as follows::
 
-  uvicorn bluesky_httpserver.server.server:app --host localhost --port 60610
+  uvicorn bluesky_httpserver.server:app --host localhost --port 60610
 
 The Web Server connects to RE Manager using Zero MQ. The default ZMQ address is 'tcp://localhost:60615'.
 A different ZMQ address may be passed to the Web Server by setting the *QSERVER_ZMQ_ADDRESS_CONTROL*
