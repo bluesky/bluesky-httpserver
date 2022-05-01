@@ -96,7 +96,7 @@ are optional and may contain custom instrument-specific processing code. The nam
 modules may be passed to HTTP server by setting **QSERVER_CUSTOM_MODULES** environment
 variable::
 
-  QSERVER_CUSTOM_MODULES=<name-of-external-module> uvicorn bluesky_queueserver.server.server:app --host localhost --port 60610
+  QSERVER_CUSTOM_MODULES=<name-of-external-module> uvicorn bluesky_queueserver.server:app --host localhost --port 60610
 
 The value of the environment variable is a string containing a comma or column-separated list of
 module names. The first module that contains the required functions is selected and used by the server.

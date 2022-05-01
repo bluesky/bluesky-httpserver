@@ -1,278 +1,96 @@
-import logging
 import io
+from fastapi import APIRouter, File, UploadFile, Form
 import pprint
-import re
-import os
-import importlib
-
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from typing import Optional
 
-from bluesky_queueserver_api.zmq.aio import REManagerAPI
-
-# from bluesky_queueserver.manager.comms import ZMQCommSendAsync, validate_zmq_key
-from bluesky_queueserver.manager.comms import validate_zmq_key
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
-from .console_output import CollectPublishedConsoleOutput, ConsoleOutputEventStream, StreamingResponseFromClass
+from ..resources import SERVER_RESOURCES as SR
+from ..utils import process_exception, get_login_data, validate_payload_keys
+from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
+
+import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-# Login and authentication are not implemented, but some API methods require
-#   login data. So for now we set up fixed user name and group
-_login_data = {"user": "Default HTTP User", "user_group": "admin"}
-
-logging.basicConfig(level=logging.WARNING)
-logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
-
-# Use FastAPI
-app = FastAPI()
-
-custom_code_modules = []
-console_output_loader = None
-
-RM = None
+router = APIRouter()
 
 
-def _process_exception():
-    try:
-        raise
-    except REManagerAPI.RequestTimeoutError as ex:
-        raise HTTPException(status_code=408, detail=str(ex))
-    except Exception as ex:
-        raise HTTPException(status_code=400, detail=str(ex))
-
-
-@app.on_event("startup")
-async def startup_event():
-    global zmq_to_manager
-    global RM
-    global custom_code_modules
-    global console_output_loader
-
-    # Read private key from the environment variable, then check if the CLI parameter exists
-    zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
-    zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
-    if zmq_public_key is not None:
-        try:
-            validate_zmq_key(zmq_public_key)
-        except Exception as ex:
-            raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
-
-    # TODO: implement nicer exit with error reporting in case of failure
-    zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
-    if zmq_control_addr is None:
-        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
-        if zmq_control_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS_CONTROL is deprecated: use environment variable "
-                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
-            )
-    if zmq_control_addr is None:
-        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
-        # TODO: remove in one of the future versions
-        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS", None)
-        if zmq_control_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS is deprecated: use environment variable "
-                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
-            )
-
-    zmq_info_addr = os.getenv("QSERVER_ZMQ_INFO_ADDRESS", None)
-    if zmq_info_addr is None:
-        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
-        # TODO: remove in one of the future versions
-        zmq_info_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
-        if zmq_info_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS_CONSOLE is deprecated: use environment variable "
-                "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
-            )
-
-    logger.info(
-        f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
-        f"Information 0MQ socket address: {zmq_info_addr}"
-    )
-
-    RM = REManagerAPI(
-        zmq_control_addr=zmq_control_addr,
-        zmq_info_addr=zmq_info_addr,
-        zmq_public_key=zmq_public_key,
-        request_fail_exceptions=False,
-        status_expiration_period=0.4,  # Make it smaller than default
-        console_monitor_max_lines=2000,
-    )
-
-    RM._user = _login_data["user"]
-    RM._user_group = _login_data["user_group"]
-
-    console_output_loader = CollectPublishedConsoleOutput(rm_ref=RM)
-    console_output_loader.start()
-
-    # Import module with custom code
-    module_names = os.getenv("QSERVER_CUSTOM_MODULES", None)
-    if (module_names is None) and (os.getenv("QSERVER_CUSTOM_MODULE", None) is not None):
-        logger.warning(
-            "Environment variable QSERVER_CUSTOM_MODULE is deprecated and will be removed. "
-            "Use the environment variable QSERVER_CUSTOM_MODULES, which accepts a string with "
-            "comma or colon-separated module names."
-        )
-    module_names = module_names or os.getenv("QSERVER_CUSTOM_MODULE", None)
-    if isinstance(module_names, str):
-        module_names = re.split(":|,", module_names)
-    else:
-        logger.info("The value of environment variable QSERVER_CUSTOM_MODULES is not a string")
-        module_names = []
-
-    logger.info(f"The following custom modules will be imported: {module_names}")
-
-    # Import all listed custom modules
-    custom_code_modules.clear()
-    for name in module_names:
-        try:
-            logger.info("Importing custom module '%s' ...", name)
-            custom_code_modules.append(importlib.import_module(name.replace("-", "_")))
-            logger.info("Module '%s' was imported successfully.", name)
-        except Exception as ex:
-            logger.error("Failed to import custom instrument module '%s': %s", name, ex)
-
-    # The following message is used in unit tests to detect when HTTP server is started.
-    #   Unit tests need to be modified if this message is modified.
-    logger.info("Bluesky HTTP Server started successfully")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await RM.close()
-    await console_output_loader.stop()
-
-
-def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):
-    """
-    Validate keys in the payload. Raise an exception if the request contains unsupported
-    keys or if some of the required keys are missing.
-
-    Parameters
-    ----------
-    payload: dict
-        Payload received with the request.
-    required_keys: list(str)
-        List of the required payload keys. All the keys must be present in the request.
-    optional_keys: list(str)
-        List of optional keys.
-
-    Raises
-    ------
-    ValueError
-        payload contains unsupported keys or some of the required keys are missing.
-    """
-
-    # TODO: it would be better to use something similar to 'jsonschema' validator.
-    #   Unfortunately 'jsonschema' provides terrible error reporting.
-    #   Any suggestions?
-    #   For now let's use primitive validaator that ensures that the dictionary
-    #   has necessary and only allowed top level keys.
-
-    required_keys = required_keys or []
-    optional_keys = optional_keys or []
-
-    payload_keys = list(payload.keys())
-    r_keys = set(required_keys)
-    a_keys = set(required_keys).union(set(optional_keys))
-    extra_keys = set()
-
-    for key in payload_keys:
-        if key not in a_keys:
-            extra_keys.add(key)
-        else:
-            r_keys -= {key}
-
-    err_msg = ""
-    if r_keys:
-        err_msg += f"Some required keys are missing in the request: {r_keys}. "
-    if extra_keys:
-        err_msg += f"Request contains keys the are not supported: {extra_keys}."
-
-    if err_msg:
-        raise ValueError(err_msg)
-
-
-@app.get("/")
-@app.get("/ping")
+@router.get("/")
+@router.get("/ping")
 async def ping_handler(payload: dict = {}):
     """
     May be called to get some response from the server. Currently returns status of RE Manager.
     """
     try:
-        msg = await RM.ping(**payload)
+        msg = await SR.RM.ping(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/status")
+@router.get("/status")
 async def status_handler(payload: dict = {}):
     """
     Returns status of RE Manager.
     """
     try:
-        msg = await RM.status(**payload)
+        msg = await SR.RM.status(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/mode/set")
+@router.post("/queue/mode/set")
 async def queue_mode_set_handler(payload: dict):
     """
     Set queue mode.
     """
     try:
-        msg = await RM.queue_mode_set(**payload)
+        msg = await SR.RM.queue_mode_set(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/queue/get")
+@router.get("/queue/get")
 async def queue_get_handler(payload: dict = {}):
     """
     Returns the contents of the current queue.
     """
     try:
-        msg = await RM.queue_get(**payload)
+        msg = await SR.RM.queue_get(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/clear")
+@router.post("/queue/clear")
 async def queue_clear_handler():
     """
     Clear the plan queue.
     """
     try:
-        msg = await RM.queue_clear()
+        msg = await SR.RM.queue_clear()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/start")
+@router.post("/queue/start")
 async def queue_start_handler():
     """
     Start execution of the loaded queue. Additional runs can be added to the queue while
     it is executed. If the queue is empty, then nothing will happen.
     """
     try:
-        msg = await RM.queue_start()
+        msg = await SR.RM.queue_start()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/stop")
+@router.post("/queue/stop")
 async def queue_stop():
     """
     Activate the sequence of stopping the queue. The currently running plan will be completed,
@@ -280,13 +98,13 @@ async def queue_stop():
     running
     """
     try:
-        msg = await RM.queue_stop()
+        msg = await SR.RM.queue_stop()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/stop/cancel")
+@router.post("/queue/stop/cancel")
 async def queue_stop_cancel():
     """
     Cancel pending request to stop the queue while the current plan is still running.
@@ -297,13 +115,13 @@ async def queue_stop_cancel():
     requests are pending.
     """
     try:
-        msg = await RM.queue_stop_cancel()
+        msg = await SR.RM.queue_stop_cancel()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/add")
+@router.post("/queue/item/add")
 async def queue_item_add_handler(payload: dict = {}):
     """
     Adds new plan to the queue
@@ -311,17 +129,17 @@ async def queue_item_add_handler(payload: dict = {}):
     try:
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
-            # payload["user"] = RM._user
-            # payload["user_group"] = RM._user_group
-            msg = await RM.send_request(method="queue_item_add", params=payload)
+            # payload["user"] = SR.RM._user
+            # payload["user_group"] = SR.RM._user_group
+            msg = await SR.RM.send_request(method="queue_item_add", params=payload)
         else:
-            msg = await RM.item_add(**payload)
+            msg = await SR.RM.item_add(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/execute")
+@router.post("/queue/item/execute")
 async def queue_item_execute_handler(payload: dict):
     """
     Immediately execute an item
@@ -329,17 +147,18 @@ async def queue_item_execute_handler(payload: dict):
     try:
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
-            # payload["user"] = _login_data["user"]
-            # payload["user_group"] = _login_data["user_group"]
-            msg = await RM.send_request(method="queue_item_execute", params=payload)
+            # login_data = get_login_data()
+            # payload["user"] = login_data["user"]
+            # payload["user_group"] = login_data["user_group"]
+            msg = await SR.RM.send_request(method="queue_item_execute", params=payload)
         else:
-            msg = await RM.item_execute(**payload)
+            msg = await SR.RM.item_execute(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/add/batch")
+@router.post("/queue/item/add/batch")
 async def queue_item_add_batch_handler(payload: dict):
     """
     Adds new plan to the queue
@@ -347,18 +166,19 @@ async def queue_item_add_batch_handler(payload: dict):
     try:
         if "items" not in payload:
             # We can not use API, so let the server handle the parameters
-            # payload["user"] = _login_data["user"]
-            # payload["user_group"] = _login_data["user_group"]
-            msg = await RM.send_request(method="queue_item_add_batch", params=payload)
+            # login_data = get_login_data()
+            # payload["user"] = login_data["user"]
+            # payload["user_group"] = login_data["user_group"]
+            msg = await SR.RM.send_request(method="queue_item_add_batch", params=payload)
         else:
-            msg = await RM.item_add_batch(**payload)
+            msg = await SR.RM.item_add_batch(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
 
     return msg
 
 
-@app.post("/queue/upload/spreadsheet")
+@router.post("/queue/upload/spreadsheet")
 async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_type: Optional[str] = Form(None)):
 
     """
@@ -402,17 +222,19 @@ async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_typ
 
         # Select custom module from the list of loaded modules
         custom_module = None
-        for module in custom_code_modules:
+        for module in SR.custom_code_modules:
             if "spreadsheet_to_plan_list" in module.__dict__:
                 custom_module = module
                 break
+
+        login_data = get_login_data()
 
         if custom_module:
             logger.info("Processing spreadsheet using function from external module ...")
             # Try applying  the custom processing function. Some additional useful data is passed to
             #   the function. Unnecessary parameters can be ignored.
             item_list = custom_module.spreadsheet_to_plan_list(
-                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=_login_data["user"]
+                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=login_data["user"]
             )
             # The function is expected to return None if it rejects the file (based on 'data_type').
             #   Then try to apply the default processing function.
@@ -422,7 +244,7 @@ async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_typ
             # Apply default spreadsheet processing function.
             logger.info("Processing spreadsheet using default function ...")
             item_list = spreadsheet_to_plan_list(
-                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=_login_data["user"]
+                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=login_data["user"]
             )
 
         if item_list is None:
@@ -452,37 +274,37 @@ async def queue_upload_spreadsheet(spreadsheet: UploadFile = File(...), data_typ
         try:
             params = dict()
             params["items"] = item_list
-            msg = await RM.item_add_batch(**params)
+            msg = await SR.RM.item_add_batch(**params)
         except Exception:
-            _process_exception()
+            process_exception()
     return msg
 
 
-@app.post("/queue/item/update")
+@router.post("/queue/item/update")
 async def queue_item_update_handler(payload: dict):
     """
     Update existing plan in the queue
     """
     try:
-        msg = await RM.item_update(**payload)
+        msg = await SR.RM.item_update(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/remove")
+@router.post("/queue/item/remove")
 async def queue_item_remove_handler(payload: dict):
     """
     Remove plan from the queue
     """
     try:
-        msg = await RM.item_remove(**payload)
+        msg = await SR.RM.item_remove(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/remove/batch")
+@router.post("/queue/item/remove/batch")
 async def queue_item_remove_batch_handler(payload: dict):
     """
     Remove a batch of plans from the queue
@@ -490,174 +312,174 @@ async def queue_item_remove_batch_handler(payload: dict):
     try:
         if "uids" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="queue_item_remove_batch", params=payload)
+            msg = await SR.RM.send_request(method="queue_item_remove_batch", params=payload)
         else:
-            msg = await RM.item_remove_batch(**payload)
+            msg = await SR.RM.item_remove_batch(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/move")
+@router.post("/queue/item/move")
 async def queue_item_move_handler(payload: dict):
     """
     Move plan in the queue
     """
     try:
-        msg = await RM.item_move(**payload)
+        msg = await SR.RM.item_move(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/move/batch")
+@router.post("/queue/item/move/batch")
 async def queue_item_move_batch_handler(payload: dict):
     """
     Move a batch of plans in the queue
     """
     try:
-        msg = await RM.item_move_batch(**payload)
+        msg = await SR.RM.item_move_batch(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/queue/item/get")
+@router.post("/queue/item/get")
 async def queue_item_get_handler(payload: dict = {}):
     """
     Get a plan from the queue
     """
     try:
-        msg = await RM.item_get(**payload)
+        msg = await SR.RM.item_get(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/history/get")
+@router.get("/history/get")
 async def history_get_handler(payload: dict = {}):
     """
     Returns the plan history (list of dicts).
     """
     try:
-        msg = await RM.history_get(**payload)
+        msg = await SR.RM.history_get(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/history/clear")
+@router.post("/history/clear")
 async def history_clear_handler():
     """
     Clear plan history.
     """
     try:
-        msg = await RM.history_clear()
+        msg = await SR.RM.history_clear()
     except Exception:
-        _process_exception()
+        process_exception()
 
     return msg
 
 
-@app.post("/environment/open")
+@router.post("/environment/open")
 async def environment_open_handler():
     """
     Creates RE environment: creates RE Worker process, starts and configures Run Engine.
     """
     try:
-        msg = await RM.environment_open()
+        msg = await SR.RM.environment_open()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/environment/close")
+@router.post("/environment/close")
 async def environment_close_handler():
     """
     Orderly closes of RE environment. The command returns success only if no plan is running,
     i.e. RE Manager is in the idle state. The command is rejected if a plan is running.
     """
     try:
-        msg = await RM.environment_close()
+        msg = await SR.RM.environment_close()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/environment/destroy")
+@router.post("/environment/destroy")
 async def environment_destroy_handler():
     """
     Destroys RE environment by killing RE Worker process. This is a last resort command which
     should be made available only to expert level users.
     """
     try:
-        msg = await RM.environment_destroy()
+        msg = await SR.RM.environment_destroy()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/pause")
+@router.post("/re/pause")
 async def re_pause_handler(payload: dict = {}):
     """
     Pause Run Engine.
     """
     try:
-        msg = await RM.re_pause(**payload)
+        msg = await SR.RM.re_pause(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/resume")
+@router.post("/re/resume")
 async def re_resume_handler():
     """
     Run Engine: resume execution of a paused plan
     """
     try:
-        msg = await RM.re_resume()
+        msg = await SR.RM.re_resume()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/stop")
+@router.post("/re/stop")
 async def re_stop_handler():
     """
     Run Engine: stop execution of a paused plan
     """
     try:
-        msg = await RM.re_stop()
+        msg = await SR.RM.re_stop()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/abort")
+@router.post("/re/abort")
 async def re_abort_handler():
     """
     Run Engine: abort execution of a paused plan
     """
     try:
-        msg = await RM.re_abort()
+        msg = await SR.RM.re_abort()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/halt")
+@router.post("/re/halt")
 async def re_halt_handler():
     """
     Run Engine: halt execution of a paused plan
     """
     try:
-        msg = await RM.re_halt()
+        msg = await SR.RM.re_halt()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/re/runs")
+@router.post("/re/runs")
 async def re_runs_handler(payload: dict = {}):
     """
     Run Engine: download the list of active, open or closed runs (runs that were opened
@@ -666,13 +488,13 @@ async def re_runs_handler(payload: dict = {}):
     (``'active'``, ``'open'`` or ``'closed'``). By default the API returns the active runs.
     """
     try:
-        msg = await RM.re_runs(**payload)
+        msg = await SR.RM.re_runs(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/re/runs/active")
+@router.get("/re/runs/active")
 async def re_runs_active_handler():
     """
     Run Engine: download the list of active runs (runs that were opened during execution of
@@ -680,39 +502,39 @@ async def re_runs_active_handler():
     """
     try:
         params = {"option": "active"}
-        msg = await RM.re_runs(**params)
+        msg = await SR.RM.re_runs(**params)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/re/runs/open")
+@router.get("/re/runs/open")
 async def re_runs_open_handler():
     """
     Run Engine: download the subset of active runs that includes runs that were open, but not yet closed.
     """
     try:
         params = {"option": "open"}
-        msg = await RM.re_runs(**params)
+        msg = await SR.RM.re_runs(**params)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/re/runs/closed")
+@router.get("/re/runs/closed")
 async def re_runs_closed_handler():
     """
     Run Engine: download the subset of active runs that includes runs that were already closed.
     """
     try:
         params = {"option": "closed"}
-        msg = await RM.re_runs(**params)
+        msg = await SR.RM.re_runs(**params)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/plans/allowed")
+@router.get("/plans/allowed")
 async def plans_allowed_handler(payload: dict = {}):
     """
     Returns the lists of allowed plans. If boolean optional parameter ``reduced``
@@ -729,27 +551,27 @@ async def plans_allowed_handler(payload: dict = {}):
         else:
             reduced = False
 
-        msg = await RM.plans_allowed(**payload)
+        msg = await SR.RM.plans_allowed(**payload)
         if reduced and ("plans_allowed" in msg):
             msg["plans_allowed"] = simplify_plan_descriptions(msg["plans_allowed"])
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/devices/allowed")
+@router.get("/devices/allowed")
 async def devices_allowed_handler(payload: dict = {}):
     """
     Returns the lists of allowed devices.
     """
     try:
-        msg = await RM.devices_allowed(**payload)
+        msg = await SR.RM.devices_allowed(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/plans/existing")
+@router.get("/plans/existing")
 async def plans_existing_handler(payload: dict = {}):
     """
     Returns the lists of existing plans. If boolean optional parameter ``reduced``
@@ -765,28 +587,28 @@ async def plans_existing_handler(payload: dict = {}):
         else:
             reduced = False
 
-        msg = await RM.plans_existing(**payload)
+        msg = await SR.RM.plans_existing(**payload)
         if reduced and ("plans_existing" in msg):
             msg["plans_existing"] = simplify_plan_descriptions(msg["plans_existing"])
     except Exception:
-        _process_exception()
+        process_exception()
 
     return msg
 
 
-@app.get("/devices/existing")
+@router.get("/devices/existing")
 async def devices_existing_handler(payload: dict = {}):
     """
     Returns the lists of existing devices.
     """
     try:
-        msg = await RM.devices_existing(**payload)
+        msg = await SR.RM.devices_existing(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/permissions/reload")
+@router.post("/permissions/reload")
 async def permissions_reload_handler(payload: dict = {}):
     """
     Reloads the list of allowed plans and devices and user group permission from the default location
@@ -794,25 +616,25 @@ async def permissions_reload_handler(payload: dict = {}):
     if the respective files were changed on disk.
     """
     try:
-        msg = await RM.permissions_reload(**payload)
+        msg = await SR.RM.permissions_reload(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/permissions/get")
+@router.post("/permissions/get")
 async def permissions_get_handler():
     """
     Download the dictionary of user group permissions.
     """
     try:
-        msg = await RM.permissions_get()
+        msg = await SR.RM.permissions_get()
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/permissions/set")
+@router.post("/permissions/set")
 async def permissions_set_handler(payload: dict):
     """
     Upload the dictionary of user group permissions (parameter: ``user_group_permissions``).
@@ -820,15 +642,15 @@ async def permissions_set_handler(payload: dict):
     try:
         if "user_group_permissions" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="permissions_set", params=payload)
+            msg = await SR.RM.send_request(method="permissions_set", params=payload)
         else:
-            msg = await RM.permissions_set(**payload)
+            msg = await SR.RM.permissions_set(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/function/execute")
+@router.post("/function/execute")
 async def function_execute_handler(payload: dict):
     """
     Execute function defined in startup scripts in RE Worker environment.
@@ -836,15 +658,15 @@ async def function_execute_handler(payload: dict):
     try:
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="function_execute", params=payload)
+            msg = await SR.RM.send_request(method="function_execute", params=payload)
         else:
-            msg = await RM.function_execute(**payload)
+            msg = await SR.RM.function_execute(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/script/upload")
+@router.post("/script/upload")
 async def script_upload_handler(payload: dict):
     """
     Upload and execute script in RE Worker environment.
@@ -852,15 +674,15 @@ async def script_upload_handler(payload: dict):
     try:
         if "script" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="script_upload", params=payload)
+            msg = await SR.RM.send_request(method="script_upload", params=payload)
         else:
-            msg = await RM.script_upload(**payload)
+            msg = await SR.RM.script_upload(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/task/status")
+@router.post("/task/status")
 async def script_task_status(payload: dict):
     """
     Return status of one or more running tasks.
@@ -868,15 +690,15 @@ async def script_task_status(payload: dict):
     try:
         if "task_uid" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="task_status", params=payload)
+            msg = await SR.RM.send_request(method="task_status", params=payload)
         else:
-            msg = await RM.task_status(**payload)
+            msg = await SR.RM.task_status(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/task/result")
+@router.post("/task/result")
 async def script_task_result(payload: dict):
     """
     Return result of execution of a running or completed task.
@@ -884,72 +706,72 @@ async def script_task_result(payload: dict):
     try:
         if "task_uid" not in payload:
             # We can not use API, so let the server handle the parameters
-            msg = await RM.send_request(method="task_result", params=payload)
+            msg = await SR.RM.send_request(method="task_result", params=payload)
         else:
-            msg = await RM.task_result(**payload)
+            msg = await SR.RM.task_result(**payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/manager/stop")
+@router.post("/manager/stop")
 async def manager_stop_handler(payload: dict = {}):
     """
     Stops of RE Manager. RE Manager will not be restarted after it is stoped.
     """
     try:
-        msg = await RM.send_request(method="manager_stop", params=payload)
+        msg = await SR.RM.send_request(method="manager_stop", params=payload)
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.post("/test/manager/kill")
+@router.post("/test/manager/kill")
 async def test_manager_kill_handler():
     """
     The command stops event loop of RE Manager process. Used for testing of RE Manager
     stability and handling of communication timeouts.
     """
     try:
-        msg = await RM.send_request(method="manager_kill")
+        msg = await SR.RM.send_request(method="manager_kill")
     except Exception:
-        _process_exception()
+        process_exception()
     return msg
 
 
-@app.get("/stream_console_output")
+@router.get("/stream_console_output")
 def stream_console_output():
-    queues_set = console_output_loader.queues_set
+    queues_set = SR.console_output_loader.queues_set
     stm = ConsoleOutputEventStream(queues_set=queues_set)
     sr = StreamingResponseFromClass(stm, media_type="text/plain")
     return sr
 
 
-@app.get("/console_output")
+@router.get("/console_output")
 async def console_output(payload: dict = {}):
     try:
         n_lines = payload.get("nlines", 200)
-        text = await console_output_loader.get_text_buffer(n_lines)
+        text = await SR.console_output_loader.get_text_buffer(n_lines)
     except Exception:
-        _process_exception()
+        process_exception()
 
     # Add 'success' and 'msg' so that the API is compatible with other QServer API.
     return {"success": True, "msg": "", "text": text}
 
 
-@app.get("/console_output/uid")
+@router.get("/console_output/uid")
 def console_output_uid():
     """
     UID of the text buffer. Use with ``console_output`` API.
     """
     try:
-        uid = console_output_loader.text_buffer_uid
+        uid = SR.console_output_loader.text_buffer_uid
     except Exception:
-        _process_exception()
+        process_exception()
     return {"success": True, "msg": "", "console_output_uid": uid}
 
 
-@app.get("/console_output_update")
+@router.get("/console_output_update")
 def console_output_update(payload: dict):
     """
     Download the list of new messages that were accumulated at the server. The API
@@ -965,10 +787,10 @@ def console_output_update(payload: dict):
     try:
         validate_payload_keys(payload, required_keys=["last_msg_uid"])
 
-        response = console_output_loader.get_new_msgs(last_msg_uid=payload["last_msg_uid"])
+        response = SR.console_output_loader.get_new_msgs(last_msg_uid=payload["last_msg_uid"])
         # Add 'success' and 'msg' so that the API is compatible with other QServer API.
         response.update({"success": True, "msg": ""})
     except Exception:
-        _process_exception()
+        process_exception()
 
     return response

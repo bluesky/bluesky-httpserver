@@ -6,10 +6,10 @@ import pytest
 import re
 import time as ttime
 
-from bluesky_httpserver.server.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
+from bluesky_httpserver.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
 
-from bluesky_httpserver.server.tests.conftest import (  # noqa F401
+from bluesky_httpserver.tests.conftest import (  # noqa F401
     request_to_json,
     fastapi_server_fs,
     wait_for_environment_to_be_created,

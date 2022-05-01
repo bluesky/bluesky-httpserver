@@ -13,7 +13,7 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
     append_code_to_last_startup_file,
 )
 
-from bluesky_httpserver.server.tests.conftest import (  # noqa F401
+from bluesky_httpserver.tests.conftest import (  # noqa F401
     SERVER_ADDRESS,
     SERVER_PORT,
     add_plans_to_queue,
