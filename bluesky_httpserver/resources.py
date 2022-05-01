@@ -1,34 +1,41 @@
-class SERVER_RESOURCES:
-    _RM = None
-    _custom_code_modules = []
-    _console_output_loader = None
-
+class _ServerResources:
     def __init__(self):
-        raise RuntimeError("SERVER_RESOURCES class should not be instantiated")
+        self._RM = None
+        self._custom_code_modules = []
+        self._console_output_loader = None
 
-    @classmethod
-    def set_RM(cls, RM):
-        cls._RM = RM
+    def set_RM(self, RM):
+        self._RM = RM
 
-    @classmethod
     @property
-    def RM(cls):
-        return cls._RM
+    def RM(self):
+        return self._RM
 
-    @classmethod
-    def set_custom_code_modules(cls, custom_code_modules):
-        cls._custom_code_modules = custom_code_modules
+    @RM.setter
+    def RM(self, _):
+        raise RuntimeError("Attempting to set read-only property 'RM'")
 
-    @classmethod
+    def set_custom_code_modules(self, custom_code_modules):
+        self._custom_code_modules = custom_code_modules
+
     @property
-    def custom_code_modules(cls):
-        return cls._custom_code_modules
+    def custom_code_modules(self):
+        return self._custom_code_modules
 
-    @classmethod
-    def set_console_output_loader(cls, console_output_loader):
-        cls._console_output_loader = console_output_loader
+    @custom_code_modules.setter
+    def custom_code_modules(self, _):
+        raise RuntimeError("Attempting to set read-only property 'custom_code_modules'")
 
-    @classmethod
+    def set_console_output_loader(self, console_output_loader):
+        self._console_output_loader = console_output_loader
+
     @property
-    def console_output_loader(cls):
-        return cls._console_output_loader
+    def console_output_loader(self):
+        return self._console_output_loader
+
+    @console_output_loader.setter
+    def console_output_loader(self, _):
+        raise RuntimeError("Attempting to set read-only property 'console_output_loader'")
+
+
+SERVER_RESOURCES = _ServerResources()
