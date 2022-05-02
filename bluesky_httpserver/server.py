@@ -1,7 +1,8 @@
+import importlib
 import logging
 import re
 import os
-import importlib
+import pprint
 
 from fastapi import FastAPI
 
@@ -25,6 +26,24 @@ app = FastAPI()
 
 
 def add_router(app, *, module_and_router_name):
+    """
+    Include a router specified by module and router name represented as a string.
+
+    Parameters
+    ----------
+    app: FastAPI
+        Instantiated ``FastAPI`` object.
+    module_and_router_name: str
+        Name of the module and router object represented as a string, e.g. ``'some.module.router'``,
+        where ``some.module`` is the module name and ``router`` is the name of the router object
+        in the module.
+
+    Raises
+    ------
+    ImportError
+        Failed to include router, most likely because the module could not be imported or the router
+        is not found.
+    """
     try:
         components = module_and_router_name.split(".")
         if len(components) < 2:
@@ -105,36 +124,47 @@ async def startup_event():
     SR.console_output_loader.start()
 
     # Import module with custom code
-    module_names = os.getenv("QSERVER_CUSTOM_MODULES", None)
-    if (module_names is None) and (os.getenv("QSERVER_CUSTOM_MODULE", None) is not None):
+    module_names_str = os.getenv("QSERVER_CUSTOM_MODULES", None)
+    if (module_names_str is None) and (os.getenv("QSERVER_CUSTOM_MODULE", None) is not None):
         logger.warning(
             "Environment variable QSERVER_CUSTOM_MODULE is deprecated and will be removed. "
             "Use the environment variable QSERVER_CUSTOM_MODULES, which accepts a string with "
             "comma or colon-separated module names."
         )
-    module_names = module_names or os.getenv("QSERVER_CUSTOM_MODULE", None)
-    if isinstance(module_names, str):
-        module_names = re.split(":|,", module_names)
+    module_names_str = module_names_str or os.getenv("QSERVER_CUSTOM_MODULE", None)
+
+    if module_names_str:
+        module_names = re.split(":|,", module_names_str)
+        logger.info("Custom modules to import (env. variable): %s", pprint.pformat(module_names))
+
+        # Import all listed custom modules
+        custom_code_modules = []
+        for name in module_names:
+            try:
+                logger.info("Importing custom module '%s' ...", name)
+                custom_code_modules.append(importlib.import_module(name.replace("-", "_")))
+                logger.info("Module '%s' was imported successfully.", name)
+            except Exception as ex:
+                logger.error("Failed to import custom instrument module '%s': %s", name, ex)
+        SR.set_custom_code_modules(custom_code_modules)
     else:
-        logger.info("The value of environment variable QSERVER_CUSTOM_MODULES is not a string")
-        module_names = []
+        SR.set_custom_code_modules([])
 
-    logger.info(f"The following custom modules will be imported: {module_names}")
-
-    # Import all listed custom modules
-    custom_code_modules = []
-    for name in module_names:
-        try:
-            logger.info("Importing custom module '%s' ...", name)
-            custom_code_modules.append(importlib.import_module(name.replace("-", "_")))
-            logger.info("Module '%s' was imported successfully.", name)
-        except Exception as ex:
-            logger.error("Failed to import custom instrument module '%s': %s", name, ex)
-    SR.set_custom_code_modules(custom_code_modules)
-
+    # Include standard routers
     app.include_router(general.router)
 
-    add_router(app, module_and_router_name="module_code.router")
+    # Include custom routers
+    router_names_str = os.getenv("QSERVER_HTTP_CUSTOM_ROUTERS", None)
+    if router_names_str:
+        router_names = re.split(":|,", router_names_str)
+        logger.info("Custom routers to include (env. variable): %s", pprint.pformat(router_names))
+        routers_already_included = set()
+        for rn in router_names:
+            if rn and (rn not in routers_already_included):
+                logger.info("Including custom router '%s' ...", rn)
+                routers_already_included.add(rn)
+                add_router(app, module_and_router_name=rn)
+        logger.info("All custom routers are included successfully.")
 
     # The following message is used in unit tests to detect when HTTP server is started.
     #   Unit tests need to be modified if this message is modified.
