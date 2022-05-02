@@ -169,13 +169,14 @@ from fastapi import APIRouter
 from bluesky_httpserver.resources import SERVER_RESOURCES as SR
 from bluesky_httpserver.utils import process_exception
 
-router = APIRouter(prefix="/api")
+# Try using a different name for the router
+router2 = APIRouter(prefix="/api")
 
-@router.get("/testing_custom_router_2")
+@router2.get("/testing_custom_router_2")
 async def testing_custom_router_2(payload: dict = {}):
     return {"success": True, "msg": "Response from 'testing_custom_router_2'"}
 
-@router.post("/status_duplicate_post")
+@router2.post("/status_duplicate_post")
 async def testing(payload: dict = {}):
     try:
         msg = await SR.RM.status(**payload)
@@ -200,7 +201,7 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager_cmd, fasta
     mod1_name, mod2_name = "mod1", "submod_dir.mod2"
 
     monkeypatch.setenv("PYTHONPATH", dir_mod_root)
-    monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{mod1_name}.router:{mod2_name}.router")
+    monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{mod1_name}.router:{mod2_name}.router2")
     fastapi_server_fs()
 
     # Test router from mod1
