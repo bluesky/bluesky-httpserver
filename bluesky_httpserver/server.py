@@ -12,6 +12,8 @@ from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
 from .utils import get_login_data
 
+from .routers import general
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -22,10 +24,25 @@ logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
 app = FastAPI()
 
 
+def add_router(app, *, module_and_router_name):
+    try:
+        components = module_and_router_name.split(".")
+        if len(components) < 2:
+            raise ValueError(
+                f"Module name or router name is not found in {module_and_router_name!r}: "
+                "expected format '<module-name>.<router-name>'"
+            )
+        module_name = ".".join(components[:-1])
+        router_name = components[-1]
+        mod = importlib.import_module(module_name)
+        router = getattr(mod, router_name)
+        app.include_router(router)
+    except Exception as ex:
+        raise ImportError(f"Failed to import router {module_and_router_name!r}: {ex}") from ex
+
+
 @app.on_event("startup")
 async def startup_event():
-    global zmq_to_manager
-
     # Read private key from the environment variable, then check if the CLI parameter exists
     zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
     zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
@@ -115,12 +132,9 @@ async def startup_event():
             logger.error("Failed to import custom instrument module '%s': %s", name, ex)
     SR.set_custom_code_modules(custom_code_modules)
 
-    from .routers import general
-
     app.include_router(general.router)
 
-    # import module_code  ##
-    # app.include_router(module_code.router)  ##
+    add_router(app, module_and_router_name="module_code.router")
 
     # The following message is used in unit tests to detect when HTTP server is started.
     #   Unit tests need to be modified if this message is modified.
