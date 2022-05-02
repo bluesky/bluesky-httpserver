@@ -1,25 +1,219 @@
+import os
 import pytest
 
-from bluesky_httpserver.utils import validate_payload_keys
+from bluesky_queueserver.manager.tests.common import (  # noqa F401
+    re_manager,
+    re_manager_pc_copy,
+    re_manager_cmd,
+    copy_default_profile_collection,
+    append_code_to_last_startup_file,
+    set_qserver_zmq_public_key,
+    set_qserver_zmq_address,
+)
+
+from bluesky_httpserver.tests.conftest import (  # noqa F401
+    SERVER_ADDRESS,
+    SERVER_PORT,
+    add_plans_to_queue,
+    fastapi_server_fs,
+    request_to_json,
+    wait_for_environment_to_be_created,
+    wait_for_queue_execution_to_complete,
+    wait_for_manager_state_idle,
+)
+
+from bluesky_queueserver import generate_zmq_keys
+
+
+# Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
+_plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
+_plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}
+_plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 
 
 # fmt: off
-@pytest.mark.parametrize("payload, req_keys, opt_keys, success", [
-    ({"options": "hello"}, ["options"], None, True,),
-    ({"options": "hello"}, None, ["options"], True,),
-    ({"options": "hello"}, ["options"], ["options"], True,),
-    ({"options": "hello"}, ["options"], ["different"], True,),
-    ({"different": "hello"}, ["options"], ["different"], False,),
-    ({"different": "hello"}, ["options", "different"], None, False,),
-    ({"different": "hello", "options": "no"}, ["options", "different"], None, True,),
-    ({"different": "hello", "options": "no", "additional": "value"},
-     ["options", "different", "additional"], None, True,),
-])
+@pytest.mark.parametrize("test_mode", ["none", "ev"])
 # fmt: on
-def test_validate_payload_keys(payload, req_keys, opt_keys, success):
+def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, test_mode):  # noqa: F811
+    """
+    Test operation of HTTP server with enabled encryption. Security of HTTP server can be enabled
+    only by setting the environment variable to the value of the public key.
+    """
+    public_key, private_key = generate_zmq_keys()
 
-    if success:
-        validate_payload_keys(payload, required_keys=req_keys, optional_keys=opt_keys)
+    if test_mode == "none":
+        # No encryption
+        pass
+    elif test_mode == "ev":
+        # Set server private key using environment variable
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
+        monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", public_key)  # HTTP server
+        set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     else:
-        with pytest.raises(ValueError):
-            validate_payload_keys(payload, required_keys=req_keys, optional_keys=opt_keys)
+        raise RuntimeError(f"Unrecognized test mode '{test_mode}'")
+
+    fastapi_server_fs()
+    re_manager_cmd([])
+
+    resp1 = request_to_json("post", "/queue/item/add", json={"item": _plan1})
+    assert resp1["success"] is True, str(resp1)
+
+    resp2 = request_to_json("post", "/queue/item/add", json={"item": _plan2})
+    assert resp2["success"] is True, str(resp2)
+
+    resp3 = request_to_json("get", "/plans/allowed")
+    assert isinstance(resp3["plans_allowed"], dict)
+    assert len(resp3["plans_allowed"]) > 0
+    resp4 = request_to_json("get", "/devices/allowed")
+    assert isinstance(resp4["devices_allowed"], dict)
+    assert len(resp4["devices_allowed"]) > 0
+
+    resp5 = request_to_json("post", "/environment/open")
+    assert resp5["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    resp6 = request_to_json("get", "/status")
+    assert resp6["items_in_queue"] == 2
+    assert resp6["items_in_history"] == 0
+
+    resp7 = request_to_json("post", "/queue/start")
+    assert resp7["success"] is True
+
+    wait_for_queue_execution_to_complete(20)
+
+    resp8 = request_to_json("get", "/status")
+    assert resp8["items_in_queue"] == 0
+    assert resp8["items_in_history"] == 2
+
+    # Close the environment
+    resp9 = request_to_json("post", "/environment/close")
+    assert resp9 == {"success": True, "msg": ""}
+
+    wait_for_manager_state_idle(10)
+
+
+def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
+    """
+    Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS_CONTROL'
+    environment variable. Start RE Manager and HTTP server with ZMQ address for control communication
+    channel different from default address, add and execute a plan.
+    """
+
+    # Change ZMQ address to use port 60616 instead of the default port 60615.
+    zmq_control_address_server = "tcp://*:60616"
+    zmq_info_address_server = "tcp://*:60617"
+    zmq_control_address = "tcp://localhost:60616"
+    zmq_info_address = "tcp://localhost:60617"
+    monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
+    monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
+    fastapi_server_fs()
+
+    set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_control_address)
+    re_manager_cmd(
+        [
+            f"--zmq-control-addr={zmq_control_address_server}",
+            f"--zmq-info-addr={zmq_info_address_server}",
+            "--zmq-publish-console=ON",
+        ]
+    )
+
+    # Now execute a plan to make sure everything works as expected
+    resp1 = request_to_json("post", "/queue/item/add", json={"item": _plan1})
+    assert resp1["success"] is True, str(resp1)
+
+    resp5 = request_to_json("post", "/environment/open")
+    assert resp5["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    resp6 = request_to_json("get", "/status")
+    assert resp6["items_in_queue"] == 1
+    assert resp6["items_in_history"] == 0
+
+    resp7 = request_to_json("post", "/queue/start")
+    assert resp7["success"] is True
+
+    wait_for_queue_execution_to_complete(20)
+
+    resp8 = request_to_json("get", "/status")
+    assert resp8["items_in_queue"] == 0
+    assert resp8["items_in_history"] == 1
+
+    # Close the environment
+    resp9 = request_to_json("post", "/environment/close")
+    assert resp9 == {"success": True, "msg": ""}
+
+    wait_for_manager_state_idle(10)
+
+    import time as ttime
+
+    ttime.sleep(2)
+    resp10 = request_to_json("get", "/console_output", json={"nlines": 1000})
+    assert resp10["success"] is True
+    assert len(resp10["text"]) > 0
+    assert "RE Environment is ready" in resp10["text"], resp10["text"]
+
+
+_mod1 = """
+from fastapi import APIRouter
+from bluesky_httpserver.resources import SERVER_RESOURCES as SR
+
+router = APIRouter()
+
+@router.get("/testing_custom_router_1")
+async def testing_custom_router_1(payload: dict = {}):
+    return {"success": True, "msg": "Response from 'testing_custom_router_1'"}
+"""
+
+_mod2 = """
+from fastapi import APIRouter
+from bluesky_httpserver.resources import SERVER_RESOURCES as SR
+from bluesky_httpserver.utils import process_exception
+
+router = APIRouter(prefix="/api")
+
+@router.get("/testing_custom_router_2")
+async def testing_custom_router_2(payload: dict = {}):
+    return {"success": True, "msg": "Response from 'testing_custom_router_2'"}
+
+@router.post("/status_duplicate_post")
+async def testing(payload: dict = {}):
+    try:
+        msg = await SR.RM.status(**payload)
+    except Exception:
+        process_exception()
+    return msg
+"""
+
+
+def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
+    dir_mod_root = os.path.join(tmpdir, "mod_dir")
+    dir_submod = os.path.join(dir_mod_root, "submod_dir")
+
+    os.makedirs(dir_mod_root, exist_ok=True)
+    os.makedirs(dir_submod, exist_ok=True)
+
+    with open(os.path.join(dir_mod_root, "mod1.py"), "wt") as f:
+        f.writelines(_mod1)
+    with open(os.path.join(dir_submod, "mod2.py"), "wt") as f:
+        f.writelines(_mod2)
+
+    mod1_name, mod2_name = "mod1", "submod_dir.mod2"
+
+    monkeypatch.setenv("PYTHONPATH", dir_mod_root)
+    monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{mod1_name}.router:{mod2_name}.router")
+    fastapi_server_fs()
+
+    # Test router from mod1
+    resp1 = request_to_json("get", "/testing_custom_router_1")
+    assert resp1["success"] is True
+    assert resp1["msg"] == "Response from 'testing_custom_router_1'"
+
+    # Test router from mod2
+    resp2 = request_to_json("get", "/api/testing_custom_router_2")
+    assert resp2["success"] is True
+    assert resp2["msg"] == "Response from 'testing_custom_router_2'"
+
+    # Compare RE Manager status returned by standard and test API
+    resp3 = request_to_json("get", "/status")
+    resp4 = request_to_json("post", "/api/status_duplicate_post")
+    assert resp3 == resp4
