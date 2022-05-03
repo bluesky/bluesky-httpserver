@@ -60,8 +60,9 @@ def add_plans_to_queue():
         assert resp2["success"] is True, str(resp2)
 
 
-def request_to_json(request_type, path, **kwargs):
-    resp = getattr(requests, request_type)(f"http://{SERVER_ADDRESS}:{SERVER_PORT}{path}", **kwargs)
+def request_to_json(request_type, path, *, request_prefix="/api", **kwargs):
+    method = getattr(requests, request_type)
+    resp = method(f"http://{SERVER_ADDRESS}:{SERVER_PORT}{request_prefix}{path}", **kwargs)
     resp = resp.json()
     return resp
 
