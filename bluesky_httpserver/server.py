@@ -13,7 +13,7 @@ from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
 from .utils import get_login_data
 
-from .routers import general
+from .routers import core
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -151,7 +151,7 @@ async def startup_event():
         SR.set_custom_code_modules([])
 
     # Include standard routers
-    app.include_router(general.router)
+    app.include_router(core.router)
 
     # Include custom routers
     router_names_str = os.getenv("QSERVER_HTTP_CUSTOM_ROUTERS", None)
