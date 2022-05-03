@@ -123,7 +123,9 @@ Interacting with RE Manager using 'qserver' CLI tool and HTTP requests
 The most basic request is 'ping' intended to fetch some response from RE Manager::
 
   qserver ping
-  http GET http://localhost:60610
+  http GET http://localhost:60610/api
+  http GET http://localhost:60610/api/ping
+
 
 Current default address of RE Manager is set to tcp://localhost:60615, but different
 address may be passed as a parameter to CLI tool::
@@ -138,7 +140,7 @@ Currently 'ping' request returns the status of RE Manager, but the returned data
 way to fetch status of RE Manager is to use 'status' request::
 
   qserver status
-  http GET http://localhost:60610/status
+  http GET http://localhost:60610/api/status
 
 Before plans could be executed, the RE Worker environment must be opened. Opening RE Worker environment
 involves loading beamline profile collection and instantiation of Run Engine and may take a few minutes.
@@ -154,25 +156,25 @@ the environment is opened.
 Open the new RE environment::
 
   qserver environment open
-  http POST http://localhost:60610/environment/open
+  http POST http://localhost:60610/api/environment/open
 
 Close RE environment::
 
   qserver environment close
-  http POST http://localhost:60610/environment/close
+  http POST http://localhost:60610/api/environment/close
 
 Destroy RE environment::
 
   qserver environment destroy
-  http POST http://localhost:60610/environment/destroy
+  http POST http://localhost:60610/api/environment/destroy
 
 Get the lists (JSON) of allowed plans and devices::
 
   qserver allowed plans
   qserver allowed devices
 
-  http POST http://localhost:60610/plans/allowed
-  http POST http://localhost:60610/devices/allowed
+  http POST http://localhost:60610/api/plans/allowed
+  http POST http://localhost:60610/api/devices/allowed
 
 The list of allowed plans and devices is generated based on the list of existing plans and devices
 ('existing_plans_and_devices.yaml' by default) and user group permissions ('user_group_permissions.yaml'
@@ -183,7 +185,7 @@ desirable, the data can be reloaded by sending 'permissions_reload' request::
 
   qserver permissions reload
 
-  http GET http://localhost:60610/permissions/reload
+  http GET http://localhost:60610/api/permissions/reload
 
 Before plans could be executed they should be placed in the **plan queue**. The plan queue contains
 **items**. The items are **plans** that could be executed by Run Engine or **instructions** that
@@ -196,9 +198,9 @@ Push a new plan to the back of the queue::
   qserver queue add plan '{"name":"scan", "args":[["det1", "det2"], "motor", -1, 1, 10]}'
   qserver queue add plan '{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}}'
 
-  http POST http://localhost:60610/queue/item/add item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
-  http POST http://localhost:60610/queue/item/add item:='{"name":"scan", "args":[["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}'
-  http POST http://localhost:60610/queue/item/add item:='{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}, "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add item:='{"name":"scan", "args":[["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add item:='{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}, "item_type": "plan"}'
 
 It takes 10 second to execute the third plan in the group above, so it is may be the most convenient for testing
 pausing/resuming/stopping of experimental plans.
@@ -207,7 +209,7 @@ API for queue operations is designed to work identically with items of all types
 instruction can be added to the queue `queue_item_add` API::
 
   qserver queue add instruction queue-stop
-  http POST http://localhost:60610/queue/item/add item:='{"name":"queue_stop", "item_type": "instruction"}'
+  http POST http://localhost:60610/api/queue/item/add item:='{"name":"queue_stop", "item_type": "instruction"}'
 
 An item can be added at any position of the queue. Push a plan to the front or the back of the queue::
 
@@ -215,31 +217,31 @@ An item can be added at any position of the queue. Push a plan to the front or t
   qserver queue add plan back '{"name":"count", "args":[["det1", "det2"]]}'
   qserver queue add plan 2 '{"name":"count", "args":[["det1", "det2"]]}'  # Inserted at pos #2 (0-based)
 
-  http POST http://localhost:60610/queue/item/add pos:='"front"' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
-  http POST http://localhost:60610/queue/item/add pos:='"back"' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
-  http POST http://localhost:60610/queue/item/add pos:=2 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add pos:='"front"' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add pos:='"back"' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add pos:=2 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
 
 The following command will insert an item in place of the last item in the queue; the last item remains
 the last item in the queue::
 
   qserver queue add plan -1 '{"name":"count", "args":[["det1", "det2"]]}'
-  http POST http://localhost:60610/queue/item/add pos:=-1 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add pos:=-1 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
 
 An item can be inserted before or after an existing item with given Item UID.
 Insert the plan before an existing item with <uid>::
 
   qserver queue add plan before_uid '<uid>' '{"name":"count", "args":[["det1", "det2"]]}'
-  http POST http://localhost:60610/queue/item/add before_uid:='<uid>' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add before_uid:='<uid>' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
 
 Insert the plan after an existing item with <uid>::
 
   qserver queue add plan after_uid '<uid>' '{"name":"count", "args":[["det1", "det2"]]}'
-  http POST http://localhost:60610/queue/item/add after_uid:='<uid>' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add after_uid:='<uid>' item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
 
 If the queue has 5 items (0..4), then the following command pushes the new plan to the back of the queue::
 
   qserver queue add plan 5 '{"name":"count", "args":[["det1", "det2"]]}'
-  http POST http://localhost:60610/queue/item/add pos:=5 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/add pos:=5 item:='{"name":"count", "args":[["det1", "det2"]], "item_type": "plan"}'
 
 The 'queue_item_add' request will accept any index value. If the index is out of range, then the item will
 be pushed to the front or the back of the queue. If the queue is currently running, then it is recommended
@@ -253,7 +255,7 @@ A batch of plans may be submitted to the queue by sending a single request. Ever
 is validated and the plans are added to the queue only if all plans pass validation. Otherwise the
 batch is rejected. The following request adds two plans to the queue::
 
-  http POST http://localhost:60610/queue/item/add/batch items:='[{"name":"count", "args":[["det1"]], "item_type": "plan"}, {"name":"count", "args":[["det2"]], "item_type": "plan"}]'
+  http POST http://localhost:60610/api/queue/item/add/batch items:='[{"name":"count", "args":[["det1"]], "item_type": "plan"}, {"name":"count", "args":[["det2"]], "item_type": "plan"}]'
 
 Alternatively the queue may be populated by uploading the list of plans with parameters in the form of
 a spreadsheet to HTTP server. Note that this is an experimental feature, which could be modified at any
@@ -262,14 +264,14 @@ using the server. Beamline-specific code will be distributed in a separate packa
 server code. Currently, to upload spreadsheet located at `../sample_excel.xlsx` (could be arbitrary path)
 run the following command::
 
-  http --form POST http://localhost:60610/queue/upload/spreadsheet spreadsheet@../sample_excel.xlsx
+  http --form POST http://localhost:60610/api/queue/upload/spreadsheet spreadsheet@../sample_excel.xlsx
 
 Queue Server API allow to execute a single item (plan or instruction) submitted with the API call. Execution
 of an item starts immediately if possible (RE Manager is idle and RE Worker environment exists), otherwise
 API call fails and the item is not added to the queue. The following commands start execution of a single plan::
 
   qserver queue execute plan '{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}}'
-  http POST http://localhost:60610/queue/item/execute item:='{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}, "item_type": "plan"}'
+  http POST http://localhost:60610/api/queue/item/execute item:='{"name":"count", "args":[["det1", "det2"]], "kwargs":{"num":10, "delay":1}, "item_type": "plan"}'
 
 Queue can be edited at any time. Changes to the running queue become effective the moment they are
 performed. As the currently running plan is finished, the new plan is popped from the top of the queue.
@@ -277,15 +279,15 @@ performed. As the currently running plan is finished, the new plan is popped fro
 The contents of the queue may be fetched at any time::
 
   qserver queue get
-  http GET http://localhost:60610/queue/get
+  http GET http://localhost:60610/api/queue/get
 
 The last item can be removed (popped) from the back of the queue::
 
   qserver queue item remove
   qserver queue item remove back
 
-  echo '{}' | http POST http://localhost:60610/queue/item/remove
-  http POST http://localhost:60610/queue/item/remove pos:='"back"'
+  echo '{}' | http POST http://localhost:60610/api/queue/item/remove
+  http POST http://localhost:60610/api/queue/item/remove pos:='"back"'
 
 The position of the removed item may be specified similarly to `queue_item_add` request with the difference
 that the position index must point to the existing element, otherwise the request fails (returns 'success==False').
@@ -294,13 +296,13 @@ The following examples remove the plan from the front of the queue and the eleme
   qserver queue item remove front
   qserver queue item remove -p -2
 
-  http POST http://localhost:60610/queue/item/remove pos:='"front"'
-  http POST http://localhost:60610/queue/item/remove pos:=-2
+  http POST http://localhost:60610/api/queue/item/remove pos:='"front"'
+  http POST http://localhost:60610/api/queue/item/remove pos:=-2
 
 The items can also be addressed by UID. Remove the item with <uid>::
 
   qserver queue item remove '<uid>'
-  http POST http://localhost:60610/queue/item/remove uid:='<uid>'
+  http POST http://localhost:60610/api/queue/item/remove uid:='<uid>'
 
 Items can be read from the queue without changing it. `queue_item_get` requests are formatted identically to
 `queue_item_remove` requests::
@@ -311,11 +313,11 @@ Items can be read from the queue without changing it. `queue_item_get` requests 
   qserver queue item get -2
   qserver queue item get '<uid>'
 
-  echo '{}' | http GET http://localhost:60610/queue/item/get
-  http GET http://localhost:60610/queue/item/get pos:='"back"'
-  http GET http://localhost:60610/queue/item/get pos:='"front"'
-  http GET http://localhost:60610/queue/item/get pos:=-2
-  http GET http://localhost:60610/queue/item/get uid:='<uid>'
+  echo '{}' | http GET http://localhost:60610/api/queue/item/get
+  http GET http://localhost:60610/api/queue/item/get pos:='"back"'
+  http GET http://localhost:60610/api/queue/item/get pos:='"front"'
+  http GET http://localhost:60610/api/queue/item/get pos:=-2
+  http GET http://localhost:60610/api/queue/item/get uid:='<uid>'
 
 Items can be moved within the queue. Items can be addressed by position or UID. If positional addressing
 is used then items are moved from 'source' position to 'destination' position.
@@ -326,20 +328,20 @@ the item with <uid_dest>::
   qserver queue item move <uid_source> before <uid_dest>
   qserver queue item move <uid_source> after <uid_dest>
 
-  http POST http://localhost:60610/queue/item/move pos:=3 pos_dest:=5
-  http POST http://localhost:60610/queue/item/move uid:='<uid_source>' before_uid:='<uid_dest>'
-  http POST http://localhost:60610/queue/item/move uid:='<uid_source>' after_uid:='<uid_dest>'
+  http POST http://localhost:60610/api/queue/item/move pos:=3 pos_dest:=5
+  http POST http://localhost:60610/api/queue/item/move uid:='<uid_source>' before_uid:='<uid_dest>'
+  http POST http://localhost:60610/api/queue/item/move uid:='<uid_source>' after_uid:='<uid_dest>'
 
 Addressing by position and UID can be mixed. The following instruction will move queue item #3
 to the position following an item with <uid_dest>::
 
   qserver queue item move 3 after <uid_dest>
-  http POST http://localhost:60610/queue/item/move pos:=3 after_uid:='<uid_dest>'
+  http POST http://localhost:60610/api/queue/item/move pos:=3 after_uid:='<uid_dest>'
 
 The following instruction moves item with <uid_source> to the front of the queue::
 
   qserver queue item move <uid_source> "front"
-  http POST http://localhost:60610/queue/item/move uid:='<uid_source>' pos_dest:='"front"'
+  http POST http://localhost:60610/api/queue/item/move uid:='<uid_source>' pos_dest:='"front"'
 
 The parameters of queue items may be updated or replaced. When the item is replaced, it is assigned a new
 item UID, while if the item is updated, item UID remains the same. The commands implementing those
@@ -359,15 +361,15 @@ be set to the UID of the item to be updated. Additional API parameter 'replace' 
 is updated or replaced. If the parameter is skipped or set *false*, the item is updated. If the
 parameter is set *true*, the item is replaced (i.e. new item UID is generated)::
 
-  http POST http://localhost:60610/queue/item/update item:='{"item_uid":"<existing-uid>", "name":"count", "args":[["det1", "det2"]], "item_type":"plan"}'
-  http POST http://localhost:60610/queue/item/update item:='{"item_uid":"<existing-uid>", "name":"queue_stop", "item_type":"instruction"}'
-  http POST http://localhost:60610/queue/item/update replace:=true item:='{"item_uid":"<existing-uid>", "name":"count", "args":[["det1", "det2"]], "item_type":"plan"}'
-  http POST http://localhost:60610/queue/item/update replace:=true item:='{"item_uid":"<existing-uid>", "name":"queue_stop", "item_type":"instruction"}'
+  http POST http://localhost:60610/api/queue/item/update item:='{"item_uid":"<existing-uid>", "name":"count", "args":[["det1", "det2"]], "item_type":"plan"}'
+  http POST http://localhost:60610/api/queue/item/update item:='{"item_uid":"<existing-uid>", "name":"queue_stop", "item_type":"instruction"}'
+  http POST http://localhost:60610/api/queue/item/update replace:=true item:='{"item_uid":"<existing-uid>", "name":"count", "args":[["det1", "det2"]], "item_type":"plan"}'
+  http POST http://localhost:60610/api/queue/item/update replace:=true item:='{"item_uid":"<existing-uid>", "name":"queue_stop", "item_type":"instruction"}'
 
 Remove all entries from the plan queue::
 
   qserver queue clear
-  http POST http://localhost:60610/queue/clear
+  http POST http://localhost:60610/api/queue/clear
 
 The plan queue can operate in LOOP mode, which is disabled by default. To enable or disable the LOOP mode
 the following commands::
@@ -375,13 +377,13 @@ the following commands::
   qserver queue mode set loop True
   qserver queue mode set loop False
 
-  http POST http://localhost:60610/queue/mode/set mode:='{"loop": true}'
-  http POST http://localhost:60610/queue/mode/set mode:='{"loop": false}'
+  http POST http://localhost:60610/api/queue/mode/set mode:='{"loop": true}'
+  http POST http://localhost:60610/api/queue/mode/set mode:='{"loop": false}'
 
 Start execution of the plan queue. The environment MUST be opened before queue could be started::
 
   qserver queue start
-  http POST http://localhost:60610/queue/start
+  http POST http://localhost:60610/api/queue/start
 
 Request to execute an empty queue is a valid operation that does nothing.
 
@@ -395,9 +397,9 @@ commands and HTTP API::
   qserver re runs open       # Get the list of open runs (subset of active runs)
   qserver re runs closed     # Get the list of closed runs (subset of active runs)
 
-  http GET http://localhost:60610/re/runs/active  # Get the list of active runs
-  http GET http://localhost:60610/re/runs/open    # Get the list of open runs
-  http GET http://localhost:60610/re/runs/closed  # Get the list of closed runs
+  http GET http://localhost:60610/api/re/runs/active  # Get the list of active runs
+  http GET http://localhost:60610/api/re/runs/open    # Get the list of open runs
+  http GET http://localhost:60610/api/re/runs/closed  # Get the list of closed runs
 
 The queue can be stopped at any time. Stopping the queue is a safe operation. When the stopping
 sequence is initiated, the currently running plan is finished and the next plan is not be started.
@@ -406,8 +408,8 @@ The stopping sequence can be cancelled if it was activated by mistake or decisio
   qserver queue stop
   qserver queue stop cancel
 
-  http POST http://localhost:60610/queue/stop
-  http POST http://localhost:60610/queue/stop/cancel
+  http POST http://localhost:60610/api/queue/stop
+  http POST http://localhost:60610/api/queue/stop/cancel
 
 While a plan in a queue is executed, operation Run Engine can be paused. In the unlikely event
 if the request to pause is received while RunEngine is transitioning between two plans, the request
@@ -423,8 +425,8 @@ checkpoint (deferred pause)::
   qserver re pause deferred
   qserver re pause immediate
 
-  http POST http://localhost:60610/re/pause option="deferred"
-  http POST http://localhost:60610/re/pause option="immediate"
+  http POST http://localhost:60610/api/re/pause option="deferred"
+  http POST http://localhost:60610/api/re/pause option="immediate"
 
 Resuming, aborting, stopping or halting of currently executed plan::
 
@@ -433,10 +435,10 @@ Resuming, aborting, stopping or halting of currently executed plan::
   qserver re abort
   qserver re halt
 
-  http POST http://localhost:60610/re/resume
-  http POST http://localhost:60610/re/stop
-  http POST http://localhost:60610/re/abort
-  http POST http://localhost:60610/re_halt
+  http POST http://localhost:60610/api/re/resume
+  http POST http://localhost:60610/api/re/stop
+  http POST http://localhost:60610/api/re/abort
+  http POST http://localhost:60610/api/re_halt
 
 There is minimal user protection features implemented that will prevent execution of
 the commands that are not supported in current state of the server. Error messages are printed
@@ -446,12 +448,12 @@ Data on executed plans, including stopped plans, is recorded in the history. His
 be downloaded at any time::
 
   qserver history get
-  http GET http://localhost:60610/history/get
+  http GET http://localhost:60610/api/history/get
 
 History is not intended for long-term storage. It can be cleared at any time::
 
   qserver history clear
-  http POST http://localhost:60610/history/clear
+  http POST http://localhost:60610/api/history/clear
 
 Stop RE Manager (exit RE Manager application). There are two options: safe request that is rejected
 when the queue is running or a plan is paused::
@@ -459,14 +461,14 @@ when the queue is running or a plan is paused::
   qserver manager stop
   qserver manager stop safe_on
 
-  echo '{}' | http POST http://localhost:60610/manager/stop
-  http POST http://localhost:60610/manager/stop option="safe_on"
+  echo '{}' | http POST http://localhost:60610/api/manager/stop
+  http POST http://localhost:60610/api/manager/stop option="safe_on"
 
 Manager can be also stopped at any time using unsafe stop, which causes current RE Worker to be
 destroyed even if a plan is running::
 
   qserver manager stop safe_off
-  http POST http://localhost:60610/manager/stop option="safe_off"
+  http POST http://localhost:60610/api/manager/stop option="safe_off"
 
 The 'test_manager_kill' request is designed specifically for testing ability of RE Watchdog
 to restart malfunctioning RE Manager process. This command stops event loop of RE Manager process
@@ -476,22 +478,22 @@ running or paused plans or the state of the queue. Another potential use of the 
 is to test handling of communication timeouts, since RE Manager does not respond to the request::
 
   qserver manager kill test
-  http POST http://localhost:60610/test/manager/kill
+  http POST http://localhost:60610/api/test/manager/kill
 
 
 Additional API
 --------------
 API that are implemented, but not listed in this document:
 
-- ``/re/runs`` - access to ``re_runs``, combines ``/re/runs/active``, ``/re/runs/open``, ``/re/runs/closed``
-- ``/plans/existing`` - access to ``plans_existing`` API
-- ``/devices/existing`` - access to ``devices_existing`` API
-- ``/permissions/get`` - access to ``permissions_get`` API
-- ``/permissions/set`` - access to ``permissions_set`` API
-- ``/script/upload`` - access to ``script_upload`` API
-- ``/function/execute`` - access to ``function_execute`` API
-- ``/task/status`` - access to ``task_status`` API
-- ``/task/result`` - access to ``task_result`` API
+- ``/api/re/runs`` - access to ``re_runs``, combines ``/api/re/runs/active``, ``/api/re/runs/open``, ``/api/re/runs/closed``
+- ``/api/plans/existing`` - access to ``plans_existing`` API
+- ``/api/devices/existing`` - access to ``devices_existing`` API
+- ``/api/permissions/get`` - access to ``permissions_get`` API
+- ``/api/permissions/set`` - access to ``permissions_set`` API
+- ``/api/script/upload`` - access to ``script_upload`` API
+- ``/api/function/execute`` - access to ``function_execute`` API
+- ``/api/task/status`` - access to ``task_status`` API
+- ``/api/task/result`` - access to ``task_result`` API
 
 
 Streaming Console Output of RE Manager
@@ -536,5 +538,5 @@ provides endpoint ``/console_output`` returns the last ``nlines`` of the console
 represented as a text string. The parameter ``nlines`` is optional with the default value of 200.
 The maximum number of returned lines is limited (currently to 2000 lines). ::
 
-  http GET http://localhost:60610/console_output
-  http GET http://localhost:60610/console_output lines=500
+  http GET http://localhost:60610/api/console_output
+  http GET http://localhost:60610/api/console_output lines=500
