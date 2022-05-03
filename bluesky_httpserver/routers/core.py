@@ -344,7 +344,7 @@ async def queue_item_move_batch_handler(payload: dict):
     return msg
 
 
-@router.post("/queue/item/get")
+@router.get("/queue/item/get")
 async def queue_item_get_handler(payload: dict = {}):
     """
     Get a plan from the queue
@@ -622,7 +622,7 @@ async def permissions_reload_handler(payload: dict = {}):
     return msg
 
 
-@router.post("/permissions/get")
+@router.get("/permissions/get")
 async def permissions_get_handler():
     """
     Download the dictionary of user group permissions.
@@ -682,7 +682,7 @@ async def script_upload_handler(payload: dict):
     return msg
 
 
-@router.post("/task/status")
+@router.get("/task/status")
 async def script_task_status(payload: dict):
     """
     Return status of one or more running tasks.
@@ -698,7 +698,7 @@ async def script_task_status(payload: dict):
     return msg
 
 
-@router.post("/task/result")
+@router.get("/task/result")
 async def script_task_result(payload: dict):
     """
     Return result of execution of a running or completed task.

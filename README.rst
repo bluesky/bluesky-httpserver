@@ -311,11 +311,11 @@ Items can be read from the queue without changing it. `queue_item_get` requests 
   qserver queue item get -2
   qserver queue item get '<uid>'
 
-  echo '{}' | http POST http://localhost:60610/queue/item/get
-  http POST http://localhost:60610/queue/item/get pos:='"back"'
-  http POST http://localhost:60610/queue/item/get pos:='"front"'
-  http POST http://localhost:60610/queue/item/get pos:=-2
-  http POST http://localhost:60610/queue/item/get uid:='<uid>'
+  echo '{}' | http GET http://localhost:60610/queue/item/get
+  http GET http://localhost:60610/queue/item/get pos:='"back"'
+  http GET http://localhost:60610/queue/item/get pos:='"front"'
+  http GET http://localhost:60610/queue/item/get pos:=-2
+  http GET http://localhost:60610/queue/item/get uid:='<uid>'
 
 Items can be moved within the queue. Items can be addressed by position or UID. If positional addressing
 is used then items are moved from 'source' position to 'destination' position.
