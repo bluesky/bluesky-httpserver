@@ -13,7 +13,7 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
     append_code_to_last_startup_file,
 )
 
-from bluesky_httpserver.server.tests.conftest import (  # noqa F401
+from bluesky_httpserver.tests.conftest import (  # noqa F401
     SERVER_ADDRESS,
     SERVER_PORT,
     add_plans_to_queue,
@@ -499,19 +499,19 @@ def test_http_server_queue_item_get_remove_handler_1(re_manager, fastapi_server)
     assert len(resp1["items"]) == 3
     assert resp1["running_item"] == {}
 
-    resp2 = request_to_json("post", "/queue/item/get", json={})
+    resp2 = request_to_json("get", "/queue/item/get", json={})
     assert resp2["success"] is True
     assert resp2["item"]["name"] == "count"
     assert resp2["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp2["item"]
 
-    resp3 = request_to_json("post", "/queue/item/get")
+    resp3 = request_to_json("get", "/queue/item/get")
     assert resp3["success"] is True
     assert resp3["item"]["name"] == "count"
     assert resp3["item"]["args"] == [["det1", "det2"]]
     assert "item_uid" in resp3["item"]
 
-    resp4 = request_to_json("post", "/queue/item/get")
+    resp4 = request_to_json("get", "/queue/item/get")
     assert resp4["success"] is True
     assert resp4["item"]["name"] == "count"
     assert resp4["item"]["args"] == [["det1", "det2"]]
@@ -558,7 +558,7 @@ def test_http_server_queue_item_get_remove_handler_2(
     params = {} if pos is None else {"pos": pos}
 
     # Testing '/queue/item/get'
-    resp1 = request_to_json("post", "/queue/item/get", json=params)
+    resp1 = request_to_json("get", "/queue/item/get", json=params)
     assert resp1["success"] is success
     if success:
         assert resp1["item"]["args"] == plans[pos_result]["args"]
@@ -600,7 +600,7 @@ def test_http_server_queue_item_get_remove_handler_3(re_manager, fastapi_server)
 
     # Get and then remove plan 2 from the queue
     uid = plans_in_queue[1]["item_uid"]
-    resp2a = request_to_json("post", "/queue/item/get", json={"uid": uid})
+    resp2a = request_to_json("get", "/queue/item/get", json={"uid": uid})
     assert resp2a["item"]["item_uid"] == plans_in_queue[1]["item_uid"]
     assert resp2a["item"]["name"] == plans_in_queue[1]["name"]
     assert resp2a["item"]["args"] == plans_in_queue[1]["args"]
@@ -620,7 +620,7 @@ def test_http_server_queue_item_get_remove_handler_3(re_manager, fastapi_server)
 
     ttime.sleep(1)
     uid = plans_in_queue[0]["item_uid"]
-    resp5a = request_to_json("post", "/queue/item/get", json={"uid": uid})
+    resp5a = request_to_json("get", "/queue/item/get", json={"uid": uid})
     assert resp5a["success"] is False
     assert "is currently running" in resp5a["msg"]
     resp5b = request_to_json("post", "/queue/item/remove", json={"uid": uid})
@@ -628,7 +628,7 @@ def test_http_server_queue_item_get_remove_handler_3(re_manager, fastapi_server)
     assert "Can not remove an item which is currently running" in resp5b["msg"]
 
     uid = "nonexistent"
-    resp6a = request_to_json("post", "/queue/item/get", json={"uid": uid})
+    resp6a = request_to_json("get", "/queue/item/get", json={"uid": uid})
     assert resp6a["success"] is False
     assert "not in the queue" in resp6a["msg"]
     resp6b = request_to_json("post", "/queue/item/remove", json={"uid": uid})
@@ -637,7 +637,7 @@ def test_http_server_queue_item_get_remove_handler_3(re_manager, fastapi_server)
 
     # Remove the last entry
     uid = plans_in_queue[2]["item_uid"]
-    resp7a = request_to_json("post", "/queue/item/get", json={"uid": uid})
+    resp7a = request_to_json("get", "/queue/item/get", json={"uid": uid})
     assert resp7a["success"] is True
     resp7b = request_to_json("post", "/queue/item/remove", json={"uid": uid})
     assert resp7b["success"] is True
@@ -655,7 +655,7 @@ def test_http_server_queue_item_get_remove_handler_4_failing(re_manager, fastapi
     Note: derived from ``test_zmq_api_queue_item_get_remove_4_failing()``
     """
     # Ambiguous parameters
-    resp1 = request_to_json("post", "/queue/item/get", json={"pos": 5, "uid": "some_uid"})
+    resp1 = request_to_json("get", "/queue/item/get", json={"pos": 5, "uid": "some_uid"})
     assert resp1["success"] is False
     assert "Ambiguous parameters" in resp1["msg"]
 
@@ -1429,7 +1429,7 @@ def test_http_server_permissions_get_set_01(re_manager, fastapi_server):  # noqa
     """
     Tests for ``/permissions/get`` and ``/permissions/set`` API.
     """
-    resp1 = request_to_json("post", "/permissions/get")
+    resp1 = request_to_json("get", "/permissions/get")
     assert resp1["success"] is True, str(resp1)
     assert resp1["msg"] == ""
     user_group_permissions = resp1["user_group_permissions"]
@@ -1469,7 +1469,7 @@ def test_http_script_upload_function_execute_01(re_manager, fastapi_server, test
 
     ttime.sleep(0.2)
 
-    resp3 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    resp3 = request_to_json("get", "/task/status", json={"task_uid": task_uid})
     assert resp3["success"] is True, str(resp3)
     assert resp3["msg"] == ""
     assert "status" in resp3, pprint.pformat(resp3)
@@ -1477,13 +1477,13 @@ def test_http_script_upload_function_execute_01(re_manager, fastapi_server, test
 
     ttime.sleep(2)
 
-    resp4 = request_to_json("post", "/task/status", json={"task_uid": task_uid})
+    resp4 = request_to_json("get", "/task/status", json={"task_uid": task_uid})
     assert resp4["success"] is True, str(resp4)
     assert resp4["msg"] == ""
     assert "status" in resp4, pprint.pformat(resp4)
     assert resp4["status"] == "completed"
 
-    resp5 = request_to_json("post", "/task/result", json={"task_uid": task_uid})
+    resp5 = request_to_json("get", "/task/result", json={"task_uid": task_uid})
     assert resp5["success"] is True, str(resp4)
     assert resp5["msg"] == ""
     assert "status" in resp5, pprint.pformat(resp5)
