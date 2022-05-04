@@ -1,4 +1,5 @@
 import os
+import pprint
 import pytest
 
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
@@ -170,14 +171,14 @@ from bluesky_httpserver.resources import SERVER_RESOURCES as SR
 from bluesky_httpserver.utils import process_exception
 
 # Try using a different name for the router
-router2 = APIRouter(prefix="/api")
+router2 = APIRouter(prefix="/some_prefix")
 
 @router2.get("/testing_custom_router_2")
 async def testing_custom_router_2(payload: dict = {}):
     return {"success": True, "msg": "Response from 'testing_custom_router_2'"}
 
 @router2.post("/status_duplicate_post")
-async def testing(payload: dict = {}):
+async def status_duplicate_post(payload: dict = {}):
     try:
         msg = await SR.RM.status(**payload)
     except Exception:
@@ -186,7 +187,7 @@ async def testing(payload: dict = {}):
 """
 
 
-def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
+def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_server_fs):  # noqa: F811
     dir_mod_root = os.path.join(tmpdir, "mod_dir")
     dir_submod = os.path.join(dir_mod_root, "submod_dir")
 
@@ -205,16 +206,17 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager_cmd, fasta
     fastapi_server_fs()
 
     # Test router from mod1
-    resp1 = request_to_json("get", "/testing_custom_router_1")
+    resp1 = request_to_json("get", "/testing_custom_router_1", request_prefix="")
     assert resp1["success"] is True
     assert resp1["msg"] == "Response from 'testing_custom_router_1'"
 
     # Test router from mod2
-    resp2 = request_to_json("get", "/api/testing_custom_router_2")
+    resp2 = request_to_json("get", "/some_prefix/testing_custom_router_2", request_prefix="")
     assert resp2["success"] is True
     assert resp2["msg"] == "Response from 'testing_custom_router_2'"
 
     # Compare RE Manager status returned by standard and test API
     resp3 = request_to_json("get", "/status")
-    resp4 = request_to_json("post", "/api/status_duplicate_post")
+    assert "manager_state" in resp3, pprint.pformat(resp3)
+    resp4 = request_to_json("post", "/some_prefix/status_duplicate_post", request_prefix="")
     assert resp3 == resp4

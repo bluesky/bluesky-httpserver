@@ -31,7 +31,7 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
         self._exit = False
 
     def run(self):
-        with requests.get(f"http://{SERVER_ADDRESS}:{SERVER_PORT}/stream_console_output", stream=True) as r:
+        with requests.get(f"http://{SERVER_ADDRESS}:{SERVER_PORT}/api/stream_console_output", stream=True) as r:
             r.encoding = "utf-8"
 
             characters = []
