@@ -45,7 +45,9 @@ setup(
     python_requires=">={}".format(".".join(str(n) for n in min_version)),
     packages=find_packages(exclude=["docs", "tests"]),
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            "start-bluesky-httpserver = bluesky_httpserver.server:start_server",
+        ],
     },
     include_package_data=True,
     package_data={
