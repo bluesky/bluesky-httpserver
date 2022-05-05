@@ -1,0 +1,258 @@
+# This schema (a jsonschema in YAML format) is used
+# for validating configuration.
+#
+# This schema is also used by our documentation system to build the
+# service configuration reference section based on the description fields. See
+# doc/source/conf.py for that logic!
+#
+# We look to document all the options, but we don't look to enforce the perfect
+# validation logic within this file.
+#
+# ref: https://json-schema.org/learn/getting-started-step-by-step.html
+#
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  authentication:
+    type: [object, "null"]
+    additionalProperties: false
+    properties:
+      providers:
+        type: array
+        item:
+          type: object
+          additionalProperties: false
+          required:
+            - authenticator
+            - provider
+          properties:
+            provider:
+              type: string
+              pattern: "^[a-zA-Z0-9_-]*$"
+              description: |
+                Unique URL-friendly string used to identify this identity provider
+                in HTTP Server URLs and in internal book-keeping.
+            authenticator:
+              type: string
+              description: |
+                Type of Authenticator to use.
+
+                These are typically from the tiled.authenticators module,
+                though user-defined ones may be used as well.
+
+                This is given as an import path. In an import path, packages/modules
+                are separated by dots, and the object itself it separated by a colon.
+
+                Example:
+
+                ```yaml
+                authenticator: bluesky_httpserver.examples.DummyAuthenticator
+                ```
+                args:
+                  type: [object, "null"]
+                  description: |
+                    Named arguments to pass to Authenticator. If there are none,
+                    `args` may be omitted or empty.
+
+                    Example:
+
+                    ```yaml
+                    authenticator: bluesky_httpserver.examples.PAMAuthenticator
+                    args:
+                      service: "custom_service"
+                    ```
+      tiled_admins:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - provider
+            - id
+          properties:
+            provider:
+              type: string
+            id:
+              type: string
+        description: |
+          Give users with these identities 'admin' Role.
+      secret_keys:
+        type: array
+        items:
+          type: string
+        description: |
+          Secret keys used to sign secure tokens.
+
+          When generating a secret, is important to produce a difficult-to-guess
+          random number, and make it different each time you start up a server.
+          Two equally good ways to generate a secure secret...
+
+          With ``openssl``:
+
+              openssl rand -hex 32
+
+          With ``python``:
+
+              python -c "import secrets; print(secrets.token_hex(32))"
+
+      allow_anonymous_access:
+        type: boolean
+        description: |
+          If true, allow unauthenticated, public access to any entries
+          that are not specifically controlled with an access policy.
+
+          Default is false.
+
+      single_user_api_key:
+        type: string
+        description: |
+          Secret API key used in single-user deployments.
+
+          When generating a secret, is important to produce a difficult-to-guess
+          random number, and make it different each time you start up a server.
+          Two equally good ways to generate a secure secret...
+
+          With ``openssl``:
+
+              openssl rand -hex 32
+
+          With ``python``:
+
+              python -c "import secrets; print(secrets.token_hex(32))"
+
+      access_token_max_age:
+        type: number
+        description: |
+          This controls how often fresh access token have to be
+          re-issued. The process is transparent to the user and just affects performance.
+          An *access* token cannot be revoked, so its lifetime should be short. The
+          default is 900 seconds (15 minutes).
+
+          Units are **seconds**.
+      refresh_token_max_age:
+        type: number
+        description: |
+          Time after which inactive sessions
+          (sessions that have not refreshed tokens) will time out.
+          Default is
+
+          Units are **seconds**.
+      session_max_age:
+        type: [number, "null"]
+        description: |
+          Even *active* sessions are timed out after this
+          limit, and the user is required to resubmit credentials. By default,
+          this is unset and active session are never shut down.
+    description:
+      This section describes whether and how to authenticate users.
+  database:
+    type: object
+    additionalProperties: false
+    required:
+      - uri
+    properties:
+      uri:
+        type: string
+        description: |
+          When Bluesky HTTP Server is configured with authentication providers, it
+          uses an SQL database to persist information related to identities, sessions,
+          and keys. (When it is used without authentication providers, no database is used.)
+
+          If Bluesky HTTP Server is configured with authentication providers above but
+          a database URI is not specified, `sqlite:///./bluesky-httpserver.sqlite`
+          (i.e. a SQLite database in the current working directory) will be used.
+
+          Bluesky HTTP Server officially supports PostgreSQL and SQLite, but any database
+          engine supported by SQLAlchemy *may* work.
+      pool_pre_ping:
+        type: boolean
+        description: |
+          If true (default), use pessimistic connection testings. This is recommended.
+      pool_size:
+        type: integer
+        description: Connection pool size. Default is 5.
+  allow_origins:
+    type: array
+    items:
+      type: string
+    description: |
+        This list of domains enables web apps served from other domains to make
+        requests to the server.
+
+        Example:
+
+        ```yaml
+        allow_origins:
+          - https://chart-studio.plotly.com
+        ```
+
+        Read more about Cross-Origin Resource Sharing (CORS)
+        from Mozilla's web developer documentation.
+
+        https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+  uvicorn:
+    type: object
+    properties:
+      host:
+        type: string
+        description: |
+          Bind socket to this host. Use `--host 0.0.0.0` to make the application
+          available on your local network. IPv6 addresses are supported, for
+          for example --host `'::'`. Default `'127.0.0.1'`.
+      port:
+        type: integer
+        description: Bind to a socket with this port. Default `8000`.
+      workers:
+        type: integer
+        description: |
+          Use multiple worker processes. Defaults to the `$WEB_CONCURRENCY`
+          environment variable if available, or `1`.
+      root_path:
+        type: string
+        description: |
+          Configure the application with a root_path when it is behind a proxy
+          serving it on some path prefix.
+      proxy_headers:
+        type: boolean
+        description: |
+          Enable/Disable X-Forwarded-Proto, X-Forwarded-For,
+          X-Forwarded-Port to populate remote address info. Defaults to enabled,
+          but is restricted to only trusting connecting IPs in the
+          forwarded-allow-ips configuration.
+      forwarded_allow_ips:
+        type: string
+        description: |
+          Comma separated list of IPs to trust with proxy headers. Defaults to
+          the `$FORWARDED_ALLOW_IPS` environment variable if available, or
+          '127.0.0.1'. A wildcard '*' means always trust.
+      ssl_keyfile:
+        type: string
+        description: SSL key file
+      ssl_certfile:
+        type: string
+        description: SSL certificate file
+      ssl_keyfile_password:
+        type: string
+        description: SSL keyfile password
+      ssl_version:
+        type: integer
+        description: SSL version to use (see stdlib ssl module's). Default 2.
+      ssl_cert_reqs:
+        type: integer
+        description: Whether client certificate is required (see stdlib ssl module's). Default 0.
+      ssl_ca_certs:
+        type: string
+        description: CA certificates file
+      ssl_ciphers:
+        type: string
+        description: Ciphers to use (see stdlib ssl module's). Default TLSv1.
+  metrics:
+    type: object
+    properties:
+      prometheus:
+        type: boolean
+        description: |
+          Enable/Disable prometheus metrics. Default is false.
+          If enabled `PROMETHEUS_MULTIPROC_DIR` environment variable
+          must be set to the path of a writable directory.

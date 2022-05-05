@@ -1,10 +1,15 @@
 import argparse
 import logging
 import os
+from pathlib import Path
+import sys
 
 import bluesky_httpserver
 
 from .app import build_app
+from .settings import get_settings
+from .utils import get_authenticators
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +70,36 @@ def start_server():
     uvicorn.run(web_app, host=http_server_host, port=http_server_port)
 
 
+def print_admin_api_key_if_generated(web_app, host, port):
+    host = host or "127.0.0.1"
+    port = port or 8000
+    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
+    authenticators = web_app.dependency_overrides.get(get_authenticators, get_authenticators)()
+    if settings.allow_anonymous_access:
+        print(
+            """
+    The server is running in "public" mode, permitting open, anonymous access
+    for reading. Any data that is not specifically controlled with an access
+    policy will be visible to anyone who can connect to this server.
+""",
+            file=sys.stderr,
+        )
+    if (not authenticators) and settings.single_user_api_key_generated:
+        print(
+            f"""
+    Navigate a web browser to:
+
+    http://{host}:{port}?api_key={settings.single_user_api_key}
+
+    or connect an HTTP client to:
+
+    http://{host}:{port}/api?api_key={settings.single_user_api_key}
+
+""",
+            file=sys.stderr,
+        )
+
+
 def app_factory():
     """
     Return an ASGI app instance.
@@ -75,21 +110,18 @@ def app_factory():
     This is intended to be used for horizontal deployment (using gunicorn, for
     example) where only a module and instance or factory can be specified.
     """
-    # config_path = os.getenv("QSERVER_HTTP_SERVER_CONFIG", "config.yml")
-    # logger.info(f"Using configuration from {Path(config_path).absolute()}")
+    config_path = os.getenv("QSERVER_HTTP_SERVER_CONFIG", "config.yml")
+    logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    # from ..config import construct_build_app_kwargs, parse_configs
+    from .config import construct_build_app_kwargs, parse_configs
 
-    # parsed_config = parse_configs(config_path)
+    parsed_config = parse_configs(config_path)
 
-    # # This config was already validated when it was parsed. Do not re-validate.
-    # kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    kwargs = {}
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
     web_app = build_app(**kwargs)
-    # uvicorn_config = parsed_config.get("uvicorn", {})
-    # print_admin_api_key_if_generated(
-    #     web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
-    # )
+    uvicorn_config = parsed_config.get("uvicorn", {})
+    print_admin_api_key_if_generated(web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port"))
     return web_app
 
 
