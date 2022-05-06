@@ -1,3 +1,4 @@
+from functools import lru_cache, partial
 import importlib
 import logging
 import re
@@ -13,9 +14,10 @@ from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
 from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
-from .utils import get_login_data
+from .utils import get_login_data, get_authenticators
 
 from .routers import core
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -98,7 +100,7 @@ def build_app(authentication=None, server_settings=None):
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    # authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication.get("providers", [])}
+    authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication.get("providers", [])}
     server_settings = server_settings or {}
 
     app = FastAPI()
@@ -217,5 +219,50 @@ def build_app(authentication=None, server_settings=None):
     async def shutdown_event():
         await SR.RM.close()
         await SR.console_output_loader.stop()
+
+    @lru_cache(1)
+    def override_get_authenticators():
+        return authenticators
+
+    @lru_cache(1)
+    def override_get_settings():
+        settings = get_settings()
+        for item in [
+            "allow_anonymous_access",
+            "secret_keys",
+            "single_user_api_key",
+            "access_token_max_age",
+            "refresh_token_max_age",
+            "session_max_age",
+        ]:
+            if authentication.get(item) is not None:
+                setattr(settings, item, authentication[item])
+        for item in ["allow_origins", "response_bytesize_limit"]:
+            if server_settings.get(item) is not None:
+                setattr(settings, item, server_settings[item])
+        database = server_settings.get("database", {})
+        if database.get("uri"):
+            settings.database_uri = database["uri"]
+        if database.get("pool_size"):
+            settings.database_pool_size = database["pool_size"]
+        if database.get("pool_pre_ping"):
+            settings.database_pool_pre_ping = database["pool_pre_ping"]
+        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
+            "available_bytes"
+        )
+        if object_cache_available_bytes is not None:
+            setattr(
+                settings, "object_cache_available_bytes", object_cache_available_bytes
+            )
+        if authentication.get("providers"):
+            # If we support authentication providers, we need a database, so if one is
+            # not set, use a SQLite database in the current working directory.
+            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
+        return settings
+
+
+    app.openapi = partial(custom_openapi, app)
+    app.dependency_overrides[get_authenticators] = override_get_authenticators
+    app.dependency_overrides[get_settings] = override_get_settings
 
     return app

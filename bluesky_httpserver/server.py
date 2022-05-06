@@ -9,6 +9,7 @@ import bluesky_httpserver
 from .app import build_app
 from .settings import get_settings
 from .utils import get_authenticators
+from .config import construct_build_app_kwargs, parse_configs
 
 
 logger = logging.getLogger(__name__)
@@ -49,17 +50,65 @@ def start_server():
         help="HTTP server port, e.g. '127.0.0.1' or 'localhost' " f"(default: {default_http_server_port!r}).",
     )
 
+    parser.add_argument(
+        "--public",
+        dest="public",
+        action="store_true",
+        default=False,
+        help="Explicitly allows public access to the server and disables authorization/authentication."
+    )
+
+    parser.add_argument(
+        "--config_path",
+        dest="config_path",
+        action="store",
+        default=None,
+        help="Path to configuration file or directory with configuration files. The path overrides "
+        "the path defined in QSERVER_HTTP_SERVER_CONFIG environment variable. If the parameter and "
+        "the environemnt variable is not specified, then no configuration file is loaded.",
+    )
+
     args = parser.parse_args()
+
+    public = args.public
+    config_path = args.config_path
 
     http_server_host = args.http_server_host
     http_server_host = http_server_host or os.getenv("QSERVER_HTTP_SERVER_HOST", None)
-    http_server_host = http_server_host or default_http_server_host
 
     http_server_port = args.http_server_port
     http_server_port = http_server_port or os.getenv("QSERVER_HTTP_SERVER_PORT", None)
-    http_server_port = http_server_port or default_http_server_port
 
     logger.info("Preparing to starting Bluesky HTTP Server ...")
+
+    config_path = config_path or os.getenv("QSERVER_HTTP_SERVER_CONFIG", None)
+    try:
+        parsed_config = parse_configs(config_path) if config_path else {}
+    except Exception as ex:
+        logger.error(ex)
+        raise
+
+    # Let --public flag override settings in config.
+    if public:
+        if "authentication" not in parsed_config:
+            parsed_config["authentication"] = {}
+        parsed_config["authentication"]["allow_anonymous_access"] = True
+
+    # Extract config for uvicorn.
+    uvicorn_kwargs = parsed_config.pop("uvicorn", {})
+    # 'host' and 'port' from CLI parameters overrides the parameters from config.
+    uvicorn_kwargs["host"] = http_server_host or uvicorn_kwargs.get("host", default_http_server_host)
+    uvicorn_kwargs["port"] = http_server_port or uvicorn_kwargs.get("port", default_http_server_port)
+
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    if config_path:
+        logger.info(f"Using configuration from {Path(config_path).absolute()}")
+    else:
+        logger.info(f"No configuration file was specified. Using CLI parameters and environment variables.")
+
+    web_app = build_app(**kwargs)
+    print_admin_api_key_if_generated(web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"])
 
     web_app = build_app({}, {})
 
@@ -67,13 +116,16 @@ def start_server():
 
     import uvicorn
 
-    uvicorn.run(web_app, host=http_server_host, port=http_server_port)
+    uvicorn.run(web_app, **uvicorn_kwargs)
 
 
 def print_admin_api_key_if_generated(web_app, host, port):
-    host = host or "127.0.0.1"
-    port = port or 8000
+    # host = host or "127.0.0.1"
+    # port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
+
+    import pprint
+    print(f"settings: {pprint.pformat(settings)}")
     authenticators = web_app.dependency_overrides.get(get_authenticators, get_authenticators)()
     if settings.allow_anonymous_access:
         print(
