@@ -1,5 +1,5 @@
 import io
-from fastapi import APIRouter, File, UploadFile, Form
+from fastapi import APIRouter, File, UploadFile, Form, Request, Security
 import pprint
 from typing import Optional
 
@@ -8,6 +8,7 @@ from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, 
 from ..resources import SERVER_RESOURCES as SR
 from ..utils import process_exception, get_login_data, validate_payload_keys
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
+from ..authentication import get_current_principal
 
 import logging
 
@@ -30,10 +31,14 @@ async def ping_handler(payload: dict = {}):
 
 
 @router.get("/status")
-async def status_handler(payload: dict = {}):
+async def status_handler(
+    request: Request, payload: dict = {}, principal=Security(get_current_principal, scopes=["read:all"])
+):
     """
     Returns status of RE Manager.
     """
+    request.state.endpoint = "status"
+    print(f"payload = {payload} principal={principal}")
     try:
         msg = await SR.RM.status(**payload)
     except Exception:

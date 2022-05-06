@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import pprint
 import sys
 
 import bluesky_httpserver
@@ -55,7 +56,7 @@ def start_server():
         dest="public",
         action="store_true",
         default=False,
-        help="Explicitly allows public access to the server and disables authorization/authentication."
+        help="Explicitly allows public access to the server and disables authorization/authentication.",
     )
 
     parser.add_argument(
@@ -78,6 +79,7 @@ def start_server():
 
     http_server_port = args.http_server_port
     http_server_port = http_server_port or os.getenv("QSERVER_HTTP_SERVER_PORT", None)
+    http_server_port = int(http_server_port) if http_server_port else http_server_port
 
     logger.info("Preparing to starting Bluesky HTTP Server ...")
 
@@ -105,12 +107,10 @@ def start_server():
     if config_path:
         logger.info(f"Using configuration from {Path(config_path).absolute()}")
     else:
-        logger.info(f"No configuration file was specified. Using CLI parameters and environment variables.")
+        logger.info("No configuration file was specified. Using CLI parameters and environment variables.")
 
     web_app = build_app(**kwargs)
     print_admin_api_key_if_generated(web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"])
-
-    web_app = build_app({}, {})
 
     logger.info("Starting Bluesky HTTP Server at {http_server_host}:{http_server_port} ...")
 
@@ -124,30 +124,21 @@ def print_admin_api_key_if_generated(web_app, host, port):
     # port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
 
-    import pprint
-    print(f"settings: {pprint.pformat(settings)}")
+    logger.info("APP settings: %s", pprint.pformat(dict(settings)))
     authenticators = web_app.dependency_overrides.get(get_authenticators, get_authenticators)()
     if settings.allow_anonymous_access:
         print(
-            """
-    The server is running in "public" mode, permitting open, anonymous access
-    for reading. Any data that is not specifically controlled with an access
-    policy will be visible to anyone who can connect to this server.
-""",
+            "The server is running in 'public' mode, permitting open, anonymous access\n"
+            "for reading. Any data that is not specifically controlled with an access\n"
+            "policy will be visible to anyone who can connect to this server.\n",
             file=sys.stderr,
         )
     if (not authenticators) and settings.single_user_api_key_generated:
         print(
-            f"""
-    Navigate a web browser to:
-
-    http://{host}:{port}?api_key={settings.single_user_api_key}
-
-    or connect an HTTP client to:
-
-    http://{host}:{port}/api?api_key={settings.single_user_api_key}
-
-""",
+            "Navigate a web browser to:\n\n"
+            f"http://{host}:{port}?api_key={settings.single_user_api_key}\n\n"
+            "or connect an HTTP client to:\n\n"
+            f"http://{host}:{port}/api?api_key={settings.single_user_api_key}\n",
             file=sys.stderr,
         )
 
