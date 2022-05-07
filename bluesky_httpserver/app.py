@@ -20,7 +20,7 @@ from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
 from .utils import get_login_data, get_authenticators, record_timing, API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME
 
-from .routers import core
+from .routers import core_api
 from .settings import get_settings
 from .authentication import Mode
 from .database.core import purge_expired
@@ -124,7 +124,7 @@ def build_app(authentication=None, server_settings=None):
     app.state.allow_origins = []
 
     # Include standard routers
-    app.include_router(core.router)
+    app.include_router(core_api.router)
 
     # Include custom routers
     router_names_str = os.getenv("QSERVER_HTTP_CUSTOM_ROUTERS", None)

@@ -1,3 +1,4 @@
+import os
 import pytest
 from xprocess import ProcessStarter
 import time as ttime
@@ -9,12 +10,19 @@ from bluesky_queueserver.manager.comms import zmq_single_request
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = "60610"
 
+# Single-user API key used for most of the tests
+API_KEY_FOR_TESTS = "APIKEYFORTESTS"
+
 
 @pytest.fixture(scope="module")
 def fastapi_server(xprocess):
     class Starter(ProcessStarter):
+        env = dict(os.environ)
+        env["QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY"] = API_KEY_FOR_TESTS
+
         pattern = "Bluesky HTTP Server started successfully"
         args = f"uvicorn --host={SERVER_ADDRESS} --port {SERVER_PORT} {bqss.__name__}:app".split()
+        # args = f"start-bluesky-httpserver --host={SERVER_ADDRESS} --port {SERVER_PORT}".split()
 
     xprocess.ensure("fastapi_server", Starter)
 
@@ -31,8 +39,12 @@ def fastapi_server_fs(xprocess):
     to perform additional steps (such as setting environmental variables) before the server is started.
     """
 
-    def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT):
+    def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT, api_key=API_KEY_FOR_TESTS):
         class Starter(ProcessStarter):
+            env = dict(os.environ)
+            if api_key:
+                env["QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY"] = api_key
+
             pattern = "Bluesky HTTP Server started successfully"
             args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
@@ -60,55 +72,60 @@ def add_plans_to_queue():
         assert resp2["success"] is True, str(resp2)
 
 
-def request_to_json(request_type, path, *, request_prefix="/api", **kwargs):
+def request_to_json(request_type, path, *, request_prefix="/api", api_key=API_KEY_FOR_TESTS, **kwargs):
+    if api_key:
+        auth = None
+        headers = {"Authorization": f"ApiKey {api_key}"}
+        kwargs.update({"auth": auth, "headers": headers})
+
     method = getattr(requests, request_type)
     resp = method(f"http://{SERVER_ADDRESS}:{SERVER_PORT}{request_prefix}{path}", **kwargs)
     resp = resp.json()
     return resp
 
 
-def wait_for_environment_to_be_created(timeout, polling_period=0.2):
+def wait_for_environment_to_be_created(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
     """Wait for environment to be created with timeout."""
     time_start = ttime.time()
     while ttime.time() < time_start + timeout:
         ttime.sleep(polling_period)
-        resp = request_to_json("get", "/status")
+        resp = request_to_json("get", "/status", api_key=api_key)
         if resp["worker_environment_exists"] and (resp["manager_state"] == "idle"):
             return True
 
     return False
 
 
-def wait_for_environment_to_be_closed(timeout, polling_period=0.2):
+def wait_for_environment_to_be_closed(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
     """Wait for environment to be closed with timeout."""
     time_start = ttime.time()
     while ttime.time() < time_start + timeout:
         ttime.sleep(polling_period)
-        resp = request_to_json("get", "/status")
+        resp = request_to_json("get", "/status", api_key=api_key)
         if (not resp["worker_environment_exists"]) and (resp["manager_state"] == "idle"):
             return True
 
     return False
 
 
-def wait_for_queue_execution_to_complete(timeout, polling_period=0.2):
+def wait_for_queue_execution_to_complete(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
     """Wait for for queue execution to complete."""
     time_start = ttime.time()
     while ttime.time() < time_start + timeout:
         ttime.sleep(polling_period)
-        resp = request_to_json("get", "/status")
+        resp = request_to_json("get", "/status", api_key=api_key)
         if (resp["manager_state"] == "idle") and (resp["items_in_queue"] == 0):
             return True
 
     return False
 
 
-def wait_for_manager_state_idle(timeout, polling_period=0.2):
+def wait_for_manager_state_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
     """Wait until manager is in 'idle' state."""
     time_start = ttime.time()
     while ttime.time() < time_start + timeout:
         ttime.sleep(polling_period)
-        resp = request_to_json("get", "/status")
+        resp = request_to_json("get", "/status", api_key=api_key)
         if resp["manager_state"] == "idle":
             return True
 

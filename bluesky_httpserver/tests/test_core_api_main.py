@@ -35,6 +35,13 @@ _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "del
 _instruction_stop = {"name": "queue_stop", "item_type": "instruction"}
 
 
+def test_http_server_start_01(re_manager, fastapi_server):  # noqa F811
+    """
+    Test that the server successfully starts.
+    """
+    pass
+
+
 # fmt: off
 @pytest.mark.parametrize("api_call", ["/", "/ping"])
 # fmt: on

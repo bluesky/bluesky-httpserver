@@ -15,6 +15,7 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     wait_for_environment_to_be_created,
     wait_for_environment_to_be_closed,
     wait_for_manager_state_idle,
+    API_KEY_FOR_TESTS,
 )
 
 
@@ -25,13 +26,21 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
     ``stop`` method then send some request to the server so that it prints some output.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, api_key=API_KEY_FOR_TESTS, **kwargs):
         super().__init__(**kwargs)
         self.received_data_buffer = []
         self._exit = False
+        self._api_key = api_key
 
     def run(self):
-        with requests.get(f"http://{SERVER_ADDRESS}:{SERVER_PORT}/api/stream_console_output", stream=True) as r:
+
+        kwargs = {"stream": True}
+        if self._api_key:
+            auth = None
+            headers = {"Authorization": f"ApiKey {self._api_key}"}
+            kwargs.update({"auth": auth, "headers": headers})
+
+        with requests.get(f"http://{SERVER_ADDRESS}:{SERVER_PORT}/api/stream_console_output", **kwargs) as r:
             r.encoding = "utf-8"
 
             characters = []

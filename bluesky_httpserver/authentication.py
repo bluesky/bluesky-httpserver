@@ -237,8 +237,23 @@ def get_current_principal(
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
                 scopes = {
-                    "read:all",
-                    "write:all",
+                    "read:queue",
+                    "read:history",
+                    "read:resources",
+                    "read:config",
+                    "read:monitor",
+                    "read:console",
+                    "read:status",
+                    "write:queue:edit",
+                    "write:queue:control",
+                    "write:manager:control",
+                    "write:plan:control",
+                    "write:execute",
+                    "write:history:edit",
+                    "write:permissions",
+                    "write:scripts",
+                    "write:config",
+                    "write:unsafe",
                 }
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key", headers=headers_for_401)
@@ -272,7 +287,7 @@ def get_current_principal(
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            scopes = {"read:all", "write:all"}
+            scopes = {"read:status"}
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
