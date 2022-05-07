@@ -251,3 +251,13 @@ def get_root_url_low_level(request_headers, scope):
     if root_path.endswith("/"):
         root_path = root_path[:-1]
     return f"{scheme}://{host}{root_path}"
+
+
+def modules_available(*module_names):
+    for module_name in module_names:
+        if not importlib.util.find_spec(module_name):
+            break
+    else:
+        # All modules were found.
+        return True
+    return False

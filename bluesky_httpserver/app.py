@@ -200,6 +200,16 @@ def build_app(authentication=None, server_settings=None):
                     'python -c "import secrets; print(secrets.token_hex(32))"'
                 )
 
+        # Stash these to cancel this on shutdown.
+        app.state.tasks = []
+        # Authenticators can run tasks in the background.
+        background_tasks = []
+        for authenticator in authenticators:
+            background_tasks.extend(getattr(authenticator, "background_tasks", []))
+        for task in background_tasks or []:
+            asyncio_task = asyncio.create_task(task())
+            app.state.tasks.append(asyncio_task)
+
         app.state.allow_origins.extend(settings.allow_origins)
         app.add_middleware(
             CORSMiddleware,
@@ -388,7 +398,7 @@ def build_app(authentication=None, server_settings=None):
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in the current working directory.
-            settings.database_uri = settings.database_uri or "sqlite:///./tiled.sqlite"
+            settings.database_uri = settings.database_uri or "sqlite:///./bluesky_httpserver.sqlite"
         return settings
 
     @app.middleware("http")

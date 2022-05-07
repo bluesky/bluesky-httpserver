@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 from jose import JWTError, jwk, jwt
 from starlette.responses import RedirectResponse
 
-from .server.authentication import Mode
+from .authentication import Mode
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
