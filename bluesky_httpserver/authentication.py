@@ -6,6 +6,8 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
 from typing import Optional
+import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
@@ -236,7 +238,7 @@ def get_current_principal(
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
-                scopes = {
+                default_admin_scopes = {
                     "read:queue",
                     "read:history",
                     "read:resources",
@@ -255,6 +257,9 @@ def get_current_principal(
                     "write:config",
                     "write:unsafe",
                 }
+                ev_scopes = os.getenv("QSERVER_HTTP_SERVER_ADMIN_SCOPES", None)
+                scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_admin_scopes
+
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key", headers=headers_for_401)
         # If we made it to this point, we have a valid API key.
@@ -287,7 +292,9 @@ def get_current_principal(
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            scopes = {"read:status"}
+            default_public_scopes = {"read:status"}
+            ev_scopes = os.getenv("QSERVER_HTTP_SERVER_PUBLIC_SCOPES", None)
+            scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_public_scopes
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
