@@ -75,13 +75,10 @@ def start_server():
     config_path = args.config_path
 
     http_server_host = args.http_server_host
-    http_server_host = http_server_host or os.getenv("QSERVER_HTTP_SERVER_HOST", None)
-
     http_server_port = args.http_server_port
-    http_server_port = http_server_port or os.getenv("QSERVER_HTTP_SERVER_PORT", None)
     http_server_port = int(http_server_port) if http_server_port else http_server_port
 
-    logger.info("Preparing to starting Bluesky HTTP Server ...")
+    logger.info("Preparing to start Bluesky HTTP Server ...")
 
     config_path = config_path or os.getenv("QSERVER_HTTP_SERVER_CONFIG", None)
     try:
