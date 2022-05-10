@@ -22,8 +22,7 @@ jobs:
         sudo apt install redis
 
         # Start LDAP
-        sudo docker pull bitnami/openldap:latest
-        sudo docker-compose up -d -f .github/workflows/docker-configs/ldap-docker-compose.yml --verbose
+        source start_LDAP.sh
 
         # These packages are installed in the base environment but may be older
         # versions. Explicitly upgrade them because they often create
