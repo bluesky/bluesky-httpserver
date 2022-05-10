@@ -2,7 +2,9 @@ alembic
 bluesky-queueserver
 bluesky-queueserver-api
 fastapi
+ldap3
 orjson
+pamela
 python-jose
 pyzmq
 sqlalchemy
