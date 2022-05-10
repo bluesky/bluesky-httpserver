@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 
 from ..authenticators import LDAPAuthenticator
@@ -18,7 +19,11 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl):
         use_tls=use_tls,
         use_ssl=use_ssl,
     )
-    assert authenticator.authenticate("user01", "password1") == "user01"
-    assert authenticator.authenticate("user02", "password2") == "user02"
-    assert authenticator.authenticate("user02a", "password2") is None
-    assert authenticator.authenticate("user02", "password2a") is None
+
+    async def testing():
+        assert await authenticator.authenticate("user01", "password1") == "user01"
+        assert await authenticator.authenticate("user02", "password2") == "user02"
+        assert await authenticator.authenticate("user02a", "password2") is None
+        assert await authenticator.authenticate("user02", "password2a") is None
+
+    asyncio.run(testing())

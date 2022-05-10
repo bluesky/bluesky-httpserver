@@ -595,7 +595,7 @@ class LDAPAuthenticator:
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
 
-    def authenticate(self, username: str, password: str):
+    async def authenticate(self, username: str, password: str):
 
         username_saved = username  # Save the user name passed as a parameter
 
