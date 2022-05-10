@@ -460,6 +460,43 @@ class LDAPAuthenticator:
 
         This can be useful in an heterogeneous environment, when supplying a UNIX username
         to authenticate against AD.
+
+
+    Examples
+    --------
+
+    Using the authenticator class (the code runs in ``asyncio`` loop):
+
+    .. code-block::
+
+        from bluesky_httpserver.authenticators import LDAPAuthenticator
+        authenticator = LDAPAuthenticator(
+            "localhost", 1389, bind_dn_template="cn={username},ou=users,dc=example,dc=org", use_tls=False
+        )
+        await authenticator.authenticate("user01", "password1")
+        await authenticator.authenticate("user02", "password2")
+
+
+    Simple example of a config file (e.g. ``config_ldap.yml``):
+
+    .. code-block::
+
+        uvicorn:
+            host: localhost
+            port: 60610
+        authentication:
+            providers:
+                - provider: ldap_local
+                authenticator: bluesky_httpserver.authenticators:LDAPAuthenticator
+                args:
+                    server_address: localhost
+                    server_port: 1389
+                    bind_dn_template: "cn={username},ou=users,dc=example,dc=org"
+                    use_tls: false
+                    use_ssl: false
+            tiled_admins:
+                - provider: ldap_local
+                id: user02
     """
 
     mode = Mode.password
