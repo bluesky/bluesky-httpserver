@@ -462,6 +462,8 @@ class LDAPAuthenticator:
         to authenticate against AD.
     """
 
+    mode = Mode.password
+
     def __init__(
         self,
         server_address,
