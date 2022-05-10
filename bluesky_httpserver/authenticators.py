@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Request
 from jose import JWTError, jwk, jwt
-import ldap3
-from ldap3.utils.conv import escape_filter_chars
 import logging
 import re
 import secrets
@@ -546,9 +544,12 @@ class LDAPAuthenticator:
             return 389  # default plaintext port for LDAP
 
     def resolve_username(self, username_supplied_by_user):
+
+        import ldap3
+
         search_dn = self.lookup_dn_search_user
         if self.escape_userdn:
-            search_dn = escape_filter_chars(search_dn)
+            search_dn = ldap3.utils.conv.escape_filter_chars(search_dn)
         conn = self.get_connection(userdn=search_dn, password=self.lookup_dn_search_password)
         is_bound = conn.bind()
         if not is_bound:
@@ -612,6 +613,9 @@ class LDAPAuthenticator:
         return (user_dn, response[0]["dn"])
 
     def get_connection(self, userdn, password):
+
+        import ldap3
+
         server = ldap3.Server(self.server_address, port=self.server_port, use_ssl=self.use_ssl)
         auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
@@ -627,6 +631,8 @@ class LDAPAuthenticator:
         return attrs
 
     async def authenticate(self, username: str, password: str):
+
+        import ldap3
 
         username_saved = username  # Save the user name passed as a parameter
 
@@ -671,7 +677,7 @@ class LDAPAuthenticator:
                 continue
             userdn = dn.format(username=username)
             if self.escape_userdn:
-                userdn = escape_filter_chars(userdn)
+                userdn = ldap3.utils.conv.escape_filter_chars(userdn)
             msg = "Attempting to bind {username} with {userdn}"
             logger.debug(msg.format(username=username, userdn=userdn))
             msg = "Status of user bind {username} with {userdn} : {is_bound}"
