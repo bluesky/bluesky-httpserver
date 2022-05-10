@@ -323,16 +323,11 @@ async def prepare_saml_from_fastapi_request(request, debug=False):
     return rv
 
 
-# from bluesky_httpserver.authenticators import LDAPAuthenticator
-# authenticator = LDAPAuthenticator(
-#     "localhost", 1389, bind_dn_template="cn={username},ou=users,dc=example,dc=org", use_tls=False
-# )
-# authenticator.authenticate("user01", "password1")
-# authenticator.authenticate("user02", "password2")
-
-
 class LDAPAuthenticator:
     """
+    The authenticator code is based on https://github.com/jupyterhub/ldapauthenticator
+    The parameter ``use_tls`` was added for convenience of testing.
+
     Parameters
     ----------
     server_address: str
@@ -460,7 +455,6 @@ class LDAPAuthenticator:
 
         This can be useful in an heterogeneous environment, when supplying a UNIX username
         to authenticate against AD.
-
 
     Examples
     --------
