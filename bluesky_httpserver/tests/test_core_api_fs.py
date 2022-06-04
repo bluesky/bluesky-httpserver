@@ -99,6 +99,7 @@ def test_http_server_queue_upload_spreasheet_1(
     # Send the Excel file to the server
     files = {"spreadsheet": open(ss_path, "rb")}
     resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
+    assert "success" in resp1, str(resp1)
     assert resp1["success"] is True, str(resp1)
     items1 = resp1["items"]
     results1 = resp1["results"]

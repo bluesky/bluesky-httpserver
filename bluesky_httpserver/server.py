@@ -1,177 +1,189 @@
-import importlib
+import argparse
 import logging
-import re
 import os
+from pathlib import Path
 import pprint
+import sys
 
-from fastapi import FastAPI
+import bluesky_httpserver
 
-from bluesky_queueserver.manager.comms import validate_zmq_key
-from bluesky_queueserver_api.zmq.aio import REManagerAPI
+from .app import build_app
+from .settings import get_settings
+from .utils import get_authenticators
+from .config import construct_build_app_kwargs, parse_configs
 
-from .console_output import CollectPublishedConsoleOutput
-from .resources import SERVER_RESOURCES as SR
-from .utils import get_login_data
-
-from .routers import core
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-logging.basicConfig(level=logging.WARNING)
-logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
+qserver_version = bluesky_httpserver.__version__
 
-# Use FastAPI
-app = FastAPI()
+default_http_server_host = "localhost"
+default_http_server_port = 60610
 
 
-def add_router(app, *, module_and_router_name):
-    """
-    Include a router specified by module and router name represented as a string.
+def start_server():
 
-    Parameters
-    ----------
-    app: FastAPI
-        Instantiated ``FastAPI`` object.
-    module_and_router_name: str
-        Name of the module and router object represented as a string, e.g. ``'some.module.router'``,
-        where ``some.module`` is the module name and ``router`` is the name of the router object
-        in the module.
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("bluesky_httpserver").setLevel("INFO")
 
-    Raises
-    ------
-    ImportError
-        Failed to include router, most likely because the module could not be imported or the router
-        is not found.
-    """
+    def formatter(prog):
+        # Set maximum width such that printed help mostly fits in the RTD theme code block (documentation).
+        return argparse.RawDescriptionHelpFormatter(prog, max_help_position=20, width=90)
+
+    parser = argparse.ArgumentParser(
+        description="Start Bluesky HTTP Server.\n" f"bluesky-httpserver version {qserver_version}.\n",
+        formatter_class=formatter,
+    )
+
+    parser.add_argument(
+        "--host",
+        dest="http_server_host",
+        action="store",
+        default=None,
+        help="HTTP server host name, e.g. '127.0.0.1' or 'localhost' " f"(default: {default_http_server_host!r}).",
+    )
+
+    parser.add_argument(
+        "--port",
+        dest="http_server_port",
+        action="store",
+        default=None,
+        help="HTTP server port, e.g. '127.0.0.1' or 'localhost' " f"(default: {default_http_server_port!r}).",
+    )
+
+    parser.add_argument(
+        "--public",
+        dest="public",
+        action="store_true",
+        default=False,
+        help="Explicitly allows public access to the server and disables authorization/authentication.",
+    )
+
+    parser.add_argument(
+        "--config_path",
+        dest="config_path",
+        action="store",
+        default=None,
+        help="Path to configuration file or directory with configuration files. The path overrides "
+        "the path defined in QSERVER_HTTP_SERVER_CONFIG environment variable. If the parameter and "
+        "the environemnt variable is not specified, then no configuration file is loaded.",
+    )
+
+    args = parser.parse_args()
+
+    public = args.public
+    config_path = args.config_path
+
+    http_server_host = args.http_server_host
+    http_server_port = args.http_server_port
+    http_server_port = int(http_server_port) if http_server_port else http_server_port
+
+    logger.info("Preparing to start Bluesky HTTP Server ...")
+
+    config_path = config_path or os.getenv("QSERVER_HTTP_SERVER_CONFIG", None)
     try:
-        components = module_and_router_name.split(".")
-        if len(components) < 2:
-            raise ValueError(
-                f"Module name or router name is not found in {module_and_router_name!r}: "
-                "expected format '<module-name>.<router-name>'"
-            )
-        module_name = ".".join(components[:-1])
-        router_name = components[-1]
-        mod = importlib.import_module(module_name)
-        router = getattr(mod, router_name)
-        app.include_router(router)
+        parsed_config = parse_configs(config_path) if config_path else {}
     except Exception as ex:
-        raise ImportError(f"Failed to import router {module_and_router_name!r}: {ex}") from ex
+        logger.error(ex)
+        raise
 
+    # Let --public flag override settings in config.
+    if public:
+        if "authentication" not in parsed_config:
+            parsed_config["authentication"] = {}
+        parsed_config["authentication"]["allow_anonymous_access"] = True
 
-@app.on_event("startup")
-async def startup_event():
-    # Read private key from the environment variable, then check if the CLI parameter exists
-    zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
-    zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
-    if zmq_public_key is not None:
-        try:
-            validate_zmq_key(zmq_public_key)
-        except Exception as ex:
-            raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
+    # Extract config for uvicorn.
+    uvicorn_kwargs = parsed_config.pop("uvicorn", {})
+    # 'host' and 'port' from CLI parameters overrides the parameters from config.
+    uvicorn_kwargs["host"] = http_server_host or uvicorn_kwargs.get("host", default_http_server_host)
+    uvicorn_kwargs["port"] = http_server_port or uvicorn_kwargs.get("port", default_http_server_port)
 
-    # TODO: implement nicer exit with error reporting in case of failure
-    zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
-    if zmq_control_addr is None:
-        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONTROL", None)
-        if zmq_control_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS_CONTROL is deprecated: use environment variable "
-                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
-            )
-    if zmq_control_addr is None:
-        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
-        # TODO: remove in one of the future versions
-        zmq_control_addr = os.getenv("QSERVER_ZMQ_ADDRESS", None)
-        if zmq_control_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS is deprecated: use environment variable "
-                "QSERVER_ZMQ_CONTROL_ADDRESS to pass address of 0MQ control socket to HTTP Server."
-            )
-
-    zmq_info_addr = os.getenv("QSERVER_ZMQ_INFO_ADDRESS", None)
-    if zmq_info_addr is None:
-        # Support for deprecated environment variable QSERVER_ZMQ_ADDRESS.
-        # TODO: remove in one of the future versions
-        zmq_info_addr = os.getenv("QSERVER_ZMQ_ADDRESS_CONSOLE", None)
-        if zmq_info_addr is not None:
-            logger.warning(
-                "Environment variable QSERVER_ZMQ_ADDRESS_CONSOLE is deprecated: use environment variable "
-                "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
-            )
-
-    logger.info(
-        f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
-        f"Information 0MQ socket address: {zmq_info_addr}"
-    )
-
-    RM = REManagerAPI(
-        zmq_control_addr=zmq_control_addr,
-        zmq_info_addr=zmq_info_addr,
-        zmq_public_key=zmq_public_key,
-        request_fail_exceptions=False,
-        status_expiration_period=0.4,  # Make it smaller than default
-        console_monitor_max_lines=2000,
-    )
-    SR.set_RM(RM)
-
-    login_data = get_login_data()
-    SR.RM._user = login_data["user"]
-    SR.RM._user_group = login_data["user_group"]
-
-    SR.set_console_output_loader(CollectPublishedConsoleOutput(rm_ref=RM))
-    SR.console_output_loader.start()
-
-    # Import module with custom code
-    module_names_str = os.getenv("QSERVER_CUSTOM_MODULES", None)
-    if (module_names_str is None) and (os.getenv("QSERVER_CUSTOM_MODULE", None) is not None):
-        logger.warning(
-            "Environment variable QSERVER_CUSTOM_MODULE is deprecated and will be removed. "
-            "Use the environment variable QSERVER_CUSTOM_MODULES, which accepts a string with "
-            "comma or colon-separated module names."
-        )
-    module_names_str = module_names_str or os.getenv("QSERVER_CUSTOM_MODULE", None)
-
-    if module_names_str:
-        module_names = re.split(":|,", module_names_str)
-        logger.info("Custom modules to import (env. variable): %s", pprint.pformat(module_names))
-
-        # Import all listed custom modules
-        custom_code_modules = []
-        for name in module_names:
-            try:
-                logger.info("Importing custom module '%s' ...", name)
-                custom_code_modules.append(importlib.import_module(name.replace("-", "_")))
-                logger.info("Module '%s' was imported successfully.", name)
-            except Exception as ex:
-                logger.error("Failed to import custom instrument module '%s': %s", name, ex)
-        SR.set_custom_code_modules(custom_code_modules)
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    if config_path:
+        logger.info(f"Using configuration from {Path(config_path).absolute()}")
     else:
-        SR.set_custom_code_modules([])
+        logger.info("No configuration file was specified. Using CLI parameters and environment variables.")
 
-    # Include standard routers
-    app.include_router(core.router)
+    web_app = build_app(**kwargs)
+    print_admin_api_key_if_generated(web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"])
 
-    # Include custom routers
-    router_names_str = os.getenv("QSERVER_HTTP_CUSTOM_ROUTERS", None)
-    if router_names_str:
-        router_names = re.split(":|,", router_names_str)
-        logger.info("Custom routers to include (env. variable): %s", pprint.pformat(router_names))
-        routers_already_included = set()
-        for rn in router_names:
-            if rn and (rn not in routers_already_included):
-                logger.info("Including custom router '%s' ...", rn)
-                routers_already_included.add(rn)
-                add_router(app, module_and_router_name=rn)
-        logger.info("All custom routers are included successfully.")
+    logger.info("Starting Bluesky HTTP Server at {http_server_host}:{http_server_port} ...")
 
-    # The following message is used in unit tests to detect when HTTP server is started.
-    #   Unit tests need to be modified if this message is modified.
-    logger.info("Bluesky HTTP Server started successfully")
+    import uvicorn
+
+    uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    await SR.RM.close()
-    await SR.console_output_loader.stop()
+def print_admin_api_key_if_generated(web_app, host, port):
+    # host = host or "127.0.0.1"
+    # port = port or 8000
+    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
+
+    logger.info("APP settings: %s", pprint.pformat(dict(settings)))
+    authenticators = web_app.dependency_overrides.get(get_authenticators, get_authenticators)()
+    if settings.allow_anonymous_access:
+        print(
+            "The server is running in 'public' mode, permitting open, anonymous access\n"
+            "for reading. Any data that is not specifically controlled with an access\n"
+            "policy will be visible to anyone who can connect to this server.\n",
+            file=sys.stderr,
+        )
+    if (not authenticators) and settings.single_user_api_key_generated:
+        print(
+            "Navigate a web browser to:\n\n"
+            f"http://{host}:{port}?api_key={settings.single_user_api_key}\n\n"
+            "or connect an HTTP client to:\n\n"
+            f"http://{host}:{port}/api?api_key={settings.single_user_api_key}\n",
+            file=sys.stderr,
+        )
+
+
+def app_factory():
+    """
+    Return an ASGI app instance.
+
+    Use a configuration file at the path specified by the environment variable
+    QSERVER_HTTP_SERVER_CONFIG or, if unset, at the default path "./config.yml".
+
+    This is intended to be used for horizontal deployment (using gunicorn, for
+    example) where only a module and instance or factory can be specified.
+    """
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("bluesky_httpserver").setLevel("INFO")
+
+    config_path = os.getenv("QSERVER_HTTP_SERVER_CONFIG", None)
+
+    from .config import construct_build_app_kwargs, parse_configs
+
+    try:
+        parsed_config = parse_configs(config_path) if config_path else {}
+    except Exception as ex:
+        logger.error(ex)
+        raise
+
+    # This config was already validated when it was parsed. Do not re-validate.
+    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    if config_path:
+        logger.info(f"Using configuration from {Path(config_path).absolute()}")
+    else:
+        logger.info("No configuration file was specified. Using environment variables.")
+
+    web_app = build_app(**kwargs)
+    uvicorn_config = parsed_config.get("uvicorn", {})
+    print_admin_api_key_if_generated(web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port"))
+
+    return web_app
+
+
+def __getattr__(name):
+    """
+    This supports tiled.server.app.app by creating app on demand.
+    """
+    if name == "app":
+        try:
+            return app_factory()
+        except Exception as err:
+            raise Exception("Failed to create app.") from err
+    raise AttributeError(name)

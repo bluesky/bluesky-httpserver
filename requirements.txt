@@ -1,7 +1,13 @@
+alembic
 bluesky-queueserver
 bluesky-queueserver-api
 fastapi
+ldap3
+orjson
+pamela
+python-jose
 pyzmq
+sqlalchemy
+starlette
 typing-extensions;python_version<'3.8'
 uvicorn
-starlette
