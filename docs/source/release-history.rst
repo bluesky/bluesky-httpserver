@@ -2,6 +2,35 @@
 Release History
 ===============
 
+v0.0.5 (2022-06-24)
+===================
+
+Added
+-----
+
+- Support for custom routers. The list of routers is provided by environment variable ``QSERVER_HTTP_CUSTOM_ROUTERS``.
+  A router is specified as ``<module_name>.<router_name>``. Multiple routers are separated by colon or comma, e.g.
+  ``QSERVER_HTTP_CUSTOM_ROUTERS=module.one.router:module.two.router:module.three.router``. The server fails to start
+  if loading of any of the listed routers fails.
+
+- Initial implementation of basic authentication. The authentication API may change in future releases.
+
+Changed
+-------
+
+- Implemented support for standard environment variable names. Old names are deprecated and will be removed in the future.
+  The following environment variables are supported:
+
+  - ``QSERVER_ZMQ_CONTROL_ADDRESS`` - address of the control socket of RE Manager;
+  - ``QSERVER_ZMQ_INFO_ADDRESS`` - address of the socket used for publishing console output;
+  - ``QSERVER_ZMQ_PUBLIC_KEY`` - public key for encrypted communication with RE Manager.
+
+- The server is now started a ``uvicorn bluesky_httpserver.server:app --host localhost --port 60610``.
+
+- Prefix ``/api`` is added to all REST API, e.g. ``/status`` is now ``/api/status``.
+
+- Changed ``/queue/item/get``, ``/permissions/get``, ``/task/status`` and ``/task/result`` API from ``POST`` to ``GET``.
+
 
 v0.0.4 (2022-04-05)
 ===================
