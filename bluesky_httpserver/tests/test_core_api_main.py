@@ -1501,3 +1501,26 @@ def test_http_script_upload_function_execute_01(re_manager, fastapi_server, test
     resp10 = request_to_json("post", "/environment/close")
     assert resp10["success"] is True
     assert wait_for_environment_to_be_closed(10)
+
+
+def test_http_lock_unlock_01(re_manager, fastapi_server):  # noqa F811
+    """
+    Basic test for '/lock', '/lock_info' and '/unlock' API.
+    """
+    lock_key = "valid-lock-key"
+
+    resp1 = request_to_json("post", "/lock", json={"environment": True, "lock_key": lock_key})
+    assert resp1["success"] is True, str(resp1)
+    assert resp1["msg"] == ""
+
+    resp2 = request_to_json("get", "/lock/info", json={"lock_key": lock_key})
+    assert resp2["success"] is True, str(resp2)
+    assert resp2["msg"] == ""
+    lock_info = resp2["lock_info"]
+    assert lock_info["environment"] is True
+    assert lock_info["queue"] is False
+
+    resp3 = request_to_json("post", "/unlock", json={"lock_key": lock_key})
+    assert resp3["success"] is True, str(resp3)
+    assert resp3["msg"] == ""
+
