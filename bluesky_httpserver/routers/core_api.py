@@ -777,6 +777,51 @@ async def task_result(payload: dict, principal=Security(get_current_principal, s
     return msg
 
 
+@router.post("/lock")
+async def lock_handler(
+    payload: dict,
+    principal=Security(get_current_principal, scopes=["write:lock"]),
+):
+    """
+    Lock RE Manager.
+    """
+    try:
+        msg = await SR.RM.lock(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
+@router.post("/unlock")
+async def unlock_handler(
+    payload: dict,
+    principal=Security(get_current_principal, scopes=["write:lock"]),
+):
+    """
+    Unlock RE Manager.
+    """
+    try:
+        msg = await SR.RM.unlock(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
+@router.get("/lock/info")
+async def lock_info_handler(
+    payload: dict,
+    principal=Security(get_current_principal, scopes=["read:lock"]),
+):
+    """
+    Unlock RE Manager.
+    """
+    try:
+        msg = await SR.RM.lock_info(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
 @router.post("/manager/stop")
 async def manager_stop_handler(
     payload: dict = {}, principal=Security(get_current_principal, scopes=["write:unsafe"])
