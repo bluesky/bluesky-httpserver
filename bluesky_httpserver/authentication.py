@@ -246,6 +246,7 @@ def get_current_principal(
                     "read:monitor",
                     "read:console",
                     "read:status",
+                    "read:lock",
                     "write:queue:edit",
                     "write:queue:control",
                     "write:manager:control",
@@ -255,6 +256,7 @@ def get_current_principal(
                     "write:permissions",
                     "write:scripts",
                     "write:config",
+                    "write:lock",
                     "write:unsafe",
                 }
                 ev_scopes = os.getenv("QSERVER_HTTP_SERVER_ADMIN_SCOPES", None)
