@@ -793,7 +793,7 @@ async def lock_handler(
 
 
 @router.post("/unlock")
-async def lock_handler(
+async def unlock_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:lock"]),
 ):
@@ -808,7 +808,7 @@ async def lock_handler(
 
 
 @router.get("/lock/info")
-async def lock_handler(
+async def lock_info_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["read:lock"]),
 ):

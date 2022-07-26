@@ -1523,4 +1523,3 @@ def test_http_lock_unlock_01(re_manager, fastapi_server):  # noqa F811
     resp3 = request_to_json("post", "/unlock", json={"lock_key": lock_key})
     assert resp3["success"] is True, str(resp3)
     assert resp3["msg"] == ""
-
