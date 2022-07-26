@@ -494,7 +494,9 @@ API that are implemented, but not listed in this document:
 - ``/api/function/execute`` - access to ``function_execute`` API
 - ``/api/task/status`` - access to ``task_status`` API
 - ``/api/task/result`` - access to ``task_result`` API
-
+- ``/api/lock`` - lock RE Manager
+- ``/api/lock/info`` - load RE Manager lock status, optionally verify a lock key
+- ``/api/unlock`` - unlock RE Manager
 
 Streaming Console Output of RE Manager
 --------------------------------------
