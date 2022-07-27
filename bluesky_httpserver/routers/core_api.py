@@ -76,12 +76,14 @@ async def queue_get_handler(payload: dict = {}, principal=Security(get_current_p
 
 
 @router.post("/queue/clear")
-async def queue_clear_handler(principal=Security(get_current_principal, scopes=["write:queue:edit"])):
+async def queue_clear_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:edit"])
+):
     """
     Clear the plan queue.
     """
     try:
-        msg = await SR.RM.queue_clear()
+        msg = await SR.RM.queue_clear(**payload)
     except Exception:
         process_exception()
     return msg
