@@ -411,12 +411,14 @@ async def history_get_handler(
 
 
 @router.post("/history/clear")
-async def history_clear_handler(principal=Security(get_current_principal, scopes=["write:history:edit"])):
+async def history_clear_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:history:edit"])
+):
     """
     Clear plan history.
     """
     try:
-        msg = await SR.RM.history_clear()
+        msg = await SR.RM.history_clear(**payload)
     except Exception:
         process_exception()
 
