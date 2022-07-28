@@ -76,46 +76,54 @@ async def queue_get_handler(payload: dict = {}, principal=Security(get_current_p
 
 
 @router.post("/queue/clear")
-async def queue_clear_handler(principal=Security(get_current_principal, scopes=["write:queue:edit"])):
+async def queue_clear_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:edit"])
+):
     """
     Clear the plan queue.
     """
     try:
-        msg = await SR.RM.queue_clear()
+        msg = await SR.RM.queue_clear(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/queue/start")
-async def queue_start_handler(principal=Security(get_current_principal, scopes=["write:queue:control"])):
+async def queue_start_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:control"])
+):
     """
     Start execution of the loaded queue. Additional runs can be added to the queue while
     it is executed. If the queue is empty, then nothing will happen.
     """
     try:
-        msg = await SR.RM.queue_start()
+        msg = await SR.RM.queue_start(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/queue/stop")
-async def queue_stop(principal=Security(get_current_principal, scopes=["write:queue:control"])):
+async def queue_stop(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:control"])
+):
     """
     Activate the sequence of stopping the queue. The currently running plan will be completed,
     but the next plan will not be started. The request will be rejected if no plans are currently
     running
     """
     try:
-        msg = await SR.RM.queue_stop()
+        msg = await SR.RM.queue_stop(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/queue/stop/cancel")
-async def queue_stop_cancel(principal=Security(get_current_principal, scopes=["write:queue:control"])):
+async def queue_stop_cancel(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:control"])
+):
     """
     Cancel pending request to stop the queue while the current plan is still running.
     It may be useful if the `/queue/stop` request was issued by mistake or the operator
@@ -125,7 +133,7 @@ async def queue_stop_cancel(principal=Security(get_current_principal, scopes=["w
     requests are pending.
     """
     try:
-        msg = await SR.RM.queue_stop_cancel()
+        msg = await SR.RM.queue_stop_cancel(**payload)
     except Exception:
         process_exception()
     return msg
@@ -411,12 +419,14 @@ async def history_get_handler(
 
 
 @router.post("/history/clear")
-async def history_clear_handler(principal=Security(get_current_principal, scopes=["write:history:edit"])):
+async def history_clear_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:history:edit"])
+):
     """
     Clear plan history.
     """
     try:
-        msg = await SR.RM.history_clear()
+        msg = await SR.RM.history_clear(**payload)
     except Exception:
         process_exception()
 
@@ -424,38 +434,44 @@ async def history_clear_handler(principal=Security(get_current_principal, scopes
 
 
 @router.post("/environment/open")
-async def environment_open_handler(principal=Security(get_current_principal, scopes=["write:manager:control"])):
+async def environment_open_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:manager:control"])
+):
     """
     Creates RE environment: creates RE Worker process, starts and configures Run Engine.
     """
     try:
-        msg = await SR.RM.environment_open()
+        msg = await SR.RM.environment_open(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/environment/close")
-async def environment_close_handler(principal=Security(get_current_principal, scopes=["write:manager:control"])):
+async def environment_close_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:manager:control"])
+):
     """
     Orderly closes of RE environment. The command returns success only if no plan is running,
     i.e. RE Manager is in the idle state. The command is rejected if a plan is running.
     """
     try:
-        msg = await SR.RM.environment_close()
+        msg = await SR.RM.environment_close(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/environment/destroy")
-async def environment_destroy_handler(principal=Security(get_current_principal, scopes=["write:manager:control"])):
+async def environment_destroy_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:manager:control"])
+):
     """
     Destroys RE environment by killing RE Worker process. This is a last resort command which
     should be made available only to expert level users.
     """
     try:
-        msg = await SR.RM.environment_destroy()
+        msg = await SR.RM.environment_destroy(**payload)
     except Exception:
         process_exception()
     return msg
@@ -477,48 +493,56 @@ async def re_pause_handler(
 
 
 @router.post("/re/resume")
-async def re_resume_handler(principal=Security(get_current_principal, scopes=["write:plan:control"])):
+async def re_resume_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:plan:control"])
+):
     """
     Run Engine: resume execution of a paused plan
     """
     try:
-        msg = await SR.RM.re_resume()
+        msg = await SR.RM.re_resume(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/re/stop")
-async def re_stop_handler(principal=Security(get_current_principal, scopes=["write:plan:control"])):
+async def re_stop_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:plan:control"])
+):
     """
     Run Engine: stop execution of a paused plan
     """
     try:
-        msg = await SR.RM.re_stop()
+        msg = await SR.RM.re_stop(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/re/abort")
-async def re_abort_handler(principal=Security(get_current_principal, scopes=["write:plan:control"])):
+async def re_abort_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:plan:control"])
+):
     """
     Run Engine: abort execution of a paused plan
     """
     try:
-        msg = await SR.RM.re_abort()
+        msg = await SR.RM.re_abort(**payload)
     except Exception:
         process_exception()
     return msg
 
 
 @router.post("/re/halt")
-async def re_halt_handler(principal=Security(get_current_principal, scopes=["write:plan:control"])):
+async def re_halt_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:plan:control"])
+):
     """
     Run Engine: halt execution of a paused plan
     """
     try:
-        msg = await SR.RM.re_halt()
+        msg = await SR.RM.re_halt(**payload)
     except Exception:
         process_exception()
     return msg
