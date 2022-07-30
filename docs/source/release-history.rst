@@ -2,6 +2,15 @@
 Release History
 ===============
 
+v0.0.6 (2022-07-30)
+===================
+
+Added
+-----
+
+- New endpoints: ``/lock`` (POST), ``/lock/info`` (GET), ``/unlock`` (POST).
+
+
 v0.0.5 (2022-06-24)
 ===================
 
