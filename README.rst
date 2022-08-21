@@ -2,11 +2,24 @@
 bluesky-httpserver
 ==================
 
-.. image:: https://img.shields.io/pypi/v/bluesky-queueserver.svg
+.. image:: https://img.shields.io/pypi/v/bluesky-httpserver.svg
         :target: https://pypi.python.org/pypi/bluesky-httpserver
 
-.. image:: https://img.shields.io/codecov/c/github/bluesky/bluesky-queueserve
-        :target: https://codecov.io/gh/bluesky/bluesky-httpserver
+.. image:: https://img.shields.io/conda/vn/conda-forge/bluesky-httpserver
+        :target: https://anaconda.org/conda-forge/bluesky-httpserver
+
+..
+  .. image:: https://img.shields.io/codecov/c/github/bluesky/bluesky-httpserver
+          :target: https://codecov.io/gh/bluesky/bluesky-httpserver
+
+.. image:: https://img.shields.io/github/commits-since/bluesky/bluesky-httpserver/latest
+        :target: https://github.com/bluesky/bluesky-httpserver
+
+.. image:: https://img.shields.io/pypi/dm/bluesky-httpserver?label=PyPI%20downloads
+        :target: https://pypi.python.org/pypi/bluesky-httpserver
+
+.. image:: https://img.shields.io/conda/dn/conda-forge/bluesky-httpserver?label=Conda-Forge%20downloads
+        :target: https://anaconda.org/conda-forge/bluesky-httpserver
 
 
 Server for queueing plans
