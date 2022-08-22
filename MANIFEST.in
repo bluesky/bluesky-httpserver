@@ -4,6 +4,11 @@ include LICENSE
 include README.rst
 include requirements.txt
 
+include bluesky_httpserver/database/alembic.ini.template
+include bluesky_httpserver/database/migrations/env.py
+include bluesky_httpserver/database/migrations/script.py.mako
+include bluesky_httpserver/database/migrations/versions/*.py
+
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 
@@ -11,6 +16,7 @@ recursive-include docs *.rst conf.py Makefile make.bat
 
 include versioneer.py
 include bluesky_httpserver/_version.py
+include bluesky_httpserver/config_schemas/*.yml
 
 # If including data files in the package, add them like:
 # include path/to/data_file

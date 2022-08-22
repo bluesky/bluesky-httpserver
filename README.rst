@@ -21,6 +21,8 @@ bluesky-httpserver
 .. image:: https://img.shields.io/conda/dn/conda-forge/bluesky-httpserver?label=Conda-Forge%20downloads
         :target: https://anaconda.org/conda-forge/bluesky-httpserver
 
+THE FOLLOWING IS A COPY OF THE ORIGINAL README.RST FROM BLUESKY-QUEUESERVER PROJECT. PROPER DOCUMENTATION
+FOR BLUESKY-HTTPSERVER IS COMING SOON.
 
 Server for queueing plans
 
