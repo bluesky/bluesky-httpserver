@@ -235,7 +235,7 @@ def get_current_principal(
                         headers=headers_for_401,
                     )
         else:
-            # Tiled is in a "single user" mode with only one API key.
+            # HTTP Server is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
                 default_admin_scopes = {
@@ -247,6 +247,7 @@ def get_current_principal(
                     "read:console",
                     "read:status",
                     "read:lock",
+                    "read:testing",
                     "write:queue:edit",
                     "write:queue:control",
                     "write:manager:control",
@@ -257,7 +258,8 @@ def get_current_principal(
                     "write:scripts",
                     "write:config",
                     "write:lock",
-                    "write:unsafe",
+                    "write:manager:stop",
+                    "write:testing",
                 }
                 ev_scopes = os.getenv("QSERVER_HTTP_SERVER_ADMIN_SCOPES", None)
                 scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_admin_scopes

@@ -2,6 +2,7 @@ import io
 from fastapi import APIRouter, File, UploadFile, Form, Request, Security
 import pprint
 from typing import Optional
+import asyncio
 
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
@@ -848,7 +849,7 @@ async def lock_info_handler(
 
 @router.post("/manager/stop")
 async def manager_stop_handler(
-    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:unsafe"])
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:manager:stop"])
 ):
     """
     Stops of RE Manager. RE Manager will not be restarted after it is stoped.
@@ -861,13 +862,33 @@ async def manager_stop_handler(
 
 
 @router.post("/test/manager/kill")
-async def test_manager_kill_handler(principal=Security(get_current_principal, scopes=["write:unsafe"])):
+async def test_manager_kill_handler(principal=Security(get_current_principal, scopes=["write:testing"])):
     """
     The command stops event loop of RE Manager process. Used for testing of RE Manager
     stability and handling of communication timeouts.
     """
     try:
         msg = await SR.RM.send_request(method="manager_kill")
+    except Exception:
+        process_exception()
+    return msg
+
+
+@router.get("/test/server/sleep")
+async def test_server_sleep_handler(
+    payload: dict, principal=Security(get_current_principal, scopes=["read:testing"])
+):
+    """
+    The API is intended for testing how the client applications and API libraries handle timeouts.
+    The handler waits for the requested number of seconds and then returns the message indicating success.
+    The API call is safe, since it does not block the event loop or calls to RE Manager
+    """
+    try:
+        if "time" not in payload:
+            raise IndexError(f"The required parameter 'time' is missing in the API call: {payload}")
+        sleep_time = payload["time"]
+        await asyncio.sleep(sleep_time)
+        msg = {"success": True, "msg": ""}
     except Exception:
         process_exception()
     return msg
