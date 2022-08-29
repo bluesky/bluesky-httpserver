@@ -513,6 +513,8 @@ API that are implemented, but not listed in this document:
 - ``/api/lock/info`` - load RE Manager lock status, optionally verify a lock key
 - ``/api/unlock`` - unlock RE Manager
 
+- ``/test/server/sleep`` - causes server to reply after the specified delay.
+
 Streaming Console Output of RE Manager
 --------------------------------------
 

@@ -251,7 +251,7 @@ def build_app(authentication=None, server_settings=None):
                 logger.info(f"Connected to existing database at {redacted_url}.")
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
             db = SessionLocal()
-            for admin in authentication.get("tiled_admins", []):
+            for admin in authentication.get("qserver_admins", []):
                 logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
                 make_admin_by_identity(
                     db,
