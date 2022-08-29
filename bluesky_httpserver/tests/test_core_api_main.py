@@ -1523,3 +1523,18 @@ def test_http_lock_unlock_01(re_manager, fastapi_server):  # noqa F811
     resp3 = request_to_json("post", "/unlock", json={"lock_key": lock_key})
     assert resp3["success"] is True, str(resp3)
     assert resp3["msg"] == ""
+
+
+def test_http_server_sleep_01(fastapi_server):  # noqa F811
+    """
+    Basic test for '/test/server/sleep' API.
+    """
+    t = ttime.time()
+    resp1 = request_to_json("get", "/test/server/sleep", json={"time": 2})
+    assert resp1["success"] is True, str(resp1)
+    assert resp1["msg"] == ""
+    assert ttime.time() - t >= 2
+
+    resp2 = request_to_json("get", "/test/server/sleep", json={})
+    assert "success" not in resp2
+    assert "The required parameter 'time' is missing in the API call" in resp2["detail"]

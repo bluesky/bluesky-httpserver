@@ -62,7 +62,7 @@ properties:
                     args:
                       service: "custom_service"
                     ```
-      tiled_admins:
+      qserver_admins:
         type: array
         items:
           type: object
