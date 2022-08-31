@@ -4,6 +4,7 @@ This module handles server configuration.
 See profiles.py for client configuration.
 """
 import copy
+from datetime import timedelta
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -53,6 +54,10 @@ def construct_build_app_kwargs(
             authenticator = authenticator_class(**authenticator.get("args", {}))
             # Replace "package.module:Object" with live instance.
             auth_spec["providers"][i]["authenticator"] = authenticator
+        # The following parameters are integers, which should be changed to 'timedelta'
+        for k in ("access_token_max_age", "refresh_token_max_age", "session_max_age"):
+            if k in auth_spec:
+                auth_spec[k] = timedelta(seconds=auth_spec[k])
 
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
