@@ -349,6 +349,9 @@ class LDAPAuthenticator:
         Enable/disable TLS if ``use_ssl`` is False. By default TLS is enabled. It should not be disabled
         in production systems.
 
+    timeout: float
+        Timeout used for for connecting and reading from LDAP server. Default: 60.
+
     bind_dn_template: list or str
         Template from which to construct the full dn
         when authenticating to LDAP. ``{username}`` is replaced
@@ -505,6 +508,7 @@ class LDAPAuthenticator:
         *,
         use_ssl=False,
         use_tls=True,
+        timeout=60,
         bind_dn_template=None,
         allowed_groups=None,
         valid_username_regex=r"^[a-z][.a-z0-9_-]*$",
@@ -523,6 +527,7 @@ class LDAPAuthenticator:
     ):
         self.use_ssl = use_ssl
         self.use_tls = use_tls
+        self.timeout = timeout
         self.bind_dn_template = bind_dn_template
         self.allowed_groups = allowed_groups
         self.valid_username_regex = valid_username_regex
@@ -635,6 +640,7 @@ class LDAPAuthenticator:
 
         import ldap3
 
+        print(f"Creating server pool ...")  ##
         server_pool = ldap3.ServerPool(None, ldap3.RANDOM)
         for address in self.server_address_list:
             if re.search(r".+:\d+", address):
@@ -647,12 +653,14 @@ class LDAPAuthenticator:
                 server_addr = address
                 server_port = self.server_port
 
-            server = ldap3.Server(server_addr, port=server_port, use_ssl=self.use_ssl)
+            server = ldap3.Server(server_addr, port=server_port, use_ssl=self.use_ssl, connect_timeout=self.timeout)
             server_pool.add(server)
 
         auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
-        conn = ldap3.Connection(server_pool, user=userdn, password=password, auto_bind=auto_bind)
+        print(f"Establishing connection ...")  ##
+        conn = ldap3.Connection(server_pool, user=userdn, password=password, auto_bind=auto_bind, receive_timeout=self.timeout)
+        print(f"Connection is ready ...")  ##
         return conn
 
     def get_user_attributes(self, conn, userdn):

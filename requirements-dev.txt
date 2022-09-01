@@ -3,15 +3,13 @@
 black
 codecov
 coverage
+fastapi[all]
 flake8
 pytest
 pytest-xprocess
 sphinx
-# These are dependencies of various sphinx extensions for documentation.
 ipython
 numpydoc
 sphinx
 sphinx_rtd_theme
-# Extra dependencies for development
-fastapi[all]
 requests
