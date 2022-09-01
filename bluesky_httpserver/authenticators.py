@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterable
 from fastapi import APIRouter, Request
 from jose import JWTError, jwk, jwt
 import logging
@@ -535,7 +536,19 @@ class LDAPAuthenticator:
         self.auth_state_attributes = auth_state_attributes if auth_state_attributes else []
         self.use_lookup_dn_username = use_lookup_dn_username
 
-        self.server_address = server_address
+        if isinstance(server_address, str):
+            server_address_list = [server_address]
+        elif isinstance(server_address, Iterable):
+            server_address_list = list(server_address)
+        else:
+            raise TypeError(
+                f"Unsupported type of `server_address` (list): server_address={server_address} "
+                f"type(server_address)={type(server_address)}"
+            )
+        if not server_address_list:
+            raise ValueError("No servers are specified: 'server_address' is an empty list")
+
+        self.server_address_list = server_address_list
         self.server_port = server_port if server_port is not None else self._server_port_default()
 
     def _server_port_default(self):
@@ -619,10 +632,24 @@ class LDAPAuthenticator:
 
         import ldap3
 
-        server = ldap3.Server(self.server_address, port=self.server_port, use_ssl=self.use_ssl)
+        server_pool = ldap3.ServerPool(None, ldap3.RANDOM)
+        for address in self.server_address_list:
+            if re.search(r".+:\d+", address):
+                # Port is found in the address
+                address_split = address.split(":")
+                server_addr = ":".join(address_split[:-1])
+                server_port = int(address_split[-1])
+            else:
+                # Use the default port
+                server_addr = address
+                server_port = self.server_port
+
+            server = ldap3.Server(server_addr, port=server_port, use_ssl=self.use_ssl)
+            server_pool.add(server)
+
         auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
-        conn = ldap3.Connection(server, user=userdn, password=password, auto_bind=auto_bind)
+        conn = ldap3.Connection(server_pool, user=userdn, password=password, auto_bind=auto_bind)
         return conn
 
     def get_user_attributes(self, conn, userdn):
@@ -699,7 +726,7 @@ class LDAPAuthenticator:
                     is_bound = True
                 else:
                     is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
-                    
+
             msg = msg.format(username=username, userdn=userdn, is_bound=is_bound)
             logger.debug(msg)
             if is_bound:
