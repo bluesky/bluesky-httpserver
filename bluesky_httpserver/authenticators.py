@@ -330,8 +330,11 @@ class LDAPAuthenticator:
 
     Parameters
     ----------
-    server_address: str
-        Address of the LDAP server to contact.
+    server_address: str or list(str)
+        Address(es) of the LDAP server(s) to contact. A string value may represent a single 
+        server, a list of strings may represent one or more servers. If a server address
+        includes port, then the value of ``server_port`` is ignored, otherwise ``server_port``
+        or the default port is used to access the server.
 
         Could be an IP address or hostname.
     server_port: int or None
