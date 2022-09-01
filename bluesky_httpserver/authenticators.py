@@ -695,9 +695,11 @@ class LDAPAuthenticator:
                     exc_msg=exc.args[0] if exc.args else "",
                 )
             else:
-                is_bound = (
-                    True if conn.bound else await asyncio.get_running_loop().run_in_executor(None, conn.bind)
-                )
+                if conn.bound:
+                    is_bound = True
+                else:
+                    is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
+                    
             msg = msg.format(username=username, userdn=userdn, is_bound=is_bound)
             logger.debug(msg)
             if is_bound:
