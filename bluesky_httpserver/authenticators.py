@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterable
 from fastapi import APIRouter, Request
+import functools
 from jose import JWTError, jwk, jwt
 import logging
 import re
@@ -606,12 +607,16 @@ class LDAPAuthenticator:
                 attributes=self.user_attribute,
             )
         )
-        conn.search(
+
+        search_func = functools.partial(
+            conn.search,
             search_base=self.user_search_base,
             search_scope=ldap3.SUBTREE,
             search_filter=search_filter,
             attributes=[self.lookup_dn_user_dn_attribute],
         )
+        await asyncio.get_running_loop().run_in_executor(None, search_func)
+
         response = conn.response
         if len(response) == 0 or "attributes" not in response[0].keys():
             msg = "No entry found for user '{username}' " "when looking up attribute '{attribute}'"
@@ -678,10 +683,13 @@ class LDAPAuthenticator:
         )
         return conn
 
-    def get_user_attributes(self, conn, userdn):
+    async def get_user_attributes(self, conn, userdn):
         attrs = {}
         if self.auth_state_attributes:
-            found = conn.search(userdn, "(objectClass=*)", attributes=self.auth_state_attributes)
+            search_func = functools.partial(
+                conn.search, userdn, "(objectClass=*)", attributes=self.auth_state_attributes
+            )
+            found = await asyncio.get_running_loop().run_in_executor(None, search_func)
             if found:
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
@@ -765,12 +773,16 @@ class LDAPAuthenticator:
 
         if self.search_filter:
             search_filter = self.search_filter.format(userattr=self.user_attribute, username=username)
-            conn.search(
+
+            search_func = functools.partial(
+                conn.search,
                 search_base=self.user_search_base,
                 search_scope=ldap3.SUBTREE,
                 search_filter=search_filter,
                 attributes=self.attributes,
             )
+            await asyncio.get_running_loop().run_in_executor(None, search_func)
+
             n_users = len(conn.response)
             if n_users == 0:
                 msg = "User with '{userattr}={username}' not found in directory"
@@ -788,14 +800,18 @@ class LDAPAuthenticator:
                 group_filter = "(|" "(member={userdn})" "(uniqueMember={userdn})" "(memberUid={uid})" ")"
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]
-                found = conn.search(
+
+                search_func = functools.partial(
+                    conn.search,
                     group,
                     search_scope=ldap3.BASE,
                     search_filter=group_filter,
                     attributes=group_attributes,
                 )
+                found = await asyncio.get_running_loop().run_in_executor(None, search_func)
                 if found:
                     break
+
             if not found:
                 # If we reach here, then none of the groups matched
                 msg = "username:{username} User not in any of the allowed groups"
@@ -805,7 +821,7 @@ class LDAPAuthenticator:
         if not self.use_lookup_dn_username:
             username = username_saved
 
-        user_info = self.get_user_attributes(conn, userdn)
+        user_info = await self.get_user_attributes(conn, userdn)
         if user_info:
             logger.debug("username:%s attributes:%s", username, user_info)
             return {"name": username, "auth_state": user_info}
