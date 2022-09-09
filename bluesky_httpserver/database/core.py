@@ -79,9 +79,10 @@ def create_default_roles(engine):
                 "write:config",
                 "write:lock",
                 "write:manager_stop",
-                "write:testing" "admin:apikeys",
-                "read:principals",
-                "metrics",
+                "write:testing",
+                "admin:apikeys",
+                "admin:read:principals",
+                "admin:metrics",
             ],
         ),
     )

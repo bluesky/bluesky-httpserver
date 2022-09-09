@@ -474,7 +474,7 @@ base_authentication_router = APIRouter()
 def principal_list(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Security(get_current_principal, scopes=["admin:read:principals"]),
 ):
     "List Principals (users and services)."
     # TODO Pagination
@@ -498,7 +498,7 @@ def principal(
     request: Request,
     uuid: uuid_module.UUID,
     settings: BaseSettings = Depends(get_settings),
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Security(get_current_principal, scopes=["admin:read:principals"]),
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
