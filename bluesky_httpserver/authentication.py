@@ -43,6 +43,8 @@ from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
+    get_api_access_manager,
+    get_resource_access_manager,
     get_base_url,
 )
 
@@ -176,6 +178,8 @@ def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),  ##
 ):
     """
     Get current Principal from:
@@ -237,33 +241,9 @@ def get_current_principal(
         else:
             # HTTP Server is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = SpecialUsers.admin
-                default_admin_scopes = {
-                    "read:queue",
-                    "read:history",
-                    "read:resources",
-                    "read:config",
-                    "read:monitor",
-                    "read:console",
-                    "read:status",
-                    "read:lock",
-                    "read:testing",
-                    "write:queue:edit",
-                    "write:queue:control",
-                    "write:manager:control",
-                    "write:plan:control",
-                    "write:execute",
-                    "write:history:edit",
-                    "write:permissions",
-                    "write:scripts",
-                    "write:config",
-                    "write:lock",
-                    "write:manager:stop",
-                    "write:testing",
-                }
-                ev_scopes = os.getenv("QSERVER_HTTP_SERVER_ADMIN_SCOPES", None)
-                scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_admin_scopes
-
+                principal = SpecialUsers.single_user
+                user_info = api_access_manager.get_user_info(principal.value)
+                scopes = user_info["scopes"]
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key", headers=headers_for_401)
         # If we made it to this point, we have a valid API key.
@@ -296,9 +276,8 @@ def get_current_principal(
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            default_public_scopes = {"read:status"}
-            ev_scopes = os.getenv("QSERVER_HTTP_SERVER_PUBLIC_SCOPES", None)
-            scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_public_scopes
+            user_info = api_access_manager.get_user_info(principal.value)
+            scopes = user_info["scopes"]
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
@@ -326,7 +305,7 @@ def get_current_principal(
     return principal
 
 
-def create_session(settings, identity_provider, id):
+def create_session(settings, identity_provider, id, roles):
     with get_sessionmaker(settings.database_settings)() as db:
         # Have we seen this Identity before?
         identity = (
@@ -335,17 +314,23 @@ def create_session(settings, identity_provider, id):
             .filter(orm.Identity.provider == identity_provider)
             .first()
         )
+        print(f"identity={identity!r}")  ##
         now = utcnow()
         if identity is None:
             # We have not. Make a new Principal and link this new Identity to it.
             # TODO Confirm that the user intends to create a new Principal here.
             # Give them the opportunity to link an existing Principal instead.
-            principal = create_user(db, identity_provider, id)
+            principal = create_user(db, identity_provider, id, roles)
             (new_identity,) = principal.identities
             new_identity.latest_login = now
         else:
             identity.latest_login = now
             principal = identity.principal
+            # Update roles if necessary
+            if set(roles) != set(principal.roles):
+                principal.roles.clear()
+                principal.roles.append(roles)
+        print(f"principal={principal!r}")  ##
         session = orm.Session(
             principal_id=principal.id,
             expiration_time=utcnow() + settings.session_max_age,

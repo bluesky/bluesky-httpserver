@@ -59,6 +59,20 @@ def construct_build_app_kwargs(
             if k in auth_spec:
                 auth_spec[k] = timedelta(seconds=auth_spec[k])
 
+        api_access_spec = config.get("api_access_control", {}) or {}
+        import_path = api_access_spec.get("manager", "bluesky_httpserver.authorization:BasicAPIAccessControl")
+        api_access_manager_class = import_object(import_path, accept_live_object=True)
+        api_access_manager = api_access_manager_class(**api_access_spec.get("args", {}))
+        api_access_spec["manager_object"] = api_access_manager
+
+        resource_access_spec = config.get("resource_access_control", {}) or {}
+        import_path = resource_access_spec.get(
+            "manager", "bluesky_httpserver.authorization:DefaultResourceAccessControl"
+        )
+        resource_access_manager_class = import_object(import_path, accept_live_object=True)
+        resouce_access_manager = resource_access_manager_class(**resource_access_spec.get("args", {}))
+        resource_access_spec["manager_object"] = resouce_access_manager
+
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["database"] = config.get("database", {})
@@ -80,6 +94,8 @@ def construct_build_app_kwargs(
         server_settings["metrics"] = metrics
     return {
         "authentication": auth_spec,
+        "api_access": api_access_spec,
+        "resource_access": resource_access_spec,
         "server_settings": server_settings,
     }
 

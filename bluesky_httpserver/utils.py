@@ -10,6 +10,8 @@ import os
 import sys
 import time
 
+from .authorization import _DEFAULT_USERNAME_SINGLE_USER, _DEFAULT_USERNAME_PUBLIC
+
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
 
@@ -163,13 +165,25 @@ def prepend_to_sys_path(*paths):
 
 def get_authenticators():
     raise NotImplementedError(
-        "This should be overridden via dependency_overrides. " "See tiled.server.app.build_app()."
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
+    )
+
+
+def get_resource_access_manager():
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
+    )
+
+
+def get_api_access_manager():
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
     )
 
 
 class SpecialUsers(str, enum.Enum):
-    public = "public"
-    admin = "admin"
+    public = _DEFAULT_USERNAME_PUBLIC
+    single_user = _DEFAULT_USERNAME_SINGLE_USER
 
 
 def safe_json_dump(content):

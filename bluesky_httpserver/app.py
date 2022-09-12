@@ -18,7 +18,15 @@ from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
 from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
-from .utils import get_login_data, get_authenticators, record_timing, API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME
+from .utils import (
+    get_login_data,
+    get_authenticators,
+    get_api_access_manager,
+    get_resource_access_manager,
+    record_timing,
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+)
 
 from .routers import core_api
 from .settings import get_settings
@@ -104,7 +112,7 @@ def add_router(app, *, module_and_router_name):
         raise ImportError(f"Failed to import router {module_and_router_name!r}: {ex}") from ex
 
 
-def build_app(authentication=None, server_settings=None):
+def build_app(authentication=None, api_access=None, resource_access=None, server_settings=None):
     """
     Build application
 
@@ -117,6 +125,10 @@ def build_app(authentication=None, server_settings=None):
     """
     authentication = authentication or {}
     authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication.get("providers", [])}
+    api_access = api_access or {}
+    api_access_manager = api_access.get("manager_object", None)
+    resource_access = resource_access or {}
+    resource_access_manager = resource_access.get("manager_object", None)
     server_settings = server_settings or {}
 
     app = FastAPI()
@@ -229,7 +241,7 @@ def build_app(authentication=None, server_settings=None):
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
-                make_admin_by_identity,
+                # make_admin_by_identity,
             )
 
             connect_args = {}
@@ -250,14 +262,14 @@ def build_app(authentication=None, server_settings=None):
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            db = SessionLocal()
-            for admin in authentication.get("qserver_admins", []):
-                logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
-                make_admin_by_identity(
-                    db,
-                    identity_provider=admin["provider"],
-                    id=admin["id"],
-                )
+            # db = SessionLocal()
+            # for admin in authentication.get("qserver_admins", []):
+            #     logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
+            #     make_admin_by_identity(
+            #         db,
+            #         identity_provider=admin["provider"],
+            #         id=admin["id"],
+            #     )
 
             async def purge_expired_sessions_and_api_keys():
                 logger.info("Purging expired Sessions and API keys from the database.")
@@ -370,6 +382,14 @@ def build_app(authentication=None, server_settings=None):
         return authenticators
 
     @lru_cache(1)
+    def override_get_api_access_manager():
+        return api_access_manager
+
+    @lru_cache(1)
+    def override_get_resource_access_manager():
+        return resource_access_manager
+
+    @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
         for item in [
@@ -480,6 +500,8 @@ def build_app(authentication=None, server_settings=None):
 
     app.openapi = partial(custom_openapi, app)
     app.dependency_overrides[get_authenticators] = override_get_authenticators
+    app.dependency_overrides[get_api_access_manager] = override_get_api_access_manager
+    app.dependency_overrides[get_resource_access_manager] = override_get_resource_access_manager
     app.dependency_overrides[get_settings] = override_get_settings
 
     return app

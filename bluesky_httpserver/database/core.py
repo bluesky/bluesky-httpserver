@@ -195,10 +195,9 @@ def purge_expired(engine, cls):
     return cls
 
 
-def create_user(db, identity_provider, id):
+def create_user(db, identity_provider, id, roles):
     principal = Principal(type="user")
-    user_role = db.query(Role).filter(Role.name == "user").first()
-    principal.roles.append(user_role)
+    principal.roles.append(roles)
     db.add(principal)
     db.commit()
     db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
@@ -226,16 +225,16 @@ def lookup_valid_session(db, session_id):
     return session
 
 
-def make_admin_by_identity(db, identity_provider, id):
-    identity = db.query(Identity).filter(Identity.id == id).filter(Identity.provider == identity_provider).first()
-    if identity is None:
-        principal = create_user(db, identity_provider, id)
-    else:
-        principal = identity.principal
-    admin_role = db.query(Role).filter(Role.name == "admin").first()
-    principal.roles.append(admin_role)
-    db.commit()
-    return principal
+# def make_admin_by_identity(db, identity_provider, id):
+#     identity = db.query(Identity).filter(Identity.id == id).filter(Identity.provider == identity_provider).first()
+#     if identity is None:
+#         principal = create_user(db, identity_provider, id)
+#     else:
+#         principal = identity.principal
+#     admin_role = db.query(Role).filter(Role.name == "admin").first()
+#     principal.roles.append(admin_role)
+#     db.commit()
+#     return principal
 
 
 def lookup_valid_api_key(db, secret):
