@@ -1,5 +1,8 @@
 import copy
+import jsonschema
+
 from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
+from ..config_schemas.loading import load_schema_from_yml, ConfigError
 
 
 class BasicAPIAccessControl:
@@ -36,20 +39,27 @@ class BasicAPIAccessControl:
     """
 
     def __init__(self, *, roles=None):
-        roles = roles or {}
+        try:
+            config = {"roles": roles}
+            schema_file_name = "basic_api_access_control_config.yml"
+            jsonschema.validate(instance=config, schema=load_schema_from_yml(schema_file_name))
+        except jsonschema.ValidationError as err:
+            msg = err.args[0]
+            raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
 
+        roles = roles or {}
         self._roles = copy.deepcopy(_DEFAULT_ROLES)
 
         for role, params in roles.items():
-            role_scopes = self._roles.setdefault(role, default=set())
+            role_scopes = self._roles.setdefault(role, set())
             # If 'params' is None, then the role has no access (scopes is an empty set)
             if params is None:
-                params = {"scopes_replace": []}
+                params = {"scopes_set": []}
             if "scopes_set" in params:
                 role_scopes.clear()
-                role_scopes.update([_.lower() for _ in (params["scopes_replace"] or [])])
+                role_scopes.update([_.lower() for _ in (params["scopes_set"] or [])])
             if "scopes_add" in params:
-                role_scopes.update([{_.lower() for _ in (params["scopes_add"] or [])}])
+                role_scopes.update([_.lower() for _ in (params["scopes_add"] or [])])
             if "scopes_remove" in params:
                 for scope in [_.lower() for _ in (params["scopes_remove"] or [])]:
                     role_scopes.discard(scope)
@@ -101,7 +111,7 @@ class BasicAPIAccessControl:
 
     def get_displayed_user_name(self, username):
         user_info = self._collect_user_info(username)
-        mail = user_info.get("mail", None) or user_info.get("email", None)
+        mail = user_info.get("mail", None)
         displayed_name = user_info.get("displayed_name", None)
         if not mail and not displayed_name:
             return username
@@ -126,19 +136,34 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
     """
     ``users`` is a dictionary with the following keys: ``roles`` - a role name (str)
     or a list of roles (list of str), ``displayed_name`` - displayed name, e.g. 'John Doe' (str, optional),
-    ``mail`` or ``email`` - email (str, optional). If the list of roles is missing or empty, then
+    ``mail`` - email (str, optional). If the list of roles is missing or empty, then
     the user has no access to any API.
     """
 
     def __init__(self, *, roles=None, users=None):
         super().__init__(roles=roles)
+
+        try:
+            config = {"roles": roles, "users": users}
+            schema_file_name = "dictionary_api_access_control_config.yml"
+            jsonschema.validate(instance=config, schema=load_schema_from_yml(schema_file_name))
+        except jsonschema.ValidationError as err:
+            msg = err.args[0]
+            raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
+
         users = users or {}
         user_info = copy.deepcopy(users)
+        for k in user_info:
+            if user_info[k] is None:
+                user_info[k] = {}
+            else:
+                user_info[k] = dict(user_info[k])
         for v in user_info.values():
             v.setdefault("roles", [])
+            if v["roles"] is None:
+                v["roles"] = []
             if isinstance(v["roles"], str):
                 v["roles"] = v["roles"].lower()
             else:
                 v["roles"] = [_.lower() for _ in v["roles"]]
         self._user_info.update(user_info)
-        print(f"user_info = {self._user_info}")

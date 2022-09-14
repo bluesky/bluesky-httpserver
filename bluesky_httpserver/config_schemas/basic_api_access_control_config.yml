@@ -1,0 +1,33 @@
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  roles:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        patternProperties:
+          "^[a-zA-Z_][0-9a-zA-Z_]*$":
+            oneOf:
+              - type: object
+                additionalProperties: false
+                properties:
+                  scopes_set: 
+                    $ref: '#/components/schemas/scope_list'                
+                  scopes_add: 
+                    $ref: '#/components/schemas/scope_list'                
+                  scopes_remove: 
+                    $ref: '#/components/schemas/scope_list'                                       
+              - type: "null"
+      - type: "null"
+components:
+  schemas:
+    scope_list:
+      oneOf:
+        - type: array
+          items:
+            type: string
+            pattern: "^[0-9a-zA-Z:_]+$"
+        - type: "null"
+       
+

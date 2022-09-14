@@ -6,23 +6,15 @@ See profiles.py for client configuration.
 import copy
 from datetime import timedelta
 import os
-from functools import lru_cache
 from pathlib import Path
 
 import jsonschema
 
 from .utils import import_object, parse, prepend_to_sys_path
+from .config_schemas.loading import load_schema_from_yml, ConfigError
 
 
-@lru_cache(maxsize=1)
-def schema():
-    "Load the schema for service-side configuration."
-    import yaml
-
-    here = Path(__file__).parent.absolute()
-    schema_path = os.path.join(here, "config_schemas", "service_configuration.yml")
-    with open(schema_path, "r") as file:
-        return yaml.safe_load(file)
+SERVICE_CONFIGURATION_FILE_NAME = "service_configuration.yml"
 
 
 def construct_build_app_kwargs(
@@ -205,7 +197,7 @@ def parse_configs(config_path):
         with open(filepath) as file:
             config = parse(file)
             try:
-                jsonschema.validate(instance=config, schema=schema())
+                jsonschema.validate(instance=config, schema=load_schema_from_yml(SERVICE_CONFIGURATION_FILE_NAME))
             except jsonschema.ValidationError as err:
                 msg = err.args[0]
                 raise ConfigError(f"ValidationError while parsing configuration file {filepath}: {msg}") from err
@@ -213,7 +205,3 @@ def parse_configs(config_path):
 
     merged_config = merge(parsed_configs)
     return merged_config
-
-
-class ConfigError(ValueError):
-    pass
