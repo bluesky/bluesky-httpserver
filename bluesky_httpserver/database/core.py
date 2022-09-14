@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
 from .base import Base
-from .orm import APIKey, Identity, Principal, Role, Session
+from .orm import APIKey, Identity, Principal, Session  # , Role
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
@@ -19,74 +19,74 @@ REQUIRED_REVISION = "722ff4e4fcc7"
 ALL_REVISIONS = ["722ff4e4fcc7", "481830dd6c11"]
 
 
-def create_default_roles(engine):
+# def create_default_roles(engine):
 
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+#     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+#     db = SessionLocal()
 
-    db.add(
-        Role(
-            name="user",
-            description="Default Role for users.",
-            scopes=[
-                "read:queue",
-                "read:history",
-                "read:resources",
-                "read:config",
-                "read:monitor",
-                "read:console",
-                "read:status",
-                "read:lock",
-                "read:testing",
-                "write:queue:edit",
-                "write:queue:control",
-                "write:manager:control",
-                "write:plan:control",
-                "write:execute",
-                "write:history:edit",
-                "write:permissions",
-                "write:scripts",
-                "write:config",
-                "write:lock",
-                "write:manager:stop",
-                "write:testing",
-                "apikeys",
-            ],
-        ),
-    )
-    db.add(
-        Role(
-            name="admin",
-            description="Role with elevated privileges.",
-            scopes=[
-                "read:queue",
-                "read:history",
-                "read:resources",
-                "read:config",
-                "read:monitor",
-                "read:console",
-                "read:status",
-                "read:lock",
-                "read:testing",
-                "write:queue:edit",
-                "write:queue:control",
-                "write:manager:control",
-                "write:plan:control",
-                "write:execute",
-                "write:history:edit",
-                "write:permissions",
-                "write:scripts",
-                "write:config",
-                "write:lock",
-                "write:manager_stop",
-                "write:testing",
-                "admin:apikeys",
-                "admin:read:principals",
-                "admin:metrics",
-            ],
-        ),
-    )
-    db.commit()
+#     db.add(
+#         Role(
+#             name="user",
+#             description="Default Role for users.",
+#             scopes=[
+#                 "read:queue",
+#                 "read:history",
+#                 "read:resources",
+#                 "read:config",
+#                 "read:monitor",
+#                 "read:console",
+#                 "read:status",
+#                 "read:lock",
+#                 "read:testing",
+#                 "write:queue:edit",
+#                 "write:queue:control",
+#                 "write:manager:control",
+#                 "write:plan:control",
+#                 "write:execute",
+#                 "write:history:edit",
+#                 "write:permissions",
+#                 "write:scripts",
+#                 "write:config",
+#                 "write:lock",
+#                 "write:manager:stop",
+#                 "write:testing",
+#                 "apikeys",
+#             ],
+#         ),
+#     )
+#     db.add(
+#         Role(
+#             name="admin",
+#             description="Role with elevated privileges.",
+#             scopes=[
+#                 "read:queue",
+#                 "read:history",
+#                 "read:resources",
+#                 "read:config",
+#                 "read:monitor",
+#                 "read:console",
+#                 "read:status",
+#                 "read:lock",
+#                 "read:testing",
+#                 "write:queue:edit",
+#                 "write:queue:control",
+#                 "write:manager:control",
+#                 "write:plan:control",
+#                 "write:execute",
+#                 "write:history:edit",
+#                 "write:permissions",
+#                 "write:scripts",
+#                 "write:config",
+#                 "write:lock",
+#                 "write:manager:stop",
+#                 "write:testing",
+#                 "admin:apikeys",
+#                 "admin:read:principals",
+#                 "admin:metrics",
+#             ],
+#         ),
+#     )
+#     db.commit()
 
 
 def initialize_database(engine):
@@ -98,7 +98,7 @@ def initialize_database(engine):
     Base.metadata.create_all(engine)
 
     # Initialize Roles table.
-    create_default_roles(engine)
+    # create_default_roles(engine)
 
     # Mark current revision.
     with temp_alembic_ini(engine.url) as alembic_ini:
@@ -195,9 +195,8 @@ def purge_expired(engine, cls):
     return cls
 
 
-def create_user(db, identity_provider, id, roles):
+def create_user(db, identity_provider, id):
     principal = Principal(type="user")
-    principal.roles.append(roles)
     db.add(principal)
     db.commit()
     db.refresh(principal)  # Refresh to sync back the auto-generated uuid.
@@ -226,7 +225,8 @@ def lookup_valid_session(db, session_id):
 
 
 # def make_admin_by_identity(db, identity_provider, id):
-#     identity = db.query(Identity).filter(Identity.id == id).filter(Identity.provider == identity_provider).first()
+#     identity = db.query(Identity).filter(Identity.id == id)
+#         .filter(Identity.provider == identity_provider).first()
 #     if identity is None:
 #         principal = create_user(db, identity_provider, id)
 #     else:

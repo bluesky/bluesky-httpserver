@@ -24,13 +24,12 @@ def process_exception():
         raise HTTPException(status_code=400, detail=str(ex))
 
 
-# Login and authentication are not implemented, but some API methods require
-#   login data. So for now we set up fixed user name and group
-_login_data = {"user": "Default HTTP User", "user_group": "admin"}
+# The default user name and user group should never be sent to the manager unless there is a bug.
+_default_login_data = {"user": "Default HTTP User", "user_group": "THE_GROUP_THAT_DOES_NOT_EXIST"}
 
 
-def get_login_data():
-    return copy.deepcopy(_login_data)
+def get_default_login_data():
+    return copy.deepcopy(_default_login_data)
 
 
 def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):

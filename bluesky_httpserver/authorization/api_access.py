@@ -6,11 +6,11 @@ class BasicAPIAccessControl:
     """
     Additional roles can be added or the scopes assigned to the existing roles can be modified
     by passing the dictionary as a value of the parameter ``roles`` to the object constructor.
-    The dictionary keys are role names and the values are dictionaries with keys ``replace``,
+    The dictionary keys are role names and the values are dictionaries with keys ``set``,
     ``add`` and ``remove`` pointing to lists of existing scopes. The scopes in the lists are
-    completely replacing the default set of scopes, added to the default set of scopes or
-    removed from the default set of scopes. If the dictionary ``roles`` contains multiple keys,
-    the operations of replacing, adding and removing scopes are executed in the listed order.
+    completely replacing the default scopes (``set``), added to the default set of scopes (``add``)
+    or removed from the default set of scopes (``remove``). If the dictionary ``roles`` contains
+    multiple keys, the operations of replacing, adding and removing scopes are executed in the listed order.
 
     # Replace the set of scopes with the new set: 'user' can now only read status and the queue.
     {"user": {"replace": ["read:status", "read:queue"]}}
@@ -26,8 +26,8 @@ class BasicAPIAccessControl:
 
     # 'user' can not access any API.
     {"user": None}
-    {"user": {"replace": []}}
-    {"user": {"replace": None}}
+    {"user": {"set": []}}
+    {"user": {"set": None}}
 
     # Scopes are not changed
     {"user": {}}
@@ -45,7 +45,7 @@ class BasicAPIAccessControl:
             # If 'params' is None, then the role has no access (scopes is an empty set)
             if params is None:
                 params = {"scopes_replace": []}
-            if "scopes_replace" in params:
+            if "scopes_set" in params:
                 role_scopes.clear()
                 role_scopes.update([_.lower() for _ in (params["scopes_replace"] or [])])
             if "scopes_add" in params:
@@ -56,21 +56,22 @@ class BasicAPIAccessControl:
 
         self._user_info = copy.deepcopy(_DEFAULT_USER_INFO)
 
+    def _is_user_known(self, username):
+        return username in self._user_info
+
     def _collect_scopes(self, role):
         """
         Returns an empty set if the role is not defined.
         """
-        print(f"roles={self._roles}")  ##
         return self._roles.get(role, set())
 
     def _collect_user_info(self, username):
         """
         Returns an empty dictionary if user data is found.
         """
-        print(f"user_info={self._user_info}")  ##
         return self._user_info.get(username, {})
 
-    def get_role_scopes(self, roles):
+    def _collect_role_scopes(self, roles):
         """
         'roles' is a role name (string) or a list of roles (list of strings).
         Returns a set of scopes.
@@ -86,11 +87,17 @@ class BasicAPIAccessControl:
         Returns a set of roles for the user
         """
         principal_info = self._collect_user_info(username)
-        print(f"principal_info={principal_info!r}")  ##
         roles = principal_info.get("roles", [])
-        if not isinstance(roles, str):
-            roles = set(roles)
-        return roles
+        if isinstance(roles, str):
+            roles = [roles]
+        return set(roles)
+
+    def get_user_scopes(self, username):
+        """
+        Returns a set of scopes for the user
+        """
+        roles = self.get_user_roles(username)
+        return self._collect_role_scopes(roles)
 
     def get_displayed_user_name(self, username):
         user_info = self._collect_user_info(username)
@@ -105,13 +112,13 @@ class BasicAPIAccessControl:
         else:
             return f'{username} "{displayed_name} <{mail}>"'
 
+    def authorize(self, username):
+        return self._is_user_known(username)
+
     def get_user_info(self, username):
         roles = self.get_user_roles(username)
-        print(f"roles={roles!r}")  ##
-        scopes = self.get_role_scopes(roles)
-        print(f"scopes={scopes!r}")  ##
+        scopes = self._collect_role_scopes(roles)
         displayed_name = self.get_displayed_user_name(username)
-        print(f"displayed_name={displayed_name!r}")  ##
         return {"roles": roles, "scopes": scopes, "displayed_name": displayed_name}
 
 
@@ -134,3 +141,4 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
             else:
                 v["roles"] = [_.lower() for _ in v["roles"]]
         self._user_info.update(user_info)
+        print(f"user_info = {self._user_info}")

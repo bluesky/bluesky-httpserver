@@ -18,8 +18,9 @@ _DEFAULT_SCOPES_FULL_LIST = {
     "write:scripts",
     "write:config",
     "write:lock",
-    "write:manager_stop",
+    "write:manager:stop",
     "write:testing",
+    "user:apikeys",
     "admin:apikeys",
     "admin:read:principals",
     "admin:metrics",
@@ -27,6 +28,7 @@ _DEFAULT_SCOPES_FULL_LIST = {
 
 _DEFAULT_SCOPES_ADMIN = {
     "read:status",
+    "user:apikeys",
     "admin:apikeys",
     "admin:read:principals",
     "admin:metrics",
@@ -52,6 +54,7 @@ _DEFAULT_SCOPES_EXPERT = {
     "write:scripts",
     "write:config",
     "write:lock",
+    "user:apikeys",
 }
 
 _DEFAULT_SCOPES_USER = {
@@ -107,8 +110,9 @@ _DEFAULT_SCOPES_SINGLE_USER = {
     "write:scripts",
     "write:config",
     "write:lock",
-    "write:manager_stop",
+    "write:manager:stop",
     "write:testing",
+    "user:apikeys",
 }
 
 # Unauthenticated user

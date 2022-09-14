@@ -247,6 +247,22 @@ properties:
       ssl_ciphers:
         type: string
         description: Ciphers to use (see stdlib ssl module's). Default TLSv1.
+  api_access:
+    type: [object]
+    additionalProperties: false
+    properties:
+      policy:
+        type: string
+      args:
+        type: object
+  resource_access:
+    type: [object]
+    additionalProperties: false
+    properties:
+      policy:
+        type: string
+      args:
+        type: object
   metrics:
     type: object
     properties:

@@ -254,7 +254,7 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
-    roles: List[Role] = []
+    # roles: List[Role] = []
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None

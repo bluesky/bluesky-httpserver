@@ -19,7 +19,7 @@ from bluesky_queueserver_api.zmq.aio import REManagerAPI
 from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
 from .utils import (
-    get_login_data,
+    get_default_login_data,
     get_authenticators,
     get_api_access_manager,
     get_resource_access_manager,
@@ -233,7 +233,8 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
         if settings.database_uri is not None:
             from sqlalchemy import create_engine
-            from sqlalchemy.orm import sessionmaker
+
+            # from sqlalchemy.orm import sessionmaker
 
             from .database import orm
             from .database.core import (
@@ -261,7 +262,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                 logger.info("Database initialized.")
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
-            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            # SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
             # db = SessionLocal()
             # for admin in authentication.get("qserver_admins", []):
             #     logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
@@ -334,7 +335,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         )
         SR.set_RM(RM)
 
-        login_data = get_login_data()
+        login_data = get_default_login_data()
         SR.RM._user = login_data["user"]
         SR.RM._user_group = login_data["user_group"]
 

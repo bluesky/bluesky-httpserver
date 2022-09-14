@@ -59,15 +59,15 @@ def construct_build_app_kwargs(
             if k in auth_spec:
                 auth_spec[k] = timedelta(seconds=auth_spec[k])
 
-        api_access_spec = config.get("api_access_control", {}) or {}
-        import_path = api_access_spec.get("manager", "bluesky_httpserver.authorization:BasicAPIAccessControl")
+        api_access_spec = config.get("api_access", {}) or {}
+        import_path = api_access_spec.get("policy", "bluesky_httpserver.authorization:BasicAPIAccessControl")
         api_access_manager_class = import_object(import_path, accept_live_object=True)
         api_access_manager = api_access_manager_class(**api_access_spec.get("args", {}))
         api_access_spec["manager_object"] = api_access_manager
 
-        resource_access_spec = config.get("resource_access_control", {}) or {}
+        resource_access_spec = config.get("resource_access", {}) or {}
         import_path = resource_access_spec.get(
-            "manager", "bluesky_httpserver.authorization:DefaultResourceAccessControl"
+            "policy", "bluesky_httpserver.authorization:DefaultResourceAccessControl"
         )
         resource_access_manager_class = import_object(import_path, accept_live_object=True)
         resouce_access_manager = resource_access_manager_class(**resource_access_spec.get("args", {}))
@@ -109,6 +109,8 @@ def merge(configs):
     uvicorn_config_source = None
     metrics_config_source = None
     database_config_source = None
+    api_access_config_source = None
+    resource_access_config_source = None
     allow_origins = []
 
     for filepath, config in configs.items():
@@ -122,6 +124,24 @@ def merge(configs):
                 )
             authentication_config_source = filepath
             merged["authentication"] = config["authentication"]
+        if "api_access" in config:
+            if "api_access" in merged:
+                raise ConfigError(
+                    "api access can only be specified in one file. "
+                    f"It was found in both {api_access_config_source} and "
+                    f"{filepath}"
+                )
+            api_access_config_source = filepath
+            merged["api_access"] = config["api_access"]
+        if "resource_access" in config:
+            if "resource_access" in merged:
+                raise ConfigError(
+                    "resource access can only be specified in one file. "
+                    f"It was found in both {resource_access_config_source} and "
+                    f"{filepath}"
+                )
+            resource_access_config_source = filepath
+            merged["resource_access"] = config["resource_access"]
         if "uvicorn" in config:
             if "uvicorn" in merged:
                 raise ConfigError(
