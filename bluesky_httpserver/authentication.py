@@ -613,7 +613,7 @@ def slide_session(refresh_token, settings, db, api_access_manager):
     # database hit.
     principal = schemas.Principal.from_orm(session.principal)
 
-    ids = {_.id for _ in principal.identities if api_access_manager.authenticate(_.id)}
+    ids = {_.id for _ in principal.identities if api_access_manager.authorize(_.id)}
     if not ids:
         raise HTTPException(
             status_code=401,
