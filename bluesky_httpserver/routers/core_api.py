@@ -151,7 +151,8 @@ async def queue_item_add_handler(
     Adds new plan to the queue
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -177,7 +178,8 @@ async def queue_item_execute_handler(
     Immediately execute an item
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -203,7 +205,8 @@ async def queue_item_add_batch_handler(
     Adds new plan to the queue
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -274,7 +277,8 @@ async def queue_upload_spreadsheet(
                 custom_module = module
                 break
 
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
 
@@ -340,7 +344,8 @@ async def queue_item_update_handler(
     Update existing plan in the queue
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -632,6 +637,7 @@ async def re_runs_closed_handler(principal=Security(get_current_principal, scope
 async def plans_allowed_handler(
     payload: dict = {},
     principal=Security(get_current_principal, scopes=["read:resources"]),
+    api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
@@ -642,7 +648,9 @@ async def plans_allowed_handler(
 
     try:
         validate_payload_keys(payload, optional_keys=["reduced"])
-        username = principal.identities[0].id
+
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         user_group = resource_access_manager.get_resource_group(username)
 
         if "reduced" in payload:
@@ -775,7 +783,8 @@ async def function_execute_handler(
     Execute function defined in startup scripts in RE Worker environment.
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -850,7 +859,8 @@ async def lock_handler(
     Lock RE Manager.
     """
     try:
-        username = principal.identities[0].id
+        ids = list({_.id for _ in principal.identities if api_access_manager.authenticate(_.id)})
+        username = ids[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         payload.update({"user": displayed_name})
 

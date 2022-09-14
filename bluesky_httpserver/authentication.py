@@ -217,8 +217,10 @@ def get_current_principal(
                 api_key_orm = lookup_valid_api_key(db, secret)
                 if api_key_orm is not None:
                     principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    ids = [_.id for _ in principal.identities]
-                    principal_scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+                    ids = {_.id for _ in principal.identities}
+                    scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+                    principal_scopes = set.union(*scope_sets) if scope_sets else set()
+
                     # principal_scopes = set().union(*[role.scopes for role in principal.roles])
 
                     # This intersection addresses the case where the Principal has
@@ -542,8 +544,9 @@ def apikey_for_principal(
         if principal is None:
             raise HTTPException(404, f"Principal {uuid} does not exist or insufficient permissions.")
 
-        ids = [_.id for _ in principal.identities]
-        principal_scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+        ids = {_.id for _ in principal.identities}
+        scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+        principal_scopes = set.union(*scope_sets) if scope_sets else set()
 
         return generate_apikey(db, principal, apikey_params, request, principal_scopes)
 
@@ -610,10 +613,11 @@ def slide_session(refresh_token, settings, db, api_access_manager):
     # database hit.
     principal = schemas.Principal.from_orm(session.principal)
 
-    ids = [_.id for _ in principal.identities if api_access_manager.authenticate(_.id)]
+    ids = {_.id for _ in principal.identities if api_access_manager.authenticate(_.id)}
     if not ids:
         raise HTTPException(
-            status_code=401, detail="Permissions for the user are revoked. Please contact the administrator."
+            status_code=401,
+            detail="Permissions for the user are revoked. Please contact the administrator.",
         )
     scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
 
@@ -660,8 +664,9 @@ def new_apikey(
     if principal is None:
         return None
 
-    ids = [_.id for _ in principal.identities]
-    principal_scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+    ids = {_.id for _ in principal.identities}
+    scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+    principal_scopes = set.union(*scope_sets) if scope_sets else set()
 
     with get_sessionmaker(settings.database_settings)() as db:
         # The principal from get_current_principal tells us everything that the
