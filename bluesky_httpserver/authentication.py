@@ -196,6 +196,9 @@ def get_current_principal(
         "WWW-Authenticate": authenticate_value,
         "X-Tiled-Root": get_base_url(request),
     }
+
+    roles, scopes = {}, {}
+
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
@@ -217,9 +220,14 @@ def get_current_principal(
                 api_key_orm = lookup_valid_api_key(db, secret)
                 if api_key_orm is not None:
                     principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    ids = {_.id for _ in principal.identities}
+                    ids = {
+                        _.id for _ in principal.identities if _.provider in settings.authentication_provider_names
+                    }
                     scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
                     principal_scopes = set.union(*scope_sets) if scope_sets else set()
+
+                    roles_sets = [api_access_manager.get_user_roles(_) for _ in ids]
+                    roles = set.union(*roles_sets) if roles_sets else set()
 
                     # principal_scopes = set().union(*[role.scopes for role in principal.roles])
 
@@ -244,6 +252,8 @@ def get_current_principal(
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 username = SpecialUsers.single_user.value
                 scopes = api_access_manager.get_user_scopes(username)
+                roles = api_access_manager.get_user_roles(username)
+
                 principal = schemas.Principal(
                     uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
                     type="user",
@@ -277,12 +287,15 @@ def get_current_principal(
         # scopes = payload["scp"]
 
         # Combine scopes for all identities (it is expected to be only one identity).
-        ids = [_["id"] for _ in payload["ids"]]
+        ids = [_["id"] for _ in payload["ids"] if _["idp"] in settings.authentication_provider_names]
         scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+
+        roles_sets = [api_access_manager.get_user_roles(_) for _ in ids]
+        roles = set.union(*roles_sets) if roles_sets else set()
 
     else:
         # No form of authentication is present.
-        username = SpecialUsers.single_user.value
+        username = SpecialUsers.public.value
         principal = schemas.Principal(
             uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
             type="user",
@@ -295,11 +308,14 @@ def get_current_principal(
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
             scopes = api_access_manager.get_user_scopes(username)
+            roles = api_access_manager.get_user_roles(username)
+
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             # They can still access the /  and /docs routes.
             scopes = {}
+            roles = {}
 
     # Scope enforcement happens here.
     # https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
@@ -320,6 +336,11 @@ def get_current_principal(
             ),
             headers=headers_for_401,
         )
+
+    roles_list, scopes_list = list(roles), list(scopes)
+    roles_list.sort()
+    scopes_list.sort()
+    principal.roles, principal.scopes = roles_list, scopes_list
     return principal
 
 
@@ -750,6 +771,18 @@ def whoami(
             request,
             schemas.Principal.from_orm(principal_orm, latest_principal_activity(db, principal_orm)).dict(),
         )
+
+
+@base_authentication_router.get(
+    "/scopes",
+    response_model=schemas.Principal,
+)
+def scopes(
+    request: Request,
+    principal=Security(get_current_principal, scopes=[]),
+):
+    roles, scopes = principal.roles, principal.scopes
+    return json_or_msgpack(request, schemas.AllowedScopes(roles=roles, scopes=scopes).dict())
 
 
 @base_authentication_router.post("/logout")

@@ -89,7 +89,7 @@ _DEFAULT_SCOPES_OBSERVER = {
 
 # User authorized with single-user API key
 _DEFAULT_USERNAME_SINGLE_USER = "UNAUTHENTICATED_SINGLE_USER"
-_DEFAULT_ROLE_SINGLE_USER = "unauthenticated_single_user_role"
+_DEFAULT_ROLE_SINGLE_USER = "unauthenticated_single_user"
 _DEFAULT_SCOPES_SINGLE_USER = {
     "read:status",
     "read:queue",
@@ -117,7 +117,7 @@ _DEFAULT_SCOPES_SINGLE_USER = {
 
 # Unauthenticated user
 _DEFAULT_USERNAME_PUBLIC = "UNAUTHENTICATED_PUBLIC"
-_DEFAULT_ROLE_PUBLIC = "unauthenticated_anonymous_role"
+_DEFAULT_ROLE_PUBLIC = "unauthenticated_anonymous"
 _DEFAULT_SCOPES_PUBLIC = {
     "read:status",
 }

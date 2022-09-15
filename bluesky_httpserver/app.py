@@ -124,7 +124,8 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication.get("providers", [])}
+    authentication_providers = authentication.get("providers", [])
+    authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication_providers}
     api_access = api_access or {}
     api_access_manager = api_access.get("manager_object", None)
     resource_access = resource_access or {}
@@ -393,6 +394,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
+        setattr(settings, "authentication_provider_names", [_["provider"] for _ in authentication_providers])
         for item in [
             "allow_anonymous_access",
             "secret_keys",

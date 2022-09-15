@@ -258,12 +258,21 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None
+    # Optional parameters reflecting current permissions for the authenticated user
+    roles: Optional[List[str]] = []
+    scopes: Optional[List[str]] = []
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):
         instance = super().from_orm(orm)
         instance.latest_activity = latest_activity
         return instance
+
+
+class AllowedScopes(pydantic.BaseModel, orm_mode=False):
+    "Returns roles and current allowed scopes for a user authenticated with API key or token"
+    roles: List[str] = []
+    scopes: List[str] = []
 
 
 class APIKeyRequestParams(pydantic.BaseModel):
