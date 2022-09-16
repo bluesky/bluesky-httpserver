@@ -3,6 +3,8 @@ from fastapi import APIRouter, File, UploadFile, Form, Request, Security, Depend
 import pprint
 from typing import Optional
 import asyncio
+from pydantic import BaseSettings
+from ..settings import get_settings
 
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
@@ -10,7 +12,7 @@ from ..resources import SERVER_RESOURCES as SR
 from ..utils import process_exception, validate_payload_keys
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
 from ..authentication import get_current_principal
-from ..utils import get_api_access_manager, get_resource_access_manager
+from ..utils import get_api_access_manager, get_resource_access_manager, get_current_username
 
 import logging
 
@@ -145,6 +147,7 @@ async def queue_stop_cancel(
 async def queue_item_add_handler(
     payload: dict = {},
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -152,8 +155,9 @@ async def queue_item_add_handler(
     Adds new plan to the queue
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -172,6 +176,7 @@ async def queue_item_add_handler(
 async def queue_item_execute_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:execute"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -179,8 +184,9 @@ async def queue_item_execute_handler(
     Immediately execute an item
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -199,6 +205,7 @@ async def queue_item_execute_handler(
 async def queue_item_add_batch_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -206,8 +213,9 @@ async def queue_item_add_batch_handler(
     Adds new plan to the queue
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -228,6 +236,7 @@ async def queue_upload_spreadsheet(
     spreadsheet: UploadFile = File(...),
     data_type: Optional[str] = Form(None),
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -278,8 +287,9 @@ async def queue_upload_spreadsheet(
                 custom_module = module
                 break
 
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
 
@@ -338,6 +348,7 @@ async def queue_upload_spreadsheet(
 async def queue_item_update_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -345,8 +356,9 @@ async def queue_item_update_handler(
     Update existing plan in the queue
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -638,6 +650,7 @@ async def re_runs_closed_handler(principal=Security(get_current_principal, scope
 async def plans_allowed_handler(
     payload: dict = {},
     principal=Security(get_current_principal, scopes=["read:resources"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -650,8 +663,9 @@ async def plans_allowed_handler(
     try:
         validate_payload_keys(payload, optional_keys=["reduced"])
 
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         user_group = resource_access_manager.get_resource_group(username)
 
         if "reduced" in payload:
@@ -673,6 +687,7 @@ async def plans_allowed_handler(
 async def devices_allowed_handler(
     payload: dict = {},
     principal=Security(get_current_principal, scopes=["read:resources"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -680,8 +695,9 @@ async def devices_allowed_handler(
     Returns the lists of allowed devices.
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         user_group = resource_access_manager.get_resource_group(username)
 
         payload.update({"user_group": user_group})
@@ -785,6 +801,7 @@ async def permissions_set_handler(
 async def function_execute_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:execute"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
@@ -792,8 +809,9 @@ async def function_execute_handler(
     Execute function defined in startup scripts in RE Worker environment.
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         user_group = resource_access_manager.get_resource_group(username)
         payload.update({"user": displayed_name, "user_group": user_group})
@@ -862,14 +880,16 @@ async def task_result(payload: dict, principal=Security(get_current_principal, s
 async def lock_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:lock"]),
+    settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),
 ):
     """
     Lock RE Manager.
     """
     try:
-        ids = list({_.id for _ in principal.identities if api_access_manager.authorize(_.id)})
-        username = ids[0]
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
         payload.update({"user": displayed_name})
 

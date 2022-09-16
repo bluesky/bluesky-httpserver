@@ -43,7 +43,9 @@ from .utils import (
     get_authenticators,
     get_api_access_manager,
     get_base_url,
+    get_current_username,
 )
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -220,9 +222,9 @@ def get_current_principal(
                 api_key_orm = lookup_valid_api_key(db, secret)
                 if api_key_orm is not None:
                     principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    ids = {
-                        _.id for _ in principal.identities if _.provider in settings.authentication_provider_names
-                    }
+                    ids = get_current_username(
+                        principal=principal, settings=settings, api_access_manager=api_access_manager
+                    )
                     scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
                     principal_scopes = set.union(*scope_sets) if scope_sets else set()
 
@@ -257,7 +259,7 @@ def get_current_principal(
                 principal = schemas.Principal(
                     uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
                     type="user",
-                    identities=[schemas.Identity(id=username, provider="anonymous")],
+                    identities=[schemas.Identity(id=username, provider=_DEFAULT_ANONYMOUS_PROVIDER_NAME)],
                 )
 
             else:
@@ -296,10 +298,11 @@ def get_current_principal(
     else:
         # No form of authentication is present.
         username = SpecialUsers.public.value
+        # This is a 'dummy' principal used to pass data within the server. Not saved to the databased.
         principal = schemas.Principal(
             uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
             type="user",
-            identities=[schemas.Identity(id=username, provider="anonymous")],
+            identities=[schemas.Identity(id=username, provider=_DEFAULT_ANONYMOUS_PROVIDER_NAME)],
         )
 
         # Is anonymous public access permitted?
@@ -634,7 +637,7 @@ def slide_session(refresh_token, settings, db, api_access_manager):
     # database hit.
     principal = schemas.Principal.from_orm(session.principal)
 
-    ids = {_.id for _ in principal.identities if api_access_manager.authorize(_.id)}
+    ids = get_current_username(principal=principal, settings=settings, api_access_manager=api_access_manager)
     if not ids:
         raise HTTPException(
             status_code=401,
@@ -685,7 +688,7 @@ def new_apikey(
     if principal is None:
         return None
 
-    ids = {_.id for _ in principal.identities}
+    ids = get_current_username(principal=principal, settings=settings, api_access_manager=api_access_manager)
     scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
     principal_scopes = set.union(*scope_sets) if scope_sets else set()
 

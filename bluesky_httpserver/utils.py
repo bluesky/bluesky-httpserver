@@ -11,6 +11,7 @@ import sys
 import time
 
 from .authorization import _DEFAULT_USERNAME_SINGLE_USER, _DEFAULT_USERNAME_PUBLIC
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
@@ -274,3 +275,25 @@ def modules_available(*module_names):
         # All modules were found.
         return True
     return False
+
+
+def get_current_username(*, principal, settings, api_access_manager):
+    """
+    Pick 'username' from identities in 'principal', which may contain multiple
+    identities. The username is picked if it is the name of one of the 'special'
+    users (single user or public) or related to currently active provider.
+    This function should never raise exceptions unless there is a bug.
+
+    Returns
+    -------
+    list(str)
+        List of user names from all valid providers.
+    """
+    pnames = set(settings.authentication_provider_names) | set([_DEFAULT_ANONYMOUS_PROVIDER_NAME])
+    ids = {_.id for _ in principal.identities if (_.provider in pnames) and api_access_manager.authorize(_.id)}
+    ids = list[ids]
+    if not ids:
+        raise RuntimeError(
+            "'username' is required to complete the operation, but needed to complete the operation",
+        )
+    return ids
