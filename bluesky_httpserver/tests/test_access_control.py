@@ -10,6 +10,13 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
 from .conftest import fastapi_server_fs  # noqa: F401
 from .conftest import request_to_json
 
+from bluesky_httpserver.authorization._defaults import (
+    _DEFAULT_ROLE_SINGLE_USER,
+    _DEFAULT_SCOPES_SINGLE_USER,
+    _DEFAULT_ROLE_PUBLIC,
+    _DEFAULT_SCOPES_PUBLIC,
+)
+
 
 def _setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
     """
@@ -82,6 +89,27 @@ api_access:
       cara:
         roles:
           - observer
+"""
+
+config_noauth_modify_default_roles = f"""
+authentication:
+  allow_anonymous_access: True
+api_access:
+  policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+  args:
+    roles:
+      {_DEFAULT_ROLE_SINGLE_USER}:
+        scopes_add:
+          - admin:apikeys
+          - admin:read:principals
+          - admin:metrics
+        scopes_remove:
+          - read:monitor
+      {_DEFAULT_ROLE_PUBLIC}:
+        scopes_set:
+          - read:status
+          - read:queue
+          - read:history
 """
 
 
@@ -188,3 +216,82 @@ def test_authentication_and_authorization_01(
     resp7 = request_to_json("get", "/status", token="INVALIDTOKEN")
     assert "detail" in resp7, pprint.pformat(resp7)
     assert "Could not validate credentials" in resp7["detail"]
+
+
+def test_authentication_and_authorization_02(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    Check default scopes for 'single-user' and public access. No authentication providers
+    or authorization policy are defined in the config file.
+    """
+
+    config = config_noauth_with_anonymous_access
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    # Check that both single-user access and public access work
+    #   (by default 'api_key' is set to valid single-user API key)
+    for params in ({}, {"api_key": None}):
+        print(f"Test case: params={params}")
+
+        resp1 = request_to_json("get", "/status", **params)
+        assert "msg" in resp1, pprint.pformat(resp1)
+        assert "RE Manager" in resp1["msg"]
+
+        if not params:
+            roles = [_DEFAULT_ROLE_SINGLE_USER]
+            scopes = set(_DEFAULT_SCOPES_SINGLE_USER)
+        else:
+            roles = [_DEFAULT_ROLE_PUBLIC]
+            scopes = set(_DEFAULT_SCOPES_PUBLIC)
+
+        resp2a = request_to_json("get", "/auth/scopes", **params)
+        assert "roles" in resp2a, pprint.pformat(resp2a)
+        assert "scopes" in resp2a, pprint.pformat(resp2a)
+        assert resp2a["roles"] == roles
+        assert set(resp2a["scopes"]) == scopes
+
+
+def test_authentication_and_authorization_03(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    Check default scopes for 'single-user' and public access. No authentication providers
+    or authorization policy are defined in the config file.
+    """
+
+    config = config_noauth_modify_default_roles
+    print(f"=========== config = {config!r}")
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    # Check that both single-user access and public access work
+    #   (by default 'api_key' is set to valid single-user API key)
+    for params in ({}, {"api_key": None}):
+        print(f"Test case: params={params}")
+
+        resp1 = request_to_json("get", "/status", **params)
+        assert "msg" in resp1, pprint.pformat(resp1)
+        assert "RE Manager" in resp1["msg"]
+
+        if not params:
+            roles = [_DEFAULT_ROLE_SINGLE_USER]
+            scopes_to_add = {"admin:apikeys", "admin:read:principals", "admin:metrics"}
+            scopes_to_remove = set(["read:monitor"])
+            scopes = (set(_DEFAULT_SCOPES_SINGLE_USER) | scopes_to_add) - scopes_to_remove
+        else:
+            roles = [_DEFAULT_ROLE_PUBLIC]
+            scopes = {"read:status", "read:queue", "read:history"}
+
+        resp2a = request_to_json("get", "/auth/scopes", **params)
+        assert "roles" in resp2a, pprint.pformat(resp2a)
+        assert "scopes" in resp2a, pprint.pformat(resp2a)
+        assert resp2a["roles"] == roles
+        assert set(resp2a["scopes"]) == set(scopes)

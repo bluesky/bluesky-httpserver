@@ -152,25 +152,26 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                 add_router(app, module_and_router_name=rn)
         logger.info("All custom routers are included successfully.")
 
+    from .authentication import (
+        base_authentication_router,
+        build_auth_code_route,
+        build_handle_credentials_route,
+        oauth2_scheme,
+    )
+
+    authentication_router = APIRouter()
+    # This adds the universal routes like /session/refresh and /session/revoke.
+    # Below we will add routes specific to our authentication providers.
+    authentication_router.include_router(base_authentication_router)
+
     if authentication.get("providers", []):
-        # Delay this imports to avoid delaying startup with the SQL and cryptography
-        # imports if they are not needed.
-        from .authentication import (
-            base_authentication_router,
-            build_auth_code_route,
-            build_handle_credentials_route,
-            oauth2_scheme,
-        )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = f"/api/auth/provider/{first_provider}/token"
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = APIRouter()
-        # This adds the universal routes like /session/refresh and /session/revoke.
-        # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
+
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
@@ -190,8 +191,9 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                 raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(custom_router, prefix=f"/provider/{provider}")
-        # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/api/auth")
+
+    # And add this authentication_router itself to the app.
+    app.include_router(authentication_router, prefix="/api/auth")
 
     @app.on_event("startup")
     async def startup_event():
