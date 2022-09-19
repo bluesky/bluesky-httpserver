@@ -241,6 +241,7 @@ def get_current_principal(
                         # scopes for the Principal associated with this API,
                         # resolved at access time.
                         scopes.update(principal_scopes)
+                        scopes.discard("inherit")
                     api_key_orm.latest_activity = utcnow()
                     db.commit()
                 else:
@@ -464,18 +465,25 @@ def build_handle_credentials_route(authenticator, provider):
     return handle_credentials
 
 
-def generate_apikey(db, principal, apikey_params, request, principal_scopes):
-    if apikey_params.scopes is None:
+def generate_apikey(db, principal, apikey_params, request, principal_scopes, allowed_scopes):
+    # Allow 'inherit' scope in API key only the user is authenticated so that all scopes are allowed.
+    #   (token or API with 'inherit' scope)
+    allow_inherit = set(principal_scopes) == set(allowed_scopes)
+    if (apikey_params.scopes is None) or ("inherit" in apikey_params.scopes):
         scopes = ["inherit"]
     else:
         scopes = apikey_params.scopes
+
+    if not allow_inherit and ("inherit" in scopes):
+        scopes = list(allowed_scopes)
+
     # principal_scopes = set().union(*[role.scopes for role in principal.roles])
-    if not set(scopes).issubset(principal_scopes | {"inherit"}):
+    if not set(scopes).issubset(allowed_scopes | {"inherit"}):
         raise HTTPException(
             400,
             (
                 f"Requested scopes {apikey_params.scopes} must be a subset of the "
-                f"principal's scopes {list(principal_scopes)}."
+                f"allowed principal's scopes {list(allowed_scopes)}."
             ),
         )
     if apikey_params.expires_in is not None:
@@ -572,7 +580,7 @@ def apikey_for_principal(
         scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
         principal_scopes = set.union(*scope_sets) if scope_sets else set()
 
-        return generate_apikey(db, principal, apikey_params, request, principal_scopes)
+        return generate_apikey(db, principal, apikey_params, request, principal_scopes, principal_scopes)
 
 
 @base_authentication_router.post("/session/refresh", response_model=schemas.AccessAndRefreshTokens)
@@ -692,11 +700,13 @@ def new_apikey(
     scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
     principal_scopes = set.union(*scope_sets) if scope_sets else set()
 
+    allowed_scopes = set(principal.scopes)
+
     with get_sessionmaker(settings.database_settings)() as db:
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
         principal_orm = db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
-        apikey = generate_apikey(db, principal_orm, apikey_params, request, principal_scopes)
+        apikey = generate_apikey(db, principal_orm, apikey_params, request, principal_scopes, allowed_scopes)
         return apikey
 
 

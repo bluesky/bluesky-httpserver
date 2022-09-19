@@ -291,7 +291,7 @@ def get_current_username(*, principal, settings, api_access_manager):
     """
     pnames = set(settings.authentication_provider_names) | set([_DEFAULT_ANONYMOUS_PROVIDER_NAME])
     ids = {_.id for _ in principal.identities if (_.provider in pnames) and api_access_manager.authorize(_.id)}
-    ids = list[ids]
+    ids = list(ids)
     if not ids:
         raise RuntimeError(
             "'username' is required to complete the operation, but needed to complete the operation",
