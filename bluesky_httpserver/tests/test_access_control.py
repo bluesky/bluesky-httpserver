@@ -1,4 +1,5 @@
 # Tests for user authorization and authentication on the working server
+import copy
 import pytest
 import os
 import pprint
@@ -12,8 +13,12 @@ from .conftest import request_to_json
 
 from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_ROLE_SINGLE_USER,
-    _DEFAULT_SCOPES_SINGLE_USER,
     _DEFAULT_ROLE_PUBLIC,
+    _DEFAULT_ROLE_ADMIN,
+    _DEFAULT_ROLE_EXPERT,
+    _DEFAULT_ROLE_USER,
+    _DEFAULT_ROLE_OBSERVER,
+    _DEFAULT_SCOPES_SINGLE_USER,
     _DEFAULT_SCOPES_PUBLIC,
     _DEFAULT_ROLES,
 )
@@ -95,6 +100,7 @@ api_access:
           - admin
           - expert
       alice:
+        # A single role may be specified as a string or a list with one element.
         roles: user
       cara:
         roles:
@@ -120,6 +126,70 @@ api_access:
           - read:status
           - read:queue
           - read:history
+"""
+
+authorization_modify_roles_for_users = f"""
+api_access:
+  policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+  args:
+    users:
+      bob:
+        roles:
+          - admin
+          - expert
+      alice:
+        roles: user
+      cara:
+        roles:
+          - observer
+    roles:
+      {_DEFAULT_ROLE_ADMIN}:
+        scopes_add: read:queue
+        scopes_remove: admin:metrics
+      {_DEFAULT_ROLE_EXPERT}:
+        scopes_set:
+          - read:queue
+          - write:queue
+      {_DEFAULT_ROLE_USER}:
+        scopes_remove:
+          - read:console
+          - read:testing
+      {_DEFAULT_ROLE_OBSERVER}:
+        scopes_add:
+          - write:queue
+"""
+
+authorization_define_new_role = """
+api_access:
+  policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+  args:
+    users:
+      bob:
+        roles:
+          - admin
+          - expert
+      alice:
+        roles:
+          - observer
+          - new_role1
+      cara:
+        roles: new_role2
+      tom: null  # Same as if tom was not listed: tom can not log into the server.
+    roles:
+      # The new roles are identical, one is created using 'scope_set', the other using 'scope_add'.
+      #   Both methods should work identically.
+      new_role1:
+        scopes_set:
+          - write:queue:edit
+          - write:queue:control
+          - write:manager:control
+          - read:status
+      new_role2:
+        scopes_add:
+          - write:queue:edit
+          - write:queue:control
+          - write:manager:control
+          - read:status
 """
 
 
@@ -473,3 +543,92 @@ def test_authentication_and_authorization_05(
         resp12 = request_to_json("post", "/auth/provider/toy/token", login=("random", "random_password"))
         assert "detail" in resp12
         assert "Incorrect username or password" in resp12["detail"]
+
+
+def test_authentication_and_authorization_06(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    Modified scopes for logged in user.
+    """
+
+    config = config_toy_with_anonymous_access + authorization_modify_roles_for_users
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    for username in ("bob", "alice", "cara"):
+        print(f"Testing access for the username {username!r}")
+
+        resp1 = request_to_json("post", "/auth/provider/toy/token", login=(username, username + "_password"))
+        assert "access_token" in resp1, pprint.pformat(resp1)
+        token = resp1["access_token"]
+
+        resp2 = request_to_json("get", "/status", token=token)
+        assert "msg" in resp2, pprint.pformat(resp2)
+        assert "RE Manager" in resp2["msg"]
+
+        # Compute modified scopes for roles
+        modified_roles = copy.deepcopy(_DEFAULT_ROLES)
+        modified_roles[_DEFAULT_ROLE_ADMIN] |= set(["read:queue"])
+        modified_roles[_DEFAULT_ROLE_ADMIN] -= set(["admin:metrics"])
+        modified_roles[_DEFAULT_ROLE_EXPERT] = set(["read:queue", "write:queue"])
+        modified_roles[_DEFAULT_ROLE_USER] -= set(["read:console", "read:testing"])
+        modified_roles[_DEFAULT_ROLE_OBSERVER] |= set(["write:queue"])
+
+        roles_all = {"bob": ["admin", "expert"], "alice": ["user"], "cara": ["observer"]}
+        roles_user = roles_all[username]
+        scopes_user = set()
+        for role in roles_user:
+            scopes_user = scopes_user | set(modified_roles[role])
+
+        resp3 = request_to_json("get", "/auth/scopes", token=token)
+        assert "roles" in resp3, pprint.pformat(resp3)
+        assert "scopes" in resp3, pprint.pformat(resp3)
+        assert set(resp3["roles"]) == set(roles_user)
+        assert set(resp3["scopes"]) == scopes_user
+
+
+def test_authentication_and_authorization_07(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    Define a new role in the config file.
+    """
+
+    config = config_toy_with_anonymous_access + authorization_define_new_role
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    for username in ("alice", "cara"):
+        print(f"Testing access for the username {username!r}")
+
+        resp1 = request_to_json("post", "/auth/provider/toy/token", login=(username, username + "_password"))
+        assert "access_token" in resp1, pprint.pformat(resp1)
+        token = resp1["access_token"]
+
+        resp2 = request_to_json("get", "/status", token=token)
+        assert "msg" in resp2, pprint.pformat(resp2)
+        assert "RE Manager" in resp2["msg"]
+
+        # Compute modified scopes for roles
+        new_role_scopes = {"write:queue:edit", "write:queue:control", "write:manager:control", "read:status"}
+        if username == "alice":
+            roles_user = ["observer", "new_role1"]
+            scopes_user = _DEFAULT_ROLES["observer"] | new_role_scopes
+        elif username == "cara":
+            roles_user = ["new_role2"]
+            scopes_user = new_role_scopes
+        else:
+            assert False, f"Username {username!r} is not supported in this test."
+
+        resp3 = request_to_json("get", "/auth/scopes", token=token)
+        assert "roles" in resp3, pprint.pformat(resp3)
+        assert "scopes" in resp3, pprint.pformat(resp3)
+        assert set(resp3["roles"]) == set(roles_user)
+        assert set(resp3["scopes"]) == scopes_user
