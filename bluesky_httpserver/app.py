@@ -407,6 +407,8 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
+        if authentication.get("single_user_api_key") is not None:
+            setattr(settings, "single_user_api_key_generated", False)
         for item in ["allow_origins", "response_bytesize_limit"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])

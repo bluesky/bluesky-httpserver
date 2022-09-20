@@ -47,6 +47,11 @@ authentication:
     allow_anonymous_access: False
 """
 
+config_noauth_single_user_api_key = """
+authentication:
+    single_user_api_key: "apikeyfromconfig"
+"""
+
 config_toy_with_anonymous_access = """
 authentication:
     allow_anonymous_access: True
@@ -226,6 +231,36 @@ def test_authentication_and_authorization_02(
     fastapi_server_fs,  # noqa: F811
 ):
     """
+    Pass single-user API key in config file.
+    """
+
+    config = config_noauth_single_user_api_key
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    api_key = "apikeyfromconfig"
+
+    resp1 = request_to_json("get", "/status", api_key=api_key)
+    assert "msg" in resp1, pprint.pformat(resp1)
+    assert "RE Manager" in resp1["msg"]
+
+    roles = [_DEFAULT_ROLE_SINGLE_USER]
+    scopes = set(_DEFAULT_SCOPES_SINGLE_USER)
+
+    resp2a = request_to_json("get", "/auth/scopes", api_key=api_key)
+    assert "roles" in resp2a, pprint.pformat(resp2a)
+    assert "scopes" in resp2a, pprint.pformat(resp2a)
+    assert resp2a["roles"] == roles
+    assert set(resp2a["scopes"]) == scopes
+
+
+def test_authentication_and_authorization_03(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
     Check default scopes for 'single-user' and public access. No authentication providers
     or authorization policy are defined in the config file.
     """
@@ -257,7 +292,7 @@ def test_authentication_and_authorization_02(
         assert set(resp2a["scopes"]) == scopes
 
 
-def test_authentication_and_authorization_03(
+def test_authentication_and_authorization_04(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -297,7 +332,7 @@ def test_authentication_and_authorization_03(
         assert set(resp2a["scopes"]) == set(scopes)
 
 
-def test_authentication_and_authorization_04(
+def test_authentication_and_authorization_05(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
