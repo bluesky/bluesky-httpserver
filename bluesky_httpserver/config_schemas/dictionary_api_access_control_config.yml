@@ -20,6 +20,8 @@ properties:
                         items:
                           type: string
                           pattern: "^[a-zA-Z_][0-9a-zA-Z_]*$"
+                      - type: string
+                        pattern: "^[a-zA-Z_][0-9a-zA-Z_]*$"
                       - type: "null"
                   displayed_name:
                     oneOf:
@@ -33,5 +35,3 @@ properties:
                       - type: "null"
               - type: "null"
       - type: "null"
-       
-

@@ -52,6 +52,11 @@ authentication:
     single_user_api_key: "apikeyfromconfig"
 """
 
+config_noauth_single_user_api_key_as_ev = """
+authentication:
+    single_user_api_key: ${CUSTOM_EV_FOR_API_KEY}
+"""
+
 config_toy_with_anonymous_access = """
 authentication:
     allow_anonymous_access: True
@@ -90,8 +95,7 @@ api_access:
           - admin
           - expert
       alice:
-        roles:
-          - user
+        roles: user
       cara:
         roles:
           - observer
@@ -224,21 +228,31 @@ def test_authentication_and_authorization_01(
     assert "Could not validate credentials" in resp7["detail"]
 
 
+# fmt: off
+@pytest.mark.parametrize("config, set_ev", [
+    (config_noauth_single_user_api_key, False),
+    (config_noauth_single_user_api_key_as_ev, True),
+])
+# fmt:on
 def test_authentication_and_authorization_02(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
     fastapi_server_fs,  # noqa: F811
+    config,
+    set_ev,
 ):
     """
-    Pass single-user API key in config file.
+    Set single-user API key in the config file. Test two options: list the variable in the
+    config file (not to be used in any practical deployments) or list the EV name and
+    let the loading procedure fill in the value (similar approach should be used for passwords).
     """
+    api_key = "apikeyfromconfig"
+    if set_ev:
+        monkeypatch.setenv("CUSTOM_EV_FOR_API_KEY", api_key)
 
-    config = config_noauth_single_user_api_key
     _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
-
-    api_key = "apikeyfromconfig"
 
     resp1 = request_to_json("get", "/status", api_key=api_key)
     assert "msg" in resp1, pprint.pformat(resp1)

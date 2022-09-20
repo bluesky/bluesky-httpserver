@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Iterable
 import jsonschema
 
 from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
@@ -57,14 +58,25 @@ class BasicAPIAccessControl:
                 params = {"scopes_set": []}
             if "scopes_set" in params:
                 role_scopes.clear()
-                role_scopes.update([_.lower() for _ in (params["scopes_set"] or [])])
+                role_scopes.update(self._create_scope_list(params["scopes_set"]))
             if "scopes_add" in params:
-                role_scopes.update([_.lower() for _ in (params["scopes_add"] or [])])
+                role_scopes.update(self._create_scope_list(params["scopes_add"]))
             if "scopes_remove" in params:
-                for scope in [_.lower() for _ in (params["scopes_remove"] or [])]:
+                scopes_list = self._create_scope_list(params["scopes_remove"])
+                for scope in scopes_list:
                     role_scopes.discard(scope)
 
         self._user_info = copy.deepcopy(_DEFAULT_USER_INFO)
+
+    def _create_scope_list(self, scopes):
+        if isinstance(scopes, str):
+            return [scopes.lower()]
+        elif isinstance(scopes, Iterable):
+            return [_.lower() for _ in scopes]
+        elif not scopes:
+            return []
+        else:
+            raise TypeError(f"Unsupported type of scope list: scopes = {scopes!r}")
 
     def _is_user_known(self, username):
         return username in self._user_info

@@ -12,12 +12,12 @@ properties:
               - type: object
                 additionalProperties: false
                 properties:
-                  scopes_set: 
-                    $ref: '#/components/schemas/scope_list'                
-                  scopes_add: 
-                    $ref: '#/components/schemas/scope_list'                
-                  scopes_remove: 
-                    $ref: '#/components/schemas/scope_list'                                       
+                  scopes_set:
+                    $ref: '#/components/schemas/scope_list'
+                  scopes_add:
+                    $ref: '#/components/schemas/scope_list'
+                  scopes_remove:
+                    $ref: '#/components/schemas/scope_list'
               - type: "null"
       - type: "null"
 components:
@@ -28,6 +28,6 @@ components:
           items:
             type: string
             pattern: "^[0-9a-zA-Z:_]+$"
+        - type: string
+          pattern: "^[0-9a-zA-Z:_]+$"
         - type: "null"
-       
-
