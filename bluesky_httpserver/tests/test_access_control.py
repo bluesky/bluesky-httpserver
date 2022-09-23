@@ -16,6 +16,7 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_ROLE_PUBLIC,
     _DEFAULT_ROLE_ADMIN,
     _DEFAULT_ROLE_EXPERT,
+    _DEFAULT_ROLE_ADVANCED,
     _DEFAULT_ROLE_USER,
     _DEFAULT_ROLE_OBSERVER,
     _DEFAULT_SCOPES_SINGLE_USER,
@@ -192,6 +193,35 @@ api_access:
           - read:status
 """
 
+config_test_all_default_roles = """
+authentication:
+    allow_anonymous_access: False
+    providers:
+        - provider: toy
+          authenticator: bluesky_httpserver.authenticators:DictionaryAuthenticator
+          args:
+              users_to_passwords:
+                  bob: bob_password
+                  alice: alice_password
+                  cara: cara_password
+                  tom: tom_password
+                  joe: joe_password
+api_access:
+  policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+  args:
+    users:
+      bob:
+        roles: admin
+      alice:
+        roles: expert
+      cara:
+        roles: advanced
+      tom:
+        roles: user
+      joe:
+        roles: observer
+"""
+
 
 # fmt: on
 @pytest.mark.parametrize(
@@ -298,13 +328,51 @@ def test_authentication_and_authorization_01(
     assert "Could not validate credentials" in resp7["detail"]
 
 
+def test_authentication_and_authorization_02(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    Check default scopes for all default roles. Each user is assigned a single role.
+    Check that returned scopes match the default scopes.
+    """
+    config = config_test_all_default_roles
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    username__to_role = {
+        "bob": _DEFAULT_ROLE_ADMIN,
+        "alice": _DEFAULT_ROLE_EXPERT,
+        "cara": _DEFAULT_ROLE_ADVANCED,
+        "tom": _DEFAULT_ROLE_USER,
+        "joe": _DEFAULT_ROLE_OBSERVER,
+    }
+
+    # Check that both single-user access and public access work
+    #   (by default 'api_key' is set to valid single-user API key)
+    for username, role in username__to_role.items():
+        print(f"Testing access for the username {username!r}")
+
+        resp1 = request_to_json("post", "/auth/provider/toy/token", login=(username, username + "_password"))
+        assert "access_token" in resp1
+        token = resp1["access_token"]
+
+        resp3 = request_to_json("get", "/auth/scopes", token=token)
+        assert "roles" in resp3, pprint.pformat(resp3)
+        assert "scopes" in resp3, pprint.pformat(resp3)
+        assert resp3["roles"] == [role]
+        assert set(resp3["scopes"]) == _DEFAULT_ROLES[role]
+
+
 # fmt: off
 @pytest.mark.parametrize("config, set_ev", [
     (config_noauth_single_user_api_key, False),
     (config_noauth_single_user_api_key_as_ev, True),
 ])
 # fmt:on
-def test_authentication_and_authorization_02(
+def test_authentication_and_authorization_03(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -338,7 +406,7 @@ def test_authentication_and_authorization_02(
     assert set(resp2a["scopes"]) == scopes
 
 
-def test_authentication_and_authorization_03(
+def test_authentication_and_authorization_04(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -376,7 +444,7 @@ def test_authentication_and_authorization_03(
         assert set(resp2a["scopes"]) == scopes
 
 
-def test_authentication_and_authorization_04(
+def test_authentication_and_authorization_05(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -416,7 +484,7 @@ def test_authentication_and_authorization_04(
         assert set(resp2a["scopes"]) == set(scopes)
 
 
-def test_authentication_and_authorization_05(
+def test_authentication_and_authorization_06(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -545,7 +613,7 @@ def test_authentication_and_authorization_05(
         assert "Incorrect username or password" in resp12["detail"]
 
 
-def test_authentication_and_authorization_06(
+def test_authentication_and_authorization_07(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
@@ -591,7 +659,7 @@ def test_authentication_and_authorization_06(
         assert set(resp3["scopes"]) == scopes_user
 
 
-def test_authentication_and_authorization_07(
+def test_authentication_and_authorization_08(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811

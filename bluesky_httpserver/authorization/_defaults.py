@@ -57,6 +57,24 @@ _DEFAULT_SCOPES_EXPERT = {
     "user:apikeys",
 }
 
+_DEFAULT_SCOPES_ADVANCED = {
+    "read:status",
+    "read:queue",
+    "read:history",
+    "read:resources",
+    "read:config",
+    "read:monitor",
+    "read:console",
+    "read:lock",
+    "read:testing",
+    "write:queue:edit",
+    "write:queue:control",
+    "write:manager:control",
+    "write:plan:control",
+    "write:execute",
+    "write:history:edit",
+}
+
 _DEFAULT_SCOPES_USER = {
     "read:status",
     "read:queue",
@@ -135,6 +153,7 @@ _DEFAULT_USER_INFO = {
 
 _DEFAULT_ROLE_ADMIN = "admin"
 _DEFAULT_ROLE_EXPERT = "expert"
+_DEFAULT_ROLE_ADVANCED = "advanced"
 _DEFAULT_ROLE_USER = "user"
 _DEFAULT_ROLE_OBSERVER = "observer"
 
@@ -142,6 +161,7 @@ _DEFAULT_ROLE_OBSERVER = "observer"
 _DEFAULT_ROLES = {
     _DEFAULT_ROLE_ADMIN: _DEFAULT_SCOPES_ADMIN,
     _DEFAULT_ROLE_EXPERT: _DEFAULT_SCOPES_EXPERT,
+    _DEFAULT_ROLE_ADVANCED: _DEFAULT_SCOPES_ADVANCED,
     _DEFAULT_ROLE_USER: _DEFAULT_SCOPES_USER,
     _DEFAULT_ROLE_OBSERVER: _DEFAULT_SCOPES_OBSERVER,
     _DEFAULT_ROLE_SINGLE_USER: _DEFAULT_SCOPES_SINGLE_USER,
