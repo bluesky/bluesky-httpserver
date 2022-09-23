@@ -1,6 +1,10 @@
 import pytest
 
-from bluesky_httpserver.authorization import BasicAPIAccessControl, DictionaryAPIAccessControl
+from bluesky_httpserver.authorization import (
+    BasicAPIAccessControl,
+    DictionaryAPIAccessControl,
+    DefaultResourceAccessControl,
+)
 from bluesky_httpserver.config_schemas.loading import ConfigError
 
 from bluesky_httpserver.authorization._defaults import (
@@ -10,7 +14,12 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_USERNAME_PUBLIC,
     _DEFAULT_ROLE_PUBLIC,
     _DEFAULT_SCOPES_PUBLIC,
+    _DEFAULT_RESOURCE_ACCESS_GROUP,
 )
+
+
+# ====================================================================================
+#                                API ACCESS POLICIES
 
 
 # fmt: off
@@ -193,3 +202,27 @@ def test_DictionaryAPIAccessControl_02(params, existing_scopes, missing_scopes):
     scopes = ac_manager.get_user_scopes(name)
     assert "read:status" in scopes
     assert "write:permissions" not in scopes
+
+
+# ====================================================================================
+#                            RESOURCE ACCESS POLICIES
+
+
+# fmt: off
+@pytest.mark.parametrize("params, group, success", [
+    ({}, _DEFAULT_RESOURCE_ACCESS_GROUP, True),
+    ({"default_group": None}, _DEFAULT_RESOURCE_ACCESS_GROUP, True),
+    ({"default_group": "custom_group_name"}, "custom_group_name", True),
+    ({"default_group": 10}, "", False),
+])
+# fmt: on
+def test_DefaultResourceAccessControl_01(params, group, success):
+    """
+    DefaultResourceAccessControl: basic tests.
+    """
+    if success:
+        manager = DefaultResourceAccessControl(**params)
+        assert manager.get_resource_group("arbitrary_user_name") == group
+    else:
+        with pytest.raises(ConfigError):
+            DefaultResourceAccessControl(**params)

@@ -22,6 +22,7 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_SCOPES_SINGLE_USER,
     _DEFAULT_SCOPES_PUBLIC,
     _DEFAULT_ROLES,
+    _DEFAULT_RESOURCE_ACCESS_GROUP,
 )
 
 
@@ -700,3 +701,71 @@ def test_authentication_and_authorization_08(
         assert "scopes" in resp3, pprint.pformat(resp3)
         assert set(resp3["roles"]) == set(roles_user)
         assert set(resp3["scopes"]) == scopes_user
+
+
+# ====================================================================================
+#                               RESOURCE ACCESS
+
+config_default_resource_access = """
+authentication:
+    providers:
+        - provider: toy
+          authenticator: bluesky_httpserver.authenticators:DictionaryAuthenticator
+          args:
+              users_to_passwords:
+                  bob: bob_password
+api_access:
+  policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+  args:
+    users:
+      bob:
+        roles:
+          - admin
+          - expert
+"""
+
+resource_access_change_default = """
+resource_access:
+  policy: bluesky_httpserver.authorization:DefaultResourceAccessControl
+  args:
+    default_group: test_user
+"""
+
+
+# fmt: off
+@pytest.mark.parametrize("config, group", [
+    (config_default_resource_access, _DEFAULT_RESOURCE_ACCESS_GROUP),
+    (config_default_resource_access + resource_access_change_default, "test_user"),
+])
+# fmt: on
+def test_resource_access_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+    config,
+    group,
+):
+    """
+    DefaultResourceAccessControl: Test that the correct group name is used in API calls
+    that require group name, e.g. '/queue/item/add' API.
+    """
+    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    username, password = "bob", "bob_password"
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=(username, password))
+    assert "access_token" in resp1, pprint.pformat(resp1)
+    token = resp1["access_token"]
+
+    resp2 = request_to_json(
+        "post",
+        "/queue/item/add",
+        json={"item": {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}},
+        token=token,
+    )
+    assert resp2["success"] is True
+    assert resp2["qsize"] == 1
+    assert resp2["item"]["user"] == "bob"
+    assert resp2["item"]["user_group"] == group
