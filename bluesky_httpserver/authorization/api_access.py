@@ -1,9 +1,46 @@
 import copy
 from collections.abc import Iterable
 import jsonschema
+import yaml
 
 from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
-from ..config_schemas.loading import load_schema_from_yml, ConfigError
+from ..config_schemas.loading import ConfigError
+
+_schema_BasicAPIAccessControl = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  roles:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        patternProperties:
+          "^[a-zA-Z_][0-9a-zA-Z_]*$":
+            oneOf:
+              - type: object
+                additionalProperties: false
+                properties:
+                  scopes_set:
+                    $ref: '#/components/schemas/scope_list'
+                  scopes_add:
+                    $ref: '#/components/schemas/scope_list'
+                  scopes_remove:
+                    $ref: '#/components/schemas/scope_list'
+              - type: "null"
+      - type: "null"
+components:
+  schemas:
+    scope_list:
+      oneOf:
+        - type: array
+          items:
+            type: string
+            pattern: "^[0-9a-zA-Z:_]+$"
+        - type: string
+          pattern: "^[0-9a-zA-Z:_]+$"
+        - type: "null"
+"""
 
 
 class BasicAPIAccessControl:
@@ -42,8 +79,8 @@ class BasicAPIAccessControl:
     def __init__(self, *, roles=None):
         try:
             config = {"roles": roles}
-            schema_file_name = "basic_api_access_control_config.yml"
-            jsonschema.validate(instance=config, schema=load_schema_from_yml(schema_file_name))
+            schema = yaml.safe_load(_schema_BasicAPIAccessControl)
+            jsonschema.validate(instance=config, schema=schema)
         except jsonschema.ValidationError as err:
             msg = err.args[0]
             raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
@@ -144,6 +181,47 @@ class BasicAPIAccessControl:
         return {"roles": roles, "scopes": scopes, "displayed_name": displayed_name}
 
 
+_schema_DictionaryAPIAccessControl = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  roles:  # Detailed validation is performed elsewhere
+    description: The value is passed to BasicAPIAccessControl object
+  users:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        patternProperties:
+          "^[0-9a-zA-Z_]+$":
+            oneOf:
+              - type: object
+                additionalProperties: false
+                properties:
+                  roles:
+                    oneOf:
+                      - type: array
+                        items:
+                          type: string
+                          pattern: "^[a-zA-Z_][0-9a-zA-Z_]*$"
+                      - type: string
+                        pattern: "^[a-zA-Z_][0-9a-zA-Z_]*$"
+                      - type: "null"
+                  displayed_name:
+                    oneOf:
+                      - type: string
+                        pattern: "^.+$"
+                      - type: "null"
+                  mail:
+                    oneOf:
+                      - type: string
+                        pattern: "^.+@.+$"
+                      - type: "null"
+              - type: "null"
+      - type: "null"
+"""
+
+
 class DictionaryAPIAccessControl(BasicAPIAccessControl):
     """
     ``users`` is a dictionary with the following keys: ``roles`` - a role name (str)
@@ -157,8 +235,8 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
 
         try:
             config = {"roles": roles, "users": users}
-            schema_file_name = "dictionary_api_access_control_config.yml"
-            jsonschema.validate(instance=config, schema=load_schema_from_yml(schema_file_name))
+            schema = yaml.safe_load(_schema_DictionaryAPIAccessControl)
+            jsonschema.validate(instance=config, schema=schema)
         except jsonschema.ValidationError as err:
             msg = err.args[0]
             raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
