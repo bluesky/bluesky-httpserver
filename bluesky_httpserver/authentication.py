@@ -415,7 +415,7 @@ def build_auth_code_route(authenticator, provider):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(request)
 
-        if username and api_access_manager.authorize(username):
+        if username and api_access_manager.is_user_known(username):
             scopes = api_access_manager.get_user_scopes(username)
         else:
             raise HTTPException(status_code=401, detail="Authentication failure")
@@ -447,7 +447,7 @@ def build_handle_credentials_route(authenticator, provider):
         err_msg = None
         if not username:
             err_msg = "Incorrect username or password"
-        elif not api_access_manager.authorize(username):
+        elif not api_access_manager.is_user_known(username):
             err_msg = "User is not authorized to access the server"
         else:
             scopes = api_access_manager.get_user_scopes(username)

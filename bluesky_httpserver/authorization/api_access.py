@@ -171,7 +171,7 @@ class BasicAPIAccessControl:
         else:
             return f'{username} "{displayed_name} <{mail}>"'
 
-    def authorize(self, username):
+    def is_user_known(self, username):
         return self._is_user_known(username)
 
     def get_user_info(self, username):

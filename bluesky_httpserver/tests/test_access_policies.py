@@ -79,7 +79,7 @@ def test_BasicAPIAccessControl_02(name, role, scopes):
     """
     ac_manager = BasicAPIAccessControl()
 
-    assert ac_manager.authorize(name) is True
+    assert ac_manager.is_user_known(name) is True
     assert ac_manager.get_user_roles(name) == set([role])
     assert ac_manager.get_displayed_user_name(name) == name
     assert ac_manager.get_user_scopes(name) == set(scopes)
@@ -126,7 +126,7 @@ def test_BasicAPIAccessControl_04():
     ac_manager = BasicAPIAccessControl()
 
     name = "nonexisting_user"
-    assert ac_manager.authorize(name) is False
+    assert ac_manager.is_user_known(name) is False
     assert ac_manager.get_user_roles(name) == set()
     assert ac_manager.get_displayed_user_name(name) == name
     assert ac_manager.get_user_scopes(name) == set()
@@ -196,7 +196,7 @@ def test_DictionaryAPIAccessControl_02(params, existing_scopes, missing_scopes):
 
     ac_manager = DictionaryAPIAccessControl(users=users)
 
-    assert ac_manager.authorize(name) is True
+    assert ac_manager.is_user_known(name) is True
     assert ac_manager.get_user_roles(name) == set(roles)
     assert ac_manager.get_displayed_user_name(name) == f'{name} "{displayed_name} <{mail}>"'
     scopes = ac_manager.get_user_scopes(name)
