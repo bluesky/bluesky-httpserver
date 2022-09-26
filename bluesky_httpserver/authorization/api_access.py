@@ -50,47 +50,103 @@ class BasicAPIAccessControl:
     (user authorized with single-user API key) and ``UNAUTHENTICATED_PUBLIC`` (unauthorized user,
     sending no token or API key with the request). The default users are assigned to
     ``unauthenticated_single_user`` and ``unauthenticated_public`` roles respectively.
-    In additon, five roles are defined by the policy and available to subclasses:
+    In additon, five roles are defined by the policy and available to subclassed policies:
     ``admin``, ``expert``, ``advanced``, ``user`` and ``observer``.
 
-    Each of the seven roles are assigned a reasonable set of default scopes. Practical
-    deployments may require customization of the roles. The parameter ``roles`` allows
-    to replace or modify sets of scopes for default roles or add new custom roles.
+    Each of the seven roles is assigned a reasonable set of default scopes, which may be
+    customized for practical deployments. The parameter ``roles`` allows to replace or modify 
+    sets of scopes assigned to default roles or add new custom roles recognized by policies.
     Note, that the basic API access policy support only unauthenticated access and uses
-    only two roles. The remaining five roles and custom roles may be used by subclasses
+    only two roles. The other default roles and custom roles are intended for use in subclasses
     that define more sophysticated policies.
 
+    The optional parameter ``roles`` accepts a dictionary, which maps role names to operations
+    on the respective sets of scopes. The operations include ``scopes_set`` (replaces the existing
+    scopes by the new scopes or sets scopes for a new custom role), ``scopes_add`` (adds
+    scopes to the existing scopes) and ``scopes_remove`` (remove scopes from the set).
+    Multiple operations for a given role are executed in the following order: ``scopes_set``,
+    ``scopes_add`` followed by ``scopes_remove``.
 
+    The following examples illustrate how modify API access for the default ``user`` role.
+    Access to API may be disabled by mapping the role name to ``None`` or setting scopes to the 
+    empty list::
 
-    Additional roles can be added or the scopes assigned to the existing roles can be modified
-    by passing the dictionary as a value of the parameter ``roles`` to the object constructor.
-    The dictionary keys are role names and the values are dictionaries with keys ``set``,
-    ``add`` and ``remove`` pointing to lists of existing scopes. The scopes in the lists are
-    completely replacing the default scopes (``set``), added to the default set of scopes (``add``)
-    or removed from the default set of scopes (``remove``). If the dictionary ``roles`` contains
-    multiple keys, the operations of replacing, adding and removing scopes are executed in the listed order.
+      # 'user' can not access any API.
+      {"user": None}
+      {"user": {"scopes_set": []}}
+      {"user": {"scopes_set": None}}
 
-    # Replace the set of scopes with the new set: 'user' can now only read status and the queue.
-    {"user": {"replace": ["read:status", "read:queue"]}}
+    In the following examples, the scopes are not changed, since no operations are specified or 
+    the operations do not modify the scopes::
 
-    # In addition to default scopes, 'user' can now upload and execute scripts.
-    {"user": {"add": ["write:scripts"]}}
+      # Scopes are not changed
+      {"user": {}}
+      {"user": {"scopes_add": []}}
+      {"user": {"scopes_add": None}}
+      {"user": {"scopes_remove": []}}
+      {"user": {"scopes_remove": None}}
+      {"user": {"scopes_add": [], "scopes_remove": []}}
+      {"user": {"scopes_add": None, "scopes_remove": None}}
 
-    # 'user' is assigned the default scopes except API for editing the queue.
-    {"user": {"remove": ["write:queue:edit"]}}
+    The scopes are replaces by specifying a list of scopes with ``scopes_set``::
 
-    # Now the 'user' can execute scripts, but not edit the queue.
-    {"user": {"add": ["write:scripts"], "remove": ["write:queue:edit"]}}
+      # Replace the scopes with the new set: 'user' can now only read status and the queue.
+      {"user": {"scopes_set": ["read:status", "read:queue"]}}
 
-    # 'user' can not access any API.
-    {"user": None}
-    {"user": {"set": []}}
-    {"user": {"set": None}}
+      # Replace the scopes: 'user' can now only read status.
+      {"user": {"scopes_set": ["read:status"]}}
+      # A single scope may be specified as a string (more convenient in YML config file).
+      {"user": {"scopes_set": "read:status"}}
 
-    # Scopes are not changed
-    {"user": {}}
-    {"user": {"add": None}}
-    {"user": {"remove": None}}
+    Additional scopes can be added to the default scopes::
+
+      # In addition to default scopes, 'user' can now upload and execute scripts.
+      {"user": {"scopes_add": ["write:scripts"]}}
+      {"user": {"scopes_add": "write:scripts"}}
+
+    Scopes can be removed from the default scopes::
+
+      # 'user' is assigned the default scopes except API for editing the queue.
+      {"user": {"scopes_remove": ["write:queue:edit"]}}
+      {"user": {"scopes_remove": "write:queue:edit"}}
+
+    Multiple operations may be specified::
+
+      # Now the 'user' can execute scripts, but not edit the queue.
+      {"user": {"scopes_add": ["write:scripts"], "remove": ["write:queue:edit"]}}
+      {"user": {"scopes_add": "write:scripts", "remove": "write:queue:edit"}}
+
+    In practical deployments, the policy arguments are defined in config YML files. 
+    The following is an example of configuration that modifies the scopes for
+    the ``user`` role and creates a new ``test_role``::
+
+      api_access:
+        policy: bluesky_httpserver.authorization:BasicAPIAccessControl
+        args:
+          roles:
+            user:
+              scopes_add: write:scripts
+              scopes_remove:
+                - write:queue:edit
+                - read:queue:edit
+            test_role:
+              scopes_add:
+                - read:status
+                - read:queue
+                - read:history
+                - read:resources
+                - read:config
+                - read:monitor
+                - read:console
+                - read:lock
+                - read:testing
+
+    Parameters
+    ----------
+    roles: dict, None
+        The dictionary that maps role names to operations that modify assigned role scopes.
+        If ``None``, then the default roles with default unmodified scopes are used.
+
     """
 
     def __init__(self, *, roles=None):
@@ -158,9 +214,38 @@ class BasicAPIAccessControl:
             scopes = set().union(*[self._collect_scopes(_) for _ in roles])
         return scopes
 
+    def is_user_known(self, username):
+        """
+        Performs quick check whether the user is known. In many cases it does not make sense to
+        perform any further authorization steps if the user is unknown. If the user is known, but
+        not assigned to any groups or assigned to groups with empty scopes, then the user still
+        can not access any API.
+
+        Parameters
+        ----------
+        username: str
+            User name
+
+        Returns
+        -------
+        boolean
+            Indicates if the user is known (``True``) or not (``False``).
+        """
+        return self._is_user_known(username)
+
     def get_user_roles(self, username):
         """
-        Returns a set of roles for the user
+        Returns a set of roles assigned to the user.
+
+        Parameters
+        ----------
+        username: str
+            User name
+
+        Returns
+        -------
+        set(str)
+            A set of roles assigned to the user. The set of roles is empty if the user is not found.
         """
         principal_info = self._collect_user_info(username)
         roles = principal_info.get("roles", [])
@@ -170,12 +255,44 @@ class BasicAPIAccessControl:
 
     def get_user_scopes(self, username):
         """
-        Returns a set of scopes for the user
+        Returns a set of scopes assigned to the user. The scopes are based on the user roles.
+
+        Parameters
+        ----------
+        username: str
+            User name
+
+        Returns
+        -------
+        set(str)
+            A set of scopes assigned to the user. The set of scopes is empty if the user is not found.
         """
         roles = self.get_user_roles(username)
         return self._collect_role_scopes(roles)
 
     def get_displayed_user_name(self, username):
+        """
+        Returns the displayed user name for the user. The displayed user name is assembled from
+        ``username``, full 'displayed' user name and user's email. The formatting depends on 
+        the available data, i.e. if no additional data is available, then ``username`` is returned.
+        If the user is not found, then ``username`` is returned. The following output is possible
+        for the user *'jdoe'*::
+          
+          jdoe
+          jdoe <jdoe@gmail.com>
+          jdoe "John Doe"
+          jdoe "John Doe <jdoe@gmail.com>"
+
+        Parameters
+        ----------
+        username: str
+            User name
+
+        Returns
+        -------
+        str
+            Formatted displayed user name.        
+        """
         user_info = self._collect_user_info(username)
         mail = user_info.get("mail", None)
         displayed_name = user_info.get("displayed_name", None)
@@ -188,10 +305,22 @@ class BasicAPIAccessControl:
         else:
             return f'{username} "{displayed_name} <{mail}>"'
 
-    def is_user_known(self, username):
-        return self._is_user_known(username)
-
     def get_user_info(self, username):
+        """
+        Returns complete user information, including a set of roles, set of scopes and displayed user name.
+        This operation is more efficient that getting those items one by one.
+
+        Parameters
+        ----------
+        username: str
+            User name
+
+        Returns
+        -------
+        dict
+            The dictionary with full user information. The keys: ``roles`` (see ``get_user_roles()``),
+            ``scopes`` (see ``get_user_scopes()``) and ``displayed_name`` (see ``get_displayed_user_name()``).
+        """
         roles = self.get_user_roles(username)
         scopes = self._collect_role_scopes(roles)
         displayed_name = self.get_displayed_user_name(username)
