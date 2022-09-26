@@ -141,7 +141,7 @@ _DEFAULT_SCOPES_SINGLE_USER = {
 
 # Unauthenticated user
 _DEFAULT_USERNAME_PUBLIC = "UNAUTHENTICATED_PUBLIC"
-_DEFAULT_ROLE_PUBLIC = "unauthenticated_anonymous"
+_DEFAULT_ROLE_PUBLIC = "unauthenticated_public"
 _DEFAULT_SCOPES_PUBLIC = {
     "read:status",
 }

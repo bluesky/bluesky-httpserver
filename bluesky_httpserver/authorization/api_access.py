@@ -45,6 +45,23 @@ components:
 
 class BasicAPIAccessControl:
     """
+    The class that defines basic API access control policy, which is used by HTTP server
+    by default. The basic policy supports two default users: ``UNAUTHENTICATED_SINGLE_USER``
+    (user authorized with single-user API key) and ``UNAUTHENTICATED_PUBLIC`` (unauthorized user,
+    sending no token or API key with the request). The default users are assigned to
+    ``unauthenticated_single_user`` and ``unauthenticated_public`` roles respectively.
+    In additon, five roles are defined by the policy and available to subclasses:
+    ``admin``, ``expert``, ``advanced``, ``user`` and ``observer``.
+
+    Each of the seven roles are assigned a reasonable set of default scopes. Practical
+    deployments may require customization of the roles. The parameter ``roles`` allows
+    to replace or modify sets of scopes for default roles or add new custom roles.
+    Note, that the basic API access policy support only unauthenticated access and uses
+    only two roles. The remaining five roles and custom roles may be used by subclasses
+    that define more sophysticated policies.
+
+
+
     Additional roles can be added or the scopes assigned to the existing roles can be modified
     by passing the dictionary as a value of the parameter ``roles`` to the object constructor.
     The dictionary keys are role names and the values are dictionaries with keys ``set``,
