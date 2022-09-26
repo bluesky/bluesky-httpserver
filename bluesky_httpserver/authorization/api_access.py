@@ -54,7 +54,7 @@ class BasicAPIAccessControl:
     ``admin``, ``expert``, ``advanced``, ``user`` and ``observer``.
 
     Each of the seven roles is assigned a reasonable set of default scopes, which may be
-    customized for practical deployments. The parameter ``roles`` allows to replace or modify 
+    customized for practical deployments. The parameter ``roles`` allows to replace or modify
     sets of scopes assigned to default roles or add new custom roles recognized by policies.
     Note, that the basic API access policy support only unauthenticated access and uses
     only two roles. The other default roles and custom roles are intended for use in subclasses
@@ -68,7 +68,7 @@ class BasicAPIAccessControl:
     ``scopes_add`` followed by ``scopes_remove``.
 
     The following examples illustrate how modify API access for the default ``user`` role.
-    Access to API may be disabled by mapping the role name to ``None`` or setting scopes to the 
+    Access to API may be disabled by mapping the role name to ``None`` or setting scopes to the
     empty list::
 
       # 'user' can not access any API.
@@ -76,7 +76,7 @@ class BasicAPIAccessControl:
       {"user": {"scopes_set": []}}
       {"user": {"scopes_set": None}}
 
-    In the following examples, the scopes are not changed, since no operations are specified or 
+    In the following examples, the scopes are not changed, since no operations are specified or
     the operations do not modify the scopes::
 
       # Scopes are not changed
@@ -116,7 +116,7 @@ class BasicAPIAccessControl:
       {"user": {"scopes_add": ["write:scripts"], "remove": ["write:queue:edit"]}}
       {"user": {"scopes_add": "write:scripts", "remove": "write:queue:edit"}}
 
-    In practical deployments, the policy arguments are defined in config YML files. 
+    In practical deployments, the policy arguments are defined in config YML files.
     The following is an example of configuration that modifies the scopes for
     the ``user`` role and creates a new ``test_role``::
 
@@ -273,11 +273,11 @@ class BasicAPIAccessControl:
     def get_displayed_user_name(self, username):
         """
         Returns the displayed user name for the user. The displayed user name is assembled from
-        ``username``, full 'displayed' user name and user's email. The formatting depends on 
+        ``username``, full 'displayed' user name and user's email. The formatting depends on
         the available data, i.e. if no additional data is available, then ``username`` is returned.
         If the user is not found, then ``username`` is returned. The following output is possible
         for the user *'jdoe'*::
-          
+
           jdoe
           jdoe <jdoe@gmail.com>
           jdoe "John Doe"
@@ -291,7 +291,7 @@ class BasicAPIAccessControl:
         Returns
         -------
         str
-            Formatted displayed user name.        
+            Formatted displayed user name.
         """
         user_info = self._collect_user_info(username)
         mail = user_info.get("mail", None)
@@ -370,10 +370,55 @@ properties:
 
 class DictionaryAPIAccessControl(BasicAPIAccessControl):
     """
-    ``users`` is a dictionary with the following keys: ``roles`` - a role name (str)
-    or a list of roles (list of str), ``displayed_name`` - displayed name, e.g. 'John Doe' (str, optional),
-    ``mail`` - email (str, optional). If the list of roles is missing or empty, then
-    the user has no access to any API.
+    Simple extension of ``BasicAPIAccessControl`` that provides an option to provide user information,
+    including assigned roles, displayed name and email. The policy is primarily intended for use in demos
+    and testing. Production deployments are expected to use more secure authorization policies.
+
+    User information is passed using ``users`` parameter, which accepts a dictionary. If the parameter
+    is ``None``, then no user information is passed to the policy and no users are allowed to access any API.
+    The dictionary maps usernames to user information dictionaries, containing roles, displayed names (optional)
+    and emails (optional). The policy arguments are specified as part of config YML files as illustrated
+    in the following examples::
+
+        # No users are allowed to access any API.
+        api_access:
+          policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+          args:
+              users: None
+
+        # User 'bob' is defined, but he is not allowed to use any API.
+        api_access:
+          policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+          args:
+            users:
+              bob: None
+
+        # User 'bob' is assigned to 'admin' and 'expert' groups, 'jdoe' is assigned to the 'advanced' group.
+        # Note: a single role may be represented as a list or a string.
+        api_access:
+          policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+          args:
+            users:
+              bob:
+                roles:
+                  - admin
+                  - expert
+                mail: bob@gmail.com
+              jdoe:
+                roles: advanced
+                dislayed_name: Doe, John
+                mail: jdoe@gmail.com
+
+    The policy arguments may also include ``roles`` parameter, which is handled by ``BasicAPIAccessControl``.
+    See docstring for ``BasicAPIAccessControl`` for more detailed information.
+
+    Parameters
+    ----------
+    roles: dict or None
+        The dictionary configuration parameters that modifies the default or create new roles. The parameter
+        is passed to ``BasicAPIAccessControl``.
+    users: dict or None
+        The dictionary that maps user name to user information.
     """
 
     def __init__(self, *, roles=None, users=None):
