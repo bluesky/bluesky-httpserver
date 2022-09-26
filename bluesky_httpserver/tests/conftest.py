@@ -15,6 +15,7 @@ API_KEY_FOR_TESTS = "APIKEYFORTESTS"
 
 _user_group = "primary"
 
+
 @pytest.fixture(scope="module")
 def fastapi_server(xprocess):
     class Starter(ProcessStarter):

@@ -171,4 +171,4 @@ _DEFAULT_ROLES = {
 # =====================================================================================
 #                     ACCESS TO RESOURCES (PLANS AND DEVICES)
 
-_DEFAULT_RESOURCE_ACCESS_GROUP = "admin"
+_DEFAULT_RESOURCE_ACCESS_GROUP = "primary"

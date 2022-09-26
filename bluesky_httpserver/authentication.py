@@ -656,7 +656,7 @@ def slide_session(refresh_token, settings, db, api_access_manager):
     data = {
         "sub": principal.uuid.hex,
         "sub_typ": principal.type.value,
-        "scp": scopes,
+        "scp": list(scopes),
         "ids": [{"id": identity.id, "idp": identity.provider} for identity in principal.identities],
     }
     access_token = create_access_token(
