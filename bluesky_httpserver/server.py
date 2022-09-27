@@ -145,7 +145,8 @@ def app_factory():
     Return an ASGI app instance.
 
     Use a configuration file at the path specified by the environment variable
-    QSERVER_HTTP_SERVER_CONFIG or, if unset, at the default path "./config.yml".
+    QSERVER_HTTP_SERVER_CONFIG. If the env. variable is not set, then do not load
+    configuration.
 
     This is intended to be used for horizontal deployment (using gunicorn, for
     example) where only a module and instance or factory can be specified.

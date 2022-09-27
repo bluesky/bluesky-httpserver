@@ -35,11 +35,6 @@ HTTP Server that provides REST API for accessing Queue Server.
 THE FOLLOWING IS A COPY OF THE ORIGINAL README.RST FROM BLUESKY-QUEUESERVER PROJECT. PROPER DOCUMENTATION
 FOR BLUESKY-HTTPSERVER IS COMING SOON.
 
-Server for queueing plans
-
-* Free software: 3-clause BSD license
-* Documentation: https://bluesky.github.io/bluesky-httpserver.
-
 Features
 --------
 
