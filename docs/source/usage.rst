@@ -1,9 +1,5 @@
-=====
-Usage
-=====
+=============================
+Starting and Using the Server
+=============================
 
-Start by importing Bluesky HTTP Server.
-
-.. code-block:: python
-
-    import bluesky_httpserver
+(documentation is coming soon)
