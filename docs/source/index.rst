@@ -17,6 +17,7 @@ Bluesky HTTP Server Documentation
    :maxdepth: 1
    :caption: User's Guide
 
+   introduction
    usage
    configuration
 

@@ -21,6 +21,17 @@ bluesky-httpserver
 .. image:: https://img.shields.io/conda/dn/conda-forge/bluesky-httpserver?label=Conda-Forge%20downloads
         :target: https://anaconda.org/conda-forge/bluesky-httpserver
 
+
+HTTP Server that provides REST API for accessing Queue Server.
+
+* Free software: 3-clause BSD license
+* `Installation instructions <https://bluesky.github.io/bluesky-httpserver/installation.html>`_.
+* `Brief description of the project <https://bluesky.github.io/bluesky-httpserver/introduction.html>`_.
+* `Full documentation <https://bluesky.github.io/bluesky-httpserver>`_.
+* `'bluesky-queueserver': HTTP Server providing REST API for Queue Server <https://bluesky.github.io/bluesky-queueserver>`_.
+* `'bluesky-queueserver-api': Python API for Queue Server <https://bluesky.github.io/bluesky-queueserver-api>`_.
+
+
 THE FOLLOWING IS A COPY OF THE ORIGINAL README.RST FROM BLUESKY-QUEUESERVER PROJECT. PROPER DOCUMENTATION
 FOR BLUESKY-HTTPSERVER IS COMING SOON.
 
