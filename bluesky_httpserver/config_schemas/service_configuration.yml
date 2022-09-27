@@ -62,21 +62,21 @@ properties:
                     args:
                       service: "custom_service"
                     ```
-      qserver_admins:
-        type: array
-        items:
-          type: object
-          additionalProperties: false
-          required:
-            - provider
-            - id
-          properties:
-            provider:
-              type: string
-            id:
-              type: string
-        description: |
-          Give users with these identities 'admin' Role.
+      # qserver_admins:
+      #   type: array
+      #   items:
+      #     type: object
+      #     additionalProperties: false
+      #     required:
+      #       - provider
+      #       - id
+      #     properties:
+      #       provider:
+      #         type: string
+      #       id:
+      #         type: string
+      #   description: |
+      #     Give users with these identities 'admin' Role.
       secret_keys:
         type: array
         items:
@@ -247,6 +247,22 @@ properties:
       ssl_ciphers:
         type: string
         description: Ciphers to use (see stdlib ssl module's). Default TLSv1.
+  api_access:
+    type: [object]
+    additionalProperties: false
+    properties:
+      policy:
+        type: string
+      args:
+        type: object
+  resource_access:
+    type: [object]
+    additionalProperties: false
+    properties:
+      policy:
+        type: string
+      args:
+        type: object
   metrics:
     type: object
     properties:

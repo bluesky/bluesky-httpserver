@@ -13,6 +13,8 @@ SERVER_PORT = "60610"
 # Single-user API key used for most of the tests
 API_KEY_FOR_TESTS = "APIKEYFORTESTS"
 
+_user_group = "primary"
+
 
 @pytest.fixture(scope="module")
 def fastapi_server(xprocess):
@@ -63,7 +65,7 @@ def add_plans_to_queue():
     resp1, _ = zmq_single_request("queue_clear")
     assert resp1["success"] is True, str(resp1)
 
-    user_group = "admin"
+    user_group = _user_group
     user = "HTTP unit test setup"
     plan1 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 10, "delay": 1}, "item_type": "plan"}
     plan2 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
@@ -72,8 +74,19 @@ def add_plans_to_queue():
         assert resp2["success"] is True, str(resp2)
 
 
-def request_to_json(request_type, path, *, request_prefix="/api", api_key=API_KEY_FOR_TESTS, **kwargs):
-    if api_key:
+def request_to_json(
+    request_type, path, *, request_prefix="/api", api_key=API_KEY_FOR_TESTS, token=None, login=None, **kwargs
+):
+    if login:
+        auth = None
+        data = {"username": login[0], "password": login[1]}
+        kwargs.setdefault("data", {})
+        kwargs.update({"data": data})
+    elif token:
+        auth = None
+        headers = {"Authorization": f"Bearer {token}"}
+        kwargs.update({"auth": auth, "headers": headers})
+    elif api_key:
         auth = None
         headers = {"Authorization": f"ApiKey {api_key}"}
         kwargs.update({"auth": auth, "headers": headers})

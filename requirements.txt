@@ -5,6 +5,7 @@ fastapi
 ldap3
 orjson
 pamela
+pydantic
 python-jose
 pyzmq
 sqlalchemy

@@ -18,7 +18,15 @@ from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
 from .console_output import CollectPublishedConsoleOutput
 from .resources import SERVER_RESOURCES as SR
-from .utils import get_login_data, get_authenticators, record_timing, API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME
+from .utils import (
+    get_default_login_data,
+    get_authenticators,
+    get_api_access_manager,
+    get_resource_access_manager,
+    record_timing,
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+)
 
 from .routers import core_api
 from .settings import get_settings
@@ -104,7 +112,7 @@ def add_router(app, *, module_and_router_name):
         raise ImportError(f"Failed to import router {module_and_router_name!r}: {ex}") from ex
 
 
-def build_app(authentication=None, server_settings=None):
+def build_app(authentication=None, api_access=None, resource_access=None, server_settings=None):
     """
     Build application
 
@@ -116,7 +124,12 @@ def build_app(authentication=None, server_settings=None):
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication.get("providers", [])}
+    authentication_providers = authentication.get("providers", [])
+    authenticators = {spec["provider"]: spec["authenticator"] for spec in authentication_providers}
+    api_access = api_access or {}
+    api_access_manager = api_access.get("manager_object", None)
+    resource_access = resource_access or {}
+    resource_access_manager = resource_access.get("manager_object", None)
     server_settings = server_settings or {}
 
     app = FastAPI()
@@ -139,25 +152,26 @@ def build_app(authentication=None, server_settings=None):
                 add_router(app, module_and_router_name=rn)
         logger.info("All custom routers are included successfully.")
 
+    from .authentication import (
+        base_authentication_router,
+        build_auth_code_route,
+        build_handle_credentials_route,
+        oauth2_scheme,
+    )
+
+    authentication_router = APIRouter()
+    # This adds the universal routes like /session/refresh and /session/revoke.
+    # Below we will add routes specific to our authentication providers.
+    authentication_router.include_router(base_authentication_router)
+
     if authentication.get("providers", []):
-        # Delay this imports to avoid delaying startup with the SQL and cryptography
-        # imports if they are not needed.
-        from .authentication import (
-            base_authentication_router,
-            build_auth_code_route,
-            build_handle_credentials_route,
-            oauth2_scheme,
-        )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = f"/api/auth/provider/{first_provider}/token"
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = APIRouter()
-        # This adds the universal routes like /session/refresh and /session/revoke.
-        # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
+
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
@@ -177,8 +191,9 @@ def build_app(authentication=None, server_settings=None):
                 raise ValueError(f"unknown authentication mode {mode}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(custom_router, prefix=f"/provider/{provider}")
-        # And add this authentication_router itself to the app.
-        app.include_router(authentication_router, prefix="/api/auth")
+
+    # And add this authentication_router itself to the app.
+    app.include_router(authentication_router, prefix="/api/auth")
 
     @app.on_event("startup")
     async def startup_event():
@@ -221,7 +236,8 @@ def build_app(authentication=None, server_settings=None):
 
         if settings.database_uri is not None:
             from sqlalchemy import create_engine
-            from sqlalchemy.orm import sessionmaker
+
+            # from sqlalchemy.orm import sessionmaker
 
             from .database import orm
             from .database.core import (
@@ -229,7 +245,7 @@ def build_app(authentication=None, server_settings=None):
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
-                make_admin_by_identity,
+                # make_admin_by_identity,
             )
 
             connect_args = {}
@@ -249,15 +265,15 @@ def build_app(authentication=None, server_settings=None):
                 logger.info("Database initialized.")
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
-            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            db = SessionLocal()
-            for admin in authentication.get("qserver_admins", []):
-                logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
-                make_admin_by_identity(
-                    db,
-                    identity_provider=admin["provider"],
-                    id=admin["id"],
-                )
+            # SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            # db = SessionLocal()
+            # for admin in authentication.get("qserver_admins", []):
+            #     logger.info(f"Ensuring that principal with identity {admin} has role 'admin'")
+            #     make_admin_by_identity(
+            #         db,
+            #         identity_provider=admin["provider"],
+            #         id=admin["id"],
+            #     )
 
             async def purge_expired_sessions_and_api_keys():
                 logger.info("Purging expired Sessions and API keys from the database.")
@@ -322,7 +338,7 @@ def build_app(authentication=None, server_settings=None):
         )
         SR.set_RM(RM)
 
-        login_data = get_login_data()
+        login_data = get_default_login_data()
         SR.RM._user = login_data["user"]
         SR.RM._user_group = login_data["user_group"]
 
@@ -370,8 +386,17 @@ def build_app(authentication=None, server_settings=None):
         return authenticators
 
     @lru_cache(1)
+    def override_get_api_access_manager():
+        return api_access_manager
+
+    @lru_cache(1)
+    def override_get_resource_access_manager():
+        return resource_access_manager
+
+    @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
+        setattr(settings, "authentication_provider_names", [_["provider"] for _ in authentication_providers])
         for item in [
             "allow_anonymous_access",
             "secret_keys",
@@ -382,6 +407,8 @@ def build_app(authentication=None, server_settings=None):
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
+        if authentication.get("single_user_api_key") is not None:
+            setattr(settings, "single_user_api_key_generated", False)
         for item in ["allow_origins", "response_bytesize_limit"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
@@ -480,6 +507,8 @@ def build_app(authentication=None, server_settings=None):
 
     app.openapi = partial(custom_openapi, app)
     app.dependency_overrides[get_authenticators] = override_get_authenticators
+    app.dependency_overrides[get_api_access_manager] = override_get_api_access_manager
+    app.dependency_overrides[get_resource_access_manager] = override_get_resource_access_manager
     app.dependency_overrides[get_settings] = override_get_settings
 
     return app

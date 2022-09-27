@@ -10,6 +10,9 @@ import os
 import sys
 import time
 
+from .authorization import _DEFAULT_USERNAME_SINGLE_USER, _DEFAULT_USERNAME_PUBLIC
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
+
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
 
 
@@ -22,13 +25,12 @@ def process_exception():
         raise HTTPException(status_code=400, detail=str(ex))
 
 
-# Login and authentication are not implemented, but some API methods require
-#   login data. So for now we set up fixed user name and group
-_login_data = {"user": "Default HTTP User", "user_group": "admin"}
+# The default user name and user group should never be sent to the manager unless there is a bug.
+_default_login_data = {"user": "Default HTTP User", "user_group": "THE_GROUP_THAT_DOES_NOT_EXIST"}
 
 
-def get_login_data():
-    return copy.deepcopy(_login_data)
+def get_default_login_data():
+    return copy.deepcopy(_default_login_data)
 
 
 def validate_payload_keys(payload, *, required_keys=None, optional_keys=None):
@@ -163,13 +165,25 @@ def prepend_to_sys_path(*paths):
 
 def get_authenticators():
     raise NotImplementedError(
-        "This should be overridden via dependency_overrides. " "See tiled.server.app.build_app()."
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
+    )
+
+
+def get_resource_access_manager():
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
+    )
+
+
+def get_api_access_manager():
+    raise NotImplementedError(
+        "This should be overridden via dependency_overrides. See bluesky_httpserver.server.app.build_app()."
     )
 
 
 class SpecialUsers(str, enum.Enum):
-    public = "public"
-    admin = "admin"
+    public = _DEFAULT_USERNAME_PUBLIC
+    single_user = _DEFAULT_USERNAME_SINGLE_USER
 
 
 def safe_json_dump(content):
@@ -261,3 +275,25 @@ def modules_available(*module_names):
         # All modules were found.
         return True
     return False
+
+
+def get_current_username(*, principal, settings, api_access_manager):
+    """
+    Pick 'username' from identities in 'principal', which may contain multiple
+    identities. The username is picked if it is the name of one of the 'special'
+    users (single user or public) or related to currently active provider.
+    This function should never raise exceptions unless there is a bug.
+
+    Returns
+    -------
+    list(str)
+        List of user names from all valid providers.
+    """
+    pnames = set(settings.authentication_provider_names) | set([_DEFAULT_ANONYMOUS_PROVIDER_NAME])
+    ids = {_.id for _ in principal.identities if (_.provider in pnames) and api_access_manager.is_user_known(_.id)}
+    ids = list(ids)
+    if not ids:
+        raise RuntimeError(
+            "'username' is required to complete the operation, but needed to complete the operation",
+        )
+    return ids

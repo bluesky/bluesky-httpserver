@@ -9,7 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
-    Table,
+    # Table,
     Unicode,
 )
 from sqlalchemy.orm import relationship
@@ -90,12 +90,12 @@ class Timestamped:
         )
 
 
-principal_role_association_table = Table(
-    "principal_role_association",
-    Base.metadata,
-    Column("principal_id", Integer, ForeignKey("principals.id"), primary_key=True),
-    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
-)
+# principal_role_association_table = Table(
+#     "principal_role_association",
+#     Base.metadata,
+#     Column("principal_id", Integer, ForeignKey("principals.id"), primary_key=True),
+#     Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
+# )
 
 
 class Principal(Timestamped, Base):
@@ -115,7 +115,7 @@ class Principal(Timestamped, Base):
 
     identities = relationship("Identity", back_populates="principal")
     api_keys = relationship("APIKey", back_populates="principal")
-    roles = relationship("Role", secondary=principal_role_association_table, back_populates="principals")
+    # roles = relationship("Role", secondary=principal_role_association_table, back_populates="principals")
     sessions = relationship("Session", back_populates="principal")
 
 
@@ -132,14 +132,14 @@ class Identity(Timestamped, Base):
     principal = relationship("Principal", back_populates="identities")
 
 
-class Role(Timestamped, Base):
-    __tablename__ = "roles"
+# class Role(Timestamped, Base):
+#     __tablename__ = "roles"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(Unicode(255), index=True, unique=True, nullable=False)
-    description = Column(Unicode(1023), nullable=True)
-    scopes = Column(JSONList(511), nullable=False)
-    principals = relationship("Principal", secondary=principal_role_association_table, back_populates="roles")
+#     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+#     name = Column(Unicode(255), index=True, unique=True, nullable=False)
+#     description = Column(Unicode(1023), nullable=True)
+#     scopes = Column(JSONList(511), nullable=False)
+#     principals = relationship("Principal", secondary=principal_role_association_table, back_populates="roles")
 
 
 class APIKey(Timestamped, Base):

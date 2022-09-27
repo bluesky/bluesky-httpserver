@@ -6,8 +6,6 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
 from typing import Optional
-import os
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
@@ -43,8 +41,11 @@ from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     get_authenticators,
+    get_api_access_manager,
     get_base_url,
+    get_current_username,
 )
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -176,6 +177,7 @@ def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: BaseSettings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
+    api_access_manager=Depends(get_api_access_manager),
 ):
     """
     Get current Principal from:
@@ -196,6 +198,9 @@ def get_current_principal(
         "WWW-Authenticate": authenticate_value,
         "X-Tiled-Root": get_base_url(request),
     }
+
+    roles, scopes = {}, {}
+
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
@@ -217,7 +222,17 @@ def get_current_principal(
                 api_key_orm = lookup_valid_api_key(db, secret)
                 if api_key_orm is not None:
                     principal = schemas.Principal.from_orm(api_key_orm.principal)
-                    principal_scopes = set().union(*[role.scopes for role in principal.roles])
+                    ids = get_current_username(
+                        principal=principal, settings=settings, api_access_manager=api_access_manager
+                    )
+                    scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+                    principal_scopes = set.union(*scope_sets) if scope_sets else set()
+
+                    roles_sets = [api_access_manager.get_user_roles(_) for _ in ids]
+                    roles = set.union(*roles_sets) if roles_sets else set()
+
+                    # principal_scopes = set().union(*[role.scopes for role in principal.roles])
+
                     # This intersection addresses the case where the Principal has
                     # lost a scope that they had when this key was created.
                     scopes = set(api_key_orm.scopes).intersection(principal_scopes | {"inherit"})
@@ -226,6 +241,7 @@ def get_current_principal(
                         # scopes for the Principal associated with this API,
                         # resolved at access time.
                         scopes.update(principal_scopes)
+                        scopes.discard("inherit")
                     api_key_orm.latest_activity = utcnow()
                     db.commit()
                 else:
@@ -237,32 +253,15 @@ def get_current_principal(
         else:
             # HTTP Server is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = SpecialUsers.admin
-                default_admin_scopes = {
-                    "read:queue",
-                    "read:history",
-                    "read:resources",
-                    "read:config",
-                    "read:monitor",
-                    "read:console",
-                    "read:status",
-                    "read:lock",
-                    "read:testing",
-                    "write:queue:edit",
-                    "write:queue:control",
-                    "write:manager:control",
-                    "write:plan:control",
-                    "write:execute",
-                    "write:history:edit",
-                    "write:permissions",
-                    "write:scripts",
-                    "write:config",
-                    "write:lock",
-                    "write:manager:stop",
-                    "write:testing",
-                }
-                ev_scopes = os.getenv("QSERVER_HTTP_SERVER_ADMIN_SCOPES", None)
-                scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_admin_scopes
+                username = SpecialUsers.single_user.value
+                scopes = api_access_manager.get_user_scopes(username)
+                roles = api_access_manager.get_user_roles(username)
+
+                principal = schemas.Principal(
+                    uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
+                    type="user",
+                    identities=[schemas.Identity(id=username, provider=_DEFAULT_ANONYMOUS_PROVIDER_NAME)],
+                )
 
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key", headers=headers_for_401)
@@ -287,23 +286,41 @@ def get_current_principal(
                 schemas.Identity(id=identity["id"], provider=identity["idp"]) for identity in payload["ids"]
             ],
         )
-        scopes = payload["scp"]
+
+        # scopes = payload["scp"]
+
+        # Combine scopes for all identities (it is expected to be only one identity).
+        ids = [_["id"] for _ in payload["ids"] if _["idp"] in settings.authentication_provider_names]
+        scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+
+        roles_sets = [api_access_manager.get_user_roles(_) for _ in ids]
+        roles = set.union(*roles_sets) if roles_sets else set()
+
     else:
         # No form of authentication is present.
-        principal = SpecialUsers.public
+        username = SpecialUsers.public.value
+        # This is a 'dummy' principal used to pass data within the server. Not saved to the databased.
+        principal = schemas.Principal(
+            uuid=uuid_module.uuid4(),  # Generate unique UUID each time - it is not expected to be used
+            type="user",
+            identities=[schemas.Identity(id=username, provider=_DEFAULT_ANONYMOUS_PROVIDER_NAME)],
+        )
+
         # Is anonymous public access permitted?
         if settings.allow_anonymous_access:
             # Any user who can see the server can make unauthenticated requests.
             # This is a sentinel that has special meaning to the authorization
             # code (the access control policies).
-            default_public_scopes = {"read:status"}
-            ev_scopes = os.getenv("QSERVER_HTTP_SERVER_PUBLIC_SCOPES", None)
-            scopes = set(re.split(";|,", ev_scopes)) if ev_scopes else default_public_scopes
+            scopes = api_access_manager.get_user_scopes(username)
+            roles = api_access_manager.get_user_roles(username)
+
         else:
             # In this mode, there may still be entries that are visible to all,
             # but users have to authenticate as *someone* to see anything.
             # They can still access the /  and /docs routes.
             scopes = {}
+            roles = {}
+
     # Scope enforcement happens here.
     # https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
     if not set(security_scopes.scopes).issubset(scopes):
@@ -323,10 +340,15 @@ def get_current_principal(
             ),
             headers=headers_for_401,
         )
+
+    roles_list, scopes_list = list(roles), list(scopes)
+    roles_list.sort()
+    scopes_list.sort()
+    principal.roles, principal.scopes = roles_list, scopes_list
     return principal
 
 
-def create_session(settings, identity_provider, id):
+def create_session(settings, identity_provider, id, scopes):
     with get_sessionmaker(settings.database_settings)() as db:
         # Have we seen this Identity before?
         identity = (
@@ -346,6 +368,7 @@ def create_session(settings, identity_provider, id):
         else:
             identity.latest_login = now
             principal = identity.principal
+
         session = orm.Session(
             principal_id=principal.id,
             expiration_time=utcnow() + settings.session_max_age,
@@ -359,7 +382,7 @@ def create_session(settings, identity_provider, id):
         data = {
             "sub": principal.uuid.hex,
             "sub_typ": principal.type.value,
-            "scp": list(set().union(*[role.scopes for role in principal.roles])),
+            "scp": list(scopes),
             "ids": [{"id": identity.id, "idp": identity.provider} for identity in principal.identities],
         }
         access_token = create_access_token(
@@ -387,13 +410,18 @@ def build_auth_code_route(authenticator, provider):
     async def auth_code(
         request: Request,
         settings: BaseSettings = Depends(get_settings),
+        api_access_manager=Depends(get_api_access_manager),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(request)
-        if not username:
+
+        if username and api_access_manager.is_user_known(username):
+            scopes = api_access_manager.get_user_scopes(username)
+        else:
             raise HTTPException(status_code=401, detail="Authentication failure")
+
         tokens = await asyncio.get_running_loop().run_in_executor(
-            None, create_session, settings, provider, username
+            None, create_session, settings, provider, username, scopes
         )
         # Show only the refresh_token, which is what the user should
         # paste into a terminal-based client.
@@ -411,32 +439,51 @@ def build_handle_credentials_route(authenticator, provider):
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: BaseSettings = Depends(get_settings),
+        api_access_manager=Depends(get_api_access_manager),
     ):
         request.state.endpoint = "auth"
         username = await authenticator.authenticate(username=form_data.username, password=form_data.password)
+
+        err_msg = None
         if not username:
+            err_msg = "Incorrect username or password"
+        elif not api_access_manager.is_user_known(username):
+            err_msg = "User is not authorized to access the server"
+        else:
+            scopes = api_access_manager.get_user_scopes(username)
+
+        if err_msg:
             raise HTTPException(
                 status_code=401,
-                detail="Incorrect username or password",
+                detail=err_msg,
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return await asyncio.get_running_loop().run_in_executor(None, create_session, settings, provider, username)
+        return await asyncio.get_running_loop().run_in_executor(
+            None, create_session, settings, provider, username, scopes
+        )
 
     return handle_credentials
 
 
-def generate_apikey(db, principal, apikey_params, request):
-    if apikey_params.scopes is None:
+def generate_apikey(db, principal, apikey_params, request, principal_scopes, allowed_scopes):
+    # Allow 'inherit' scope in API key only the user is authenticated so that all scopes are allowed.
+    #   (token or API with 'inherit' scope)
+    allow_inherit = set(principal_scopes) == set(allowed_scopes)
+    if (apikey_params.scopes is None) or ("inherit" in apikey_params.scopes):
         scopes = ["inherit"]
     else:
         scopes = apikey_params.scopes
-    principal_scopes = set().union(*[role.scopes for role in principal.roles])
-    if not set(scopes).issubset(principal_scopes | {"inherit"}):
+
+    if not allow_inherit and ("inherit" in scopes):
+        scopes = list(allowed_scopes)
+
+    # principal_scopes = set().union(*[role.scopes for role in principal.roles])
+    if not set(scopes).issubset(allowed_scopes | {"inherit"}):
         raise HTTPException(
             400,
             (
                 f"Requested scopes {apikey_params.scopes} must be a subset of the "
-                f"principal's scopes {list(principal_scopes)}."
+                f"allowed principal's scopes {list(allowed_scopes)}."
             ),
         )
     if apikey_params.expires_in is not None:
@@ -474,7 +521,7 @@ base_authentication_router = APIRouter()
 def principal_list(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Security(get_current_principal, scopes=["admin:read:principals"]),
 ):
     "List Principals (users and services)."
     # TODO Pagination
@@ -498,7 +545,7 @@ def principal(
     request: Request,
     uuid: uuid_module.UUID,
     settings: BaseSettings = Depends(get_settings),
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Security(get_current_principal, scopes=["admin:read:principals"]),
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
@@ -520,6 +567,7 @@ def apikey_for_principal(
     apikey_params: schemas.APIKeyRequestParams,
     principal=Security(get_current_principal, scopes=["admin:apikeys"]),
     settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
 ):
     "Generate an API key for a Principal."
     request.state.endpoint = "auth"
@@ -527,7 +575,12 @@ def apikey_for_principal(
         principal = db.query(orm.Principal).filter(orm.Principal.uuid == uuid).first()
         if principal is None:
             raise HTTPException(404, f"Principal {uuid} does not exist or insufficient permissions.")
-        return generate_apikey(db, principal, apikey_params, request)
+
+        ids = {_.id for _ in principal.identities}
+        scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+        principal_scopes = set.union(*scope_sets) if scope_sets else set()
+
+        return generate_apikey(db, principal, apikey_params, request, principal_scopes, principal_scopes)
 
 
 @base_authentication_router.post("/session/refresh", response_model=schemas.AccessAndRefreshTokens)
@@ -535,11 +588,12 @@ def refresh_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
     settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
     with get_sessionmaker(settings.database_settings)() as db:
-        new_tokens = slide_session(refresh_token.refresh_token, settings, db)
+        new_tokens = slide_session(refresh_token.refresh_token, settings, db, api_access_manager)
         return new_tokens
 
 
@@ -568,7 +622,7 @@ def revoke_session(
         return Response(status_code=204)
 
 
-def slide_session(refresh_token, settings, db):
+def slide_session(refresh_token, settings, db, api_access_manager):
     try:
         payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
@@ -590,10 +644,19 @@ def slide_session(refresh_token, settings, db):
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
     principal = schemas.Principal.from_orm(session.principal)
+
+    ids = get_current_username(principal=principal, settings=settings, api_access_manager=api_access_manager)
+    if not ids:
+        raise HTTPException(
+            status_code=401,
+            detail="Permissions for the user are revoked. Please contact the administrator.",
+        )
+    scopes = set.union(*[api_access_manager.get_user_scopes(_) for _ in ids])
+
     data = {
         "sub": principal.uuid.hex,
         "sub_typ": principal.type.value,
-        "scp": list(set().union(*[role.scopes for role in principal.roles])),
+        "scp": list(scopes),
         "ids": [{"id": identity.id, "idp": identity.provider} for identity in principal.identities],
     }
     access_token = create_access_token(
@@ -622,8 +685,9 @@ def slide_session(refresh_token, settings, db):
 def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Security(get_current_principal, scopes=["apikeys"]),
+    principal=Security(get_current_principal, scopes=["user:apikeys"]),
     settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
 ):
     """
     Generate an API for the currently-authenticated user or service."""
@@ -631,11 +695,18 @@ def new_apikey(
     request.state.endpoint = "auth"
     if principal is None:
         return None
+
+    ids = get_current_username(principal=principal, settings=settings, api_access_manager=api_access_manager)
+    scope_sets = [api_access_manager.get_user_scopes(_) for _ in ids]
+    principal_scopes = set.union(*scope_sets) if scope_sets else set()
+
+    allowed_scopes = set(principal.scopes)
+
     with get_sessionmaker(settings.database_settings)() as db:
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
         principal_orm = db.query(orm.Principal).filter(orm.Principal.uuid == principal.uuid).first()
-        apikey = generate_apikey(db, principal_orm, apikey_params, request)
+        apikey = generate_apikey(db, principal_orm, apikey_params, request, principal_scopes, allowed_scopes)
         return apikey
 
 
@@ -670,7 +741,7 @@ def current_apikey_info(
 def revoke_apikey(
     request: Request,
     first_eight: str,
-    principal=Security(get_current_principal, scopes=["apikeys"]),
+    principal=Security(get_current_principal, scopes=["user:apikeys"]),
     settings: BaseSettings = Depends(get_settings),
 ):
     """
@@ -713,6 +784,18 @@ def whoami(
             request,
             schemas.Principal.from_orm(principal_orm, latest_principal_activity(db, principal_orm)).dict(),
         )
+
+
+@base_authentication_router.get(
+    "/scopes",
+    response_model=schemas.Principal,
+)
+def scopes(
+    request: Request,
+    principal=Security(get_current_principal, scopes=[]),
+):
+    roles, scopes = principal.roles, principal.scopes
+    return json_or_msgpack(request, schemas.AllowedScopes(roles=roles, scopes=scopes).dict())
 
 
 @base_authentication_router.post("/logout")

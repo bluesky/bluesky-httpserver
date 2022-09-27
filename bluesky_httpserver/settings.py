@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     allow_origins: List[str] = [
         item for item in os.getenv("QSERVER_HTTP_SERVER_ALLOW_ORIGINS", "").split() if item
     ]
+    authentication_provider_names = []  # The list of authentication provider names
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key = os.getenv("QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY", secrets.token_hex(32))

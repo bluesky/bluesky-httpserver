@@ -1,15 +1,18 @@
 import io
-from fastapi import APIRouter, File, UploadFile, Form, Request, Security
+from fastapi import APIRouter, File, UploadFile, Form, Request, Security, Depends
 import pprint
 from typing import Optional
 import asyncio
+from pydantic import BaseSettings
+from ..settings import get_settings
 
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 
 from ..resources import SERVER_RESOURCES as SR
-from ..utils import process_exception, get_login_data, validate_payload_keys
+from ..utils import process_exception, validate_payload_keys
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
 from ..authentication import get_current_principal
+from ..utils import get_api_access_manager, get_resource_access_manager, get_current_username
 
 import logging
 
@@ -144,15 +147,23 @@ async def queue_stop_cancel(
 async def queue_item_add_handler(
     payload: dict = {},
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Adds new plan to the queue
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user": displayed_name, "user_group": user_group})
+
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
-            # payload["user"] = SR.RM._user
-            # payload["user_group"] = SR.RM._user_group
             msg = await SR.RM.send_request(method="queue_item_add", params=payload)
         else:
             msg = await SR.RM.item_add(**payload)
@@ -165,16 +176,23 @@ async def queue_item_add_handler(
 async def queue_item_execute_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:execute"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Immediately execute an item
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user": displayed_name, "user_group": user_group})
+
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
-            # login_data = get_login_data()
-            # payload["user"] = login_data["user"]
-            # payload["user_group"] = login_data["user_group"]
             msg = await SR.RM.send_request(method="queue_item_execute", params=payload)
         else:
             msg = await SR.RM.item_execute(**payload)
@@ -187,16 +205,23 @@ async def queue_item_execute_handler(
 async def queue_item_add_batch_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Adds new plan to the queue
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user": displayed_name, "user_group": user_group})
+
         if "items" not in payload:
             # We can not use API, so let the server handle the parameters
-            # login_data = get_login_data()
-            # payload["user"] = login_data["user"]
-            # payload["user_group"] = login_data["user_group"]
             msg = await SR.RM.send_request(method="queue_item_add_batch", params=payload)
         else:
             msg = await SR.RM.item_add_batch(**payload)
@@ -211,6 +236,9 @@ async def queue_upload_spreadsheet(
     spreadsheet: UploadFile = File(...),
     data_type: Optional[str] = Form(None),
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
 
     """
@@ -259,14 +287,18 @@ async def queue_upload_spreadsheet(
                 custom_module = module
                 break
 
-        login_data = get_login_data()
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
 
         if custom_module:
             logger.info("Processing spreadsheet using function from external module ...")
             # Try applying  the custom processing function. Some additional useful data is passed to
             #   the function. Unnecessary parameters can be ignored.
             item_list = custom_module.spreadsheet_to_plan_list(
-                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=login_data["user"]
+                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=username
             )
             # The function is expected to return None if it rejects the file (based on 'data_type').
             #   Then try to apply the default processing function.
@@ -276,7 +308,7 @@ async def queue_upload_spreadsheet(
             # Apply default spreadsheet processing function.
             logger.info("Processing spreadsheet using default function ...")
             item_list = spreadsheet_to_plan_list(
-                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=login_data["user"]
+                spreadsheet_file=f, file_name=f_name, data_type=data_type, user=username
             )
 
         if item_list is None:
@@ -304,7 +336,7 @@ async def queue_upload_spreadsheet(
         msg = {"success": False, "msg": str(ex), "items": [], "results": []}
     else:
         try:
-            params = dict()
+            params = {"user": displayed_name, "user_group": user_group}
             params["items"] = item_list
             msg = await SR.RM.item_add_batch(**params)
         except Exception:
@@ -316,11 +348,21 @@ async def queue_upload_spreadsheet(
 async def queue_item_update_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Update existing plan in the queue
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user": displayed_name, "user_group": user_group})
+
         msg = await SR.RM.item_update(**payload)
     except Exception:
         process_exception()
@@ -606,7 +648,11 @@ async def re_runs_closed_handler(principal=Security(get_current_principal, scope
 
 @router.get("/plans/allowed")
 async def plans_allowed_handler(
-    payload: dict = {}, principal=Security(get_current_principal, scopes=["read:resources"])
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:resources"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Returns the lists of allowed plans. If boolean optional parameter ``reduced``
@@ -617,11 +663,17 @@ async def plans_allowed_handler(
     try:
         validate_payload_keys(payload, optional_keys=["reduced"])
 
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        user_group = resource_access_manager.get_resource_group(username)
+
         if "reduced" in payload:
             reduced = payload["reduced"]
             del payload["reduced"]
         else:
             reduced = False
+        payload.update({"user_group": user_group})
 
         msg = await SR.RM.plans_allowed(**payload)
         if reduced and ("plans_allowed" in msg):
@@ -633,12 +685,23 @@ async def plans_allowed_handler(
 
 @router.get("/devices/allowed")
 async def devices_allowed_handler(
-    payload: dict = {}, principal=Security(get_current_principal, scopes=["read:resources"])
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:resources"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Returns the lists of allowed devices.
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        user_group = resource_access_manager.get_resource_group(username)
+
+        payload.update({"user_group": user_group})
+
         msg = await SR.RM.devices_allowed(**payload)
     except Exception:
         process_exception()
@@ -647,7 +710,7 @@ async def devices_allowed_handler(
 
 @router.get("/plans/existing")
 async def plans_existing_handler(
-    payload: dict = {}, principal=Security(get_current_principal, scopes=["read:resources"])
+    payload: dict = {},
 ):
     """
     Returns the lists of existing plans. If boolean optional parameter ``reduced``
@@ -674,7 +737,8 @@ async def plans_existing_handler(
 
 @router.get("/devices/existing")
 async def devices_existing_handler(
-    payload: dict = {}, principal=Security(get_current_principal, scopes=["read:resources"])
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:resources"]),
 ):
     """
     Returns the lists of existing devices.
@@ -737,11 +801,21 @@ async def permissions_set_handler(
 async def function_execute_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:execute"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
 ):
     """
     Execute function defined in startup scripts in RE Worker environment.
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user": displayed_name, "user_group": user_group})
+
         if "item" not in payload:
             # We can not use API, so let the server handle the parameters
             msg = await SR.RM.send_request(method="function_execute", params=payload)
@@ -806,11 +880,19 @@ async def task_result(payload: dict, principal=Security(get_current_principal, s
 async def lock_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:lock"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
 ):
     """
     Lock RE Manager.
     """
     try:
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        displayed_name = api_access_manager.get_displayed_user_name(username)
+        payload.update({"user": displayed_name})
+
         msg = await SR.RM.lock(**payload)
     except Exception:
         process_exception()

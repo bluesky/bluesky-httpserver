@@ -6,23 +6,15 @@ See profiles.py for client configuration.
 import copy
 from datetime import timedelta
 import os
-from functools import lru_cache
 from pathlib import Path
 
 import jsonschema
 
 from .utils import import_object, parse, prepend_to_sys_path
+from .config_schemas.loading import load_schema_from_yml, ConfigError
 
 
-@lru_cache(maxsize=1)
-def schema():
-    "Load the schema for service-side configuration."
-    import yaml
-
-    here = Path(__file__).parent.absolute()
-    schema_path = os.path.join(here, "config_schemas", "service_configuration.yml")
-    with open(schema_path, "r") as file:
-        return yaml.safe_load(file)
+SERVICE_CONFIGURATION_FILE_NAME = "service_configuration.yml"
 
 
 def construct_build_app_kwargs(
@@ -59,6 +51,20 @@ def construct_build_app_kwargs(
             if k in auth_spec:
                 auth_spec[k] = timedelta(seconds=auth_spec[k])
 
+        api_access_spec = config.get("api_access", {}) or {}
+        import_path = api_access_spec.get("policy", "bluesky_httpserver.authorization:BasicAPIAccessControl")
+        api_access_manager_class = import_object(import_path, accept_live_object=True)
+        api_access_manager = api_access_manager_class(**api_access_spec.get("args", {}))
+        api_access_spec["manager_object"] = api_access_manager
+
+        resource_access_spec = config.get("resource_access", {}) or {}
+        import_path = resource_access_spec.get(
+            "policy", "bluesky_httpserver.authorization:DefaultResourceAccessControl"
+        )
+        resource_access_manager_class = import_object(import_path, accept_live_object=True)
+        resouce_access_manager = resource_access_manager_class(**resource_access_spec.get("args", {}))
+        resource_access_spec["manager_object"] = resouce_access_manager
+
         server_settings = {}
         server_settings["allow_origins"] = config.get("allow_origins")
         server_settings["database"] = config.get("database", {})
@@ -80,6 +86,8 @@ def construct_build_app_kwargs(
         server_settings["metrics"] = metrics
     return {
         "authentication": auth_spec,
+        "api_access": api_access_spec,
+        "resource_access": resource_access_spec,
         "server_settings": server_settings,
     }
 
@@ -93,6 +101,8 @@ def merge(configs):
     uvicorn_config_source = None
     metrics_config_source = None
     database_config_source = None
+    api_access_config_source = None
+    resource_access_config_source = None
     allow_origins = []
 
     for filepath, config in configs.items():
@@ -106,6 +116,24 @@ def merge(configs):
                 )
             authentication_config_source = filepath
             merged["authentication"] = config["authentication"]
+        if "api_access" in config:
+            if "api_access" in merged:
+                raise ConfigError(
+                    "api access can only be specified in one file. "
+                    f"It was found in both {api_access_config_source} and "
+                    f"{filepath}"
+                )
+            api_access_config_source = filepath
+            merged["api_access"] = config["api_access"]
+        if "resource_access" in config:
+            if "resource_access" in merged:
+                raise ConfigError(
+                    "resource access can only be specified in one file. "
+                    f"It was found in both {resource_access_config_source} and "
+                    f"{filepath}"
+                )
+            resource_access_config_source = filepath
+            merged["resource_access"] = config["resource_access"]
         if "uvicorn" in config:
             if "uvicorn" in merged:
                 raise ConfigError(
@@ -169,7 +197,7 @@ def parse_configs(config_path):
         with open(filepath) as file:
             config = parse(file)
             try:
-                jsonschema.validate(instance=config, schema=schema())
+                jsonschema.validate(instance=config, schema=load_schema_from_yml(SERVICE_CONFIGURATION_FILE_NAME))
             except jsonschema.ValidationError as err:
                 msg = err.args[0]
                 raise ConfigError(f"ValidationError while parsing configuration file {filepath}: {msg}") from err
@@ -177,7 +205,3 @@ def parse_configs(config_path):
 
     merged_config = merge(parsed_configs)
     return merged_config
-
-
-class ConfigError(ValueError):
-    pass

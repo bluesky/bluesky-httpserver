@@ -254,10 +254,13 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
-    roles: List[Role] = []
+    # roles: List[Role] = []
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None
+    # Optional parameters reflecting current permissions for the authenticated user
+    roles: Optional[List[str]] = []
+    scopes: Optional[List[str]] = []
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):
@@ -266,10 +269,17 @@ class Principal(pydantic.BaseModel, orm_mode=True):
         return instance
 
 
+class AllowedScopes(pydantic.BaseModel, orm_mode=False):
+    "Returns roles and current allowed scopes for a user authenticated with API key or token"
+    roles: List[str] = []
+    scopes: List[str] = []
+
+
 class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
     expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
-    scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
+    # scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
+    scopes: Optional[List[str]] = pydantic.Field(default=["inherit"], example=["inherit"])
     note: Optional[str]
