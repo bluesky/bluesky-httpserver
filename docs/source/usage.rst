@@ -29,6 +29,8 @@ API key listed in config files overrides the key in environment variable.
   that ``authentication/providers`` section is not included in the config files
   if single-user access is the desired mode of authorization.
 
+.. _passing_single_user_API_key_as_ev:
+
 Passing single-user API key by setting an environment variable
 **************************************************************
 
