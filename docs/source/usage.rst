@@ -131,10 +131,54 @@ If authentication is successful, then the server returns access and refresh toke
 Generating API Keys
 ===================
 
+Users that are assigned the scope ``user:apikeys`` can generate API keys used for authorization
+without logging into the server. API keys are often used for long-running applications or
+autonomous agents. API keys carry information that allows the server to identify the user
+who generated the key and the scopes that define access permissions. The scopes of an API key
+may be a full set or a subset of user's scopes.
+
+The API ``/auth/apikey`` accepts three parameters:
+
+  - ``expires_in`` (int) - time until expiration of the API key in seconds;
+  - ``scopes`` (option, list of strings) - list of scopes;
+  - ``note`` (optional, string) - text message;
+
+API keys may be generated using a valid token or an API key with the scope ``user:apikeys``.
+If no ``scopes`` are specified in the request, then API *inherits* scopes of the user
+(if authorized by token) or created using a copy of scopes of the original API key
+(if authorized by API key). The *inherited* scopes change as user privileges change and
+may be expanded if the user is given additional permissions. If the parameter ``scopes``
+is used to pass a list of scopes, then the API key has a *fixed* set of scopes. API request
+may never access API outside the listed scopes even if user privileges are extended.
+If user privileges are reduced, some scopes may not be accessed even if they are listed.
+
+The user generating API key must be permitted to use each scope listed in the request.
+If the new key is generated based on the existing API key, each scope must also be
+allowed for the existing API key. The request fails if any of the listed scopes is
+not permitted.
+
+Request API key that inherits the scopes of the user (principal) using an access token
+(replace ``<token>`` with the token)::
+
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: Bearer <token>’
+
+Request API key with fixed set of scopes (scopes are a subset of the scopes of the principal)
+using an access token::
+
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status", "user::apikeys"]' 'Authorization: Bearer <token>’
+
+Request API key using an existing API key. The scopes for the new key are a copy of the scopes of
+the existing key::
+
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: ApiKey <apikey>’
+
+Request API key with fixed set of scopes using an existing API key::
+
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status"]' 'Authorization: ApiKey <apikey>’
 
 
-Using API Keys
-==============
+Using Tokens and API Keys in API Requests
+=========================================
 
 Administrative API
 ==================
