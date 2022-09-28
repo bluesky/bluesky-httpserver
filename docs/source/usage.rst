@@ -2,6 +2,13 @@
 Starting and Using the Server
 =============================
 
+The examples illustrate how to access API of the Bluesky HTTP Server using 
+``httpie`` command-line tool. Though it is unlikely that ``httpie`` is ever used
+to control the server in practical deployments, the instructions could be useful for application developers 
+for testing the server and understanding how the API work. 
+
+Installation instructions for ``httpie``: `<https://httpie.io/docs/cli/installation>`_.
+
 Starting the Server
 ===================
 
@@ -179,8 +186,61 @@ Request API key with fixed set of scopes using an existing API key::
     http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status"]' 'Authorization: ApiKey <apikey>'
 
 
+Verifying Scopes of Access Tokens and API Keys
+==============================================
+
+User can verify currently permissions for a token or API key at any time by sending ``/auth/scopes`` request.
+The API returns the list of assigned roles and the list of scopes applied to the token or the API key::
+
+  # Get scopes for the access token
+  http GET http://localhost:60610/api/auth/scopes 'Authorization: Bearer <token>'
+  # Get scopes for the API key
+  http GET http://localhost:60610/api/auth/scopes 'Authorization: ApiKey <api-key>'
+
+
+Getting Information on API Key
+==============================
+
+Information on an existing API key may be obtained calling ``/auth/apikey`` (GET) API and using
+the API key for authentication::
+
+  http GET http://localhost:60610/api/auth/apikey 'Authorization: ApiKey <apikey>'
+
+
+Deleting API Key
+================
+
+API key may be deleted by an authenticated user by calling ``/auth/apikey`` (DELETE). The API key
+used for authorization of the API request can also be deleted::
+
+  # Authorization using token
+  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: Bearer <token>'  
+  # Authorization using API key
+  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: ApiKey <api-key>'  
+
+
+Refreshing Sessions
+===================
+
+Refresh token returned by ``/auth/apikey`` can be used to obtain replacement access tokens by calling 
+``/auth/session/refresh`` API::
+
+  http POST http://localhost:60610/api/auth/session/refresh refresh_token=<refresh-token>
+
+
 Using Tokens and API Keys in API Requests
 =========================================
 
+Generated access tokens or API keys can be used for authorization in API requests.
+``/status`` API returns the status of RE Manager::
+
+  # Get scopes for the access token
+  http GET http://localhost:60610/api/status 'Authorization: Bearer <token>'
+  # Get scopes for the API key
+  http GET http://localhost:60610/api/status 'Authorization: ApiKey <api-key>'
+
+
 Administrative API
 ==================
+
+(documentation is coming soon)

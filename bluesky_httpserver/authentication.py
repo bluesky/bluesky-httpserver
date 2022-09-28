@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
+from fastapi.responses import JSONResponse
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -780,7 +781,8 @@ def revoke_apikey(
             )
         db.delete(api_key_orm)
         db.commit()
-        return Response(status_code=204)
+        # return Response(status_code=204)
+        return JSONResponse(status_code=200, content={"success": True, "msg": ""})
 
 
 @base_authentication_router.get(

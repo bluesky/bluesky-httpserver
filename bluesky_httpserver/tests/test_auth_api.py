@@ -1,4 +1,5 @@
 import pprint
+import time as ttime
 
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
     re_manager,
@@ -37,14 +38,14 @@ api_access:
 """
 
 
-def test_api_auth_apikey_01(
+def test_api_auth_post_apikey_01(
     tmpdir,
     monkeypatch,
     re_manager,  # noqa: F811
     fastapi_server_fs,  # noqa: F811
 ):
     """
-    ``/auth/apikey``: basic tests.
+    ``/auth/apikey`` (POST): basic tests.
     """
 
     setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
@@ -132,6 +133,83 @@ def test_api_auth_apikey_01(
     assert set(resp8a["scopes"]) == set(scopes6)
 
 
+def test_api_auth_get_apikey_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/apikey`` (GET): basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in pprint.pformat(resp1)
+    token = resp1["access_token"]
+
+    resp3 = request_to_json(
+        "post", "/auth/apikey", json={"expires_in": 900, "note": "API key for testing"}, token=token
+    )
+    assert "secret" in resp3, pprint.pformat(resp3)
+    assert "note" in resp3, pprint.pformat(resp3)
+    assert resp3["note"] == "API key for testing"
+    assert resp3["scopes"] == ["inherit"]
+    api_key = resp3["secret"]
+
+    resp4 = request_to_json("get", "/auth/apikey", api_key=api_key)
+    assert "expiration_time" in resp4
+    assert "first_eight" in resp4
+    assert "latest_activity" in resp4
+    assert "note" in resp4
+    assert resp4["first_eight"] == api_key[:8]
+    assert resp4["note"] == "API key for testing"
+
+
+def test_api_auth_delete_apikey_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/apikey`` (DELETE): basic tests.
+
+    Test if the case when the API key used for authentication is successfully deleted.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in pprint.pformat(resp1)
+    token = resp1["access_token"]
+
+    resp3 = request_to_json(
+        "post", "/auth/apikey", json={"expires_in": 900, "note": "API key for testing"}, token=token
+    )
+    assert "secret" in resp3, pprint.pformat(resp3)
+    assert "note" in resp3, pprint.pformat(resp3)
+    assert resp3["note"] == "API key for testing"
+    assert resp3["scopes"] == ["inherit"]
+    api_key = resp3["secret"]
+
+    resp4 = request_to_json("get", "/auth/apikey", api_key=api_key)
+    assert resp4["first_eight"] == api_key[:8]
+    assert resp4["note"] == "API key for testing"
+
+    resp5 = request_to_json("delete", "/auth/apikey", params={"first_eight": api_key[:8]}, api_key=api_key)
+    assert "success" in resp5
+    assert resp5["success"] is True
+
+    # The API is already revoked. The request fails.
+    resp6 = request_to_json("delete", "/auth/apikey", params={"first_eight": api_key[:8]}, api_key=api_key)
+    assert "detail" in resp6, pprint.pformat(resp6)
+    assert "Invalid API key" in resp6["detail"]
+
+
 def test_api_auth_scopes_01(
     tmpdir,
     monkeypatch,
@@ -159,3 +237,32 @@ def test_api_auth_scopes_01(
     assert "scopes" in resp2, pprint.pformat(resp2)
     assert set(resp2["roles"]) == user_roles
     assert set(resp2["scopes"]) == user_scopes
+
+
+def test_api_auth_session_refresh_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/session/refresh``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in resp1
+    assert "refresh_token" in resp1
+    token1 = resp1["access_token"]
+    refresh_token = resp1["refresh_token"]
+
+    # Wait for more than 1 second to generate different token (otherwise the token
+    #   is likely going to be the same)
+    ttime.sleep(1.5)
+
+    resp2 = request_to_json("post", "/auth/session/refresh", json={"refresh_token": refresh_token})
+    assert "access_token" in resp2, pprint.pformat(resp2)
+    assert "refresh_token" in resp2, pprint.pformat(resp2)
+    assert resp2["access_token"] != token1
