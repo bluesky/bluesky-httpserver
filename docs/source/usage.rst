@@ -112,8 +112,10 @@ is an example of a config file sets up ``DictionaryAPIAccessControl`` as a provi
           roles:
             - admin
             - expert
-        alice: user
-        tom: observer
+        alice: 
+          roles: user
+        tom: 
+          roles: observer
 
 Generally it is not a good idea to explicitly list passwords in configuration files. Using environment
 variables is more secure. The environment variable should be set before starting the server::
@@ -160,21 +162,21 @@ not permitted.
 Request API key that inherits the scopes of the user (principal) using an access token
 (replace ``<token>`` with the token)::
 
-    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: Bearer <token>’
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: Bearer <token>'
 
 Request API key with fixed set of scopes (scopes are a subset of the scopes of the principal)
 using an access token::
 
-    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status", "user::apikeys"]' 'Authorization: Bearer <token>’
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status", "user:apikeys"]' 'Authorization: Bearer <token>'
 
 Request API key using an existing API key. The scopes for the new key are a copy of the scopes of
 the existing key::
 
-    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: ApiKey <apikey>’
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 'Authorization: ApiKey <apikey>'
 
 Request API key with fixed set of scopes using an existing API key::
 
-    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status"]' 'Authorization: ApiKey <apikey>’
+    http POST http://localhost:60610/api/auth/apikey expires_in:=900 scopes:='["read:status"]' 'Authorization: ApiKey <apikey>'
 
 
 Using Tokens and API Keys in API Requests

@@ -261,6 +261,7 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     # Optional parameters reflecting current permissions for the authenticated user
     roles: Optional[List[str]] = []
     scopes: Optional[List[str]] = []
+    api_key_scopes: Optional[Union[List[str], None]] = None
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):

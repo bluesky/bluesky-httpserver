@@ -495,7 +495,7 @@ def test_authentication_and_authorization_06(
     Check default scopes for logged in user. Test management of scopes when using authorization
     with token, generating API key using a token, generating API key using another API key.
     Check that the new API key has the same scope as the existing key if the scopes are inherited.
-    Verify that the scope can not be extended.
+    Verify that the scope cannot be extended.
     """
 
     config = config_toy_without_anonymous_access + authorization_dict
