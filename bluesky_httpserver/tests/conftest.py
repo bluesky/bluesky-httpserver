@@ -57,6 +57,24 @@ def fastapi_server_fs(xprocess):
     xprocess.getinfo("fastapi_server").terminate()
 
 
+def setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
+    """
+    Creates config file for the server in ``tmpdir/config/`` directory and
+    sets up the respective environment variable. Sets ``tmpdir`` as a current directory.
+    """
+    config_fln = "config_httpserver.yml"
+    config_dir = os.path.join(tmpdir, "config")
+    config_path = os.path.join(config_dir, config_fln)
+    os.makedirs(config_dir)
+    with open(config_path, "wt") as f:
+        f.writelines(config_file_str)
+
+    monkeypatch.setenv("QSERVER_HTTP_SERVER_CONFIG", config_path)
+    monkeypatch.chdir(tmpdir)
+
+    return config_path
+
+
 def add_plans_to_queue():
     """
     Clear the queue and add 3 fixed plans to the queue.

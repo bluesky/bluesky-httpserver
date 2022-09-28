@@ -1,7 +1,6 @@
 # Tests for user authorization and authentication on the working server
 import copy
 import pytest
-import os
 import pprint
 
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
@@ -9,7 +8,7 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
     re_manager_cmd,
 )
 from .conftest import fastapi_server_fs  # noqa: F401
-from .conftest import request_to_json
+from .conftest import request_to_json, setup_server_with_config_file
 
 from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_ROLE_SINGLE_USER,
@@ -24,24 +23,6 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_ROLES,
     _DEFAULT_RESOURCE_ACCESS_GROUP,
 )
-
-
-def _setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
-    """
-    Creates config file for the server in ``tmpdir/config/`` directory and
-    sets up the respective environment variable. Sets ``tmpdir`` as a current directory.
-    """
-    config_fln = "config_httpserver.yml"
-    config_dir = os.path.join(tmpdir, "config")
-    config_path = os.path.join(config_dir, config_fln)
-    os.makedirs(config_dir)
-    with open(config_path, "wt") as f:
-        f.writelines(config_file_str)
-
-    monkeypatch.setenv("QSERVER_HTTP_SERVER_CONFIG", config_path)
-    monkeypatch.chdir(tmpdir)
-
-    return config_path
 
 
 config_noauth_with_anonymous_access = """
@@ -271,7 +252,7 @@ def test_authentication_and_authorization_01(
     api_access_set = "api_access" in config
 
     if config:
-        _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+        setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     # Test if anonymous 'public' access works
@@ -340,7 +321,7 @@ def test_authentication_and_authorization_02(
     Check that returned scopes match the default scopes.
     """
     config = config_test_all_default_roles
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     username__to_role = {
@@ -390,7 +371,7 @@ def test_authentication_and_authorization_03(
     if set_ev:
         monkeypatch.setenv("CUSTOM_EV_FOR_API_KEY", api_key)
 
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     resp1 = request_to_json("get", "/status", api_key=api_key)
@@ -419,7 +400,7 @@ def test_authentication_and_authorization_04(
     """
 
     config = config_noauth_with_anonymous_access
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     # Check that both single-user access and public access work
@@ -457,7 +438,7 @@ def test_authentication_and_authorization_05(
     """
 
     config = config_noauth_modify_default_roles
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     # Check that both single-user access and public access work
@@ -499,7 +480,7 @@ def test_authentication_and_authorization_06(
     """
 
     config = config_toy_without_anonymous_access + authorization_dict
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     n_api_keys = 0
@@ -625,7 +606,7 @@ def test_authentication_and_authorization_07(
     """
 
     config = config_toy_with_anonymous_access + authorization_modify_roles_for_users
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     for username in ("bob", "alice", "cara"):
@@ -671,7 +652,7 @@ def test_authentication_and_authorization_08(
     """
 
     config = config_toy_with_anonymous_access + authorization_define_new_role
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     for username in ("alice", "cara"):
@@ -750,7 +731,7 @@ def test_resource_access_01(
     DefaultResourceAccessControl: Test that the correct group name is used in API calls
     that require group name, e.g. '/queue/item/add' API.
     """
-    _setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
     fastapi_server_fs()
 
     username, password = "bob", "bob_password"
