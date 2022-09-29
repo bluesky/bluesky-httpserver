@@ -370,6 +370,7 @@ properties:
 
 class DictionaryAPIAccessControl(BasicAPIAccessControl):
     """
+    Dictionary-based API access policy.
     Simple extension of ``BasicAPIAccessControl`` that provides an option to provide user information,
     including assigned roles, displayed name and email. The policy is primarily intended for use in demos
     and testing. Production deployments are expected to use more secure authorization policies.

@@ -31,16 +31,50 @@ Authentication
 Authorization: API Access
 *************************
 
+The HTTP Server is using API access policy to determine whether an authorized user
+is allowed to call requested API. The API access policy associates user names with
+one or several roles and the roles with allowed access scopes. If no policy is
+selected in the configuration, the server is using ``BasicAPIAccessControl``, which
+supports API access control for single-user and anonymous public access.
+``DictionaryAPIAccessControl`` policy is a subclass of the basic policy that
+accepts the fixed dictionary that maps user names to assigned roles as an argument
+during initialization (arguments are defined in the config file) and serves as
+a convenient tool for testing, demos and small local deployments.
+More sophysticated policies based on ``BasicAPIAccessControl`` should be implemented
+for production deployments, where user roles are stored on a secure server.
+
 BasicAPIAccessControl
 +++++++++++++++++++++
 
-If no API access policy is selected in the configuration, the server is using
-``BasicAPIAccessControl`` policy with default settings. The policy supports access in
-single-user mode and anonymous public mode. If the default permissions for those modes
-are not adequate, the respective roles can be fully customized. Basic policy does not
-allow any users to log into the server or use tokens and API keys except single-user
-API key. ``BasicAPIAccessControl`` also manages scopes for multiple roles intended
-for use in subclasses of the policy, such as ``DictionaryAPIAccessControl``.
+``BasicAPIAccessControl`` is used by default if no API access policy is specified in
+the config file. The policy supports access in single-user mode and anonymous public mode.
+The policy defines two user names: ``UNAUTHENTICATED_SINGLE_USER`` and ``UNAUTHENTICATED_PUBLIC``
+associated with ``unauthenticated_single_user`` and ``unauthenticated_public`` respecitvely.
+The first user name is used to manage access for clients using single-user API key and
+the second user name is used for access without API key or token (calls with an invalid
+API key or a token always fail).
+
+.. note::
+
+    Basic policy does not allow any users to log into the server or use tokens and
+    API keys except the single-user API key.
+
+If the default scopes are not adequate, the roles can be customized in the config file.
+For example, the following configuration adds ``read:console`` scope to
+``unauthenticated_public`` role and removes ``write:scripts`` and ``user:apikeys``
+scopes from ``unauthenticated_single_user`` role::
+
+    api_access:
+      policy: bluesky_httpserver.authorization:BasicAPIAccessControl
+      args:
+        roles:
+          unauthenticated_public:
+            scopes_add: read:console
+          unauthenticated_single_user:
+            scipes_remove:
+              - write:scripts
+              - user:apikeys
+
 See the documentation on ``BasicAPIAccessControl`` for more details.
 
 .. autosummary::
@@ -49,6 +83,80 @@ See the documentation on ``BasicAPIAccessControl`` for more details.
 
     authorization.BasicAPIAccessControl
 
+DictionaryAPIAccessControl
+++++++++++++++++++++++++++
+
+``DictionaryAPIAccessControl`` is a subclass of ``BasicAPIAccessControl`` and
+provides five additional default roles ``admin``, ``expert``, ``advanced``,
+``user`` and ``observer``. The roles are assigned reasonable default scopes,
+but could be customized using ``roles`` argument, which is handled by the
+base class. The instructions and examples of customization of roles may
+be found in the documentation on ``BasicAPIAccessControl`` policy.
+
+The mapping of user names to user information, including the assigned roles,
+displayed name (optional) and email (optional) is passed to ``DictionaryAPIAccessControl``
+using the argument ``users``. The optional information is used to generated
+formatted displayed name (such as ``jdoe "Doe, John <jdoe@gmail.com>")``
+required for some Run Engine Manager API calls. If no users are listed,
+the policy behaves identically to ``BasicAPIAccessControl`` policy.
+
+The following example illustrates how to configure ``DictionaryAPIAccessControl``
+for two users (``bob`` and ``jdoe`` are login usernames)::
+
+    api_access:
+      policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+      args:
+        users:
+          bob:
+            roles:
+              - admin
+              - expert
+            mail: bob@gmail.com
+          jdoe:
+            roles: advanced
+            dislayed_name: Doe, John
+            mail: jdoe@gmail.com
+
+See the documentation on ``DictionaryAPIAccessControl`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authorization.DictionaryAPIAccessControl
 
 Authorization: Resource Access
 ******************************
+
+Resource access policy is used to manage user access to resources, such as
+plans and devices. The policy associates user name with the group name, which
+is passed to Run Engine Manager in some API calls.
+
+DefaultResourceAccessControl
+++++++++++++++++++++++++++++
+
+Only the default policy ``DefaultResourceAccessControl`` is currently implemented.
+This is a simple policy, which associates one fixed group name with all users.
+The group name used by default is ``'primary'``. ``DefaultResourceAccessControl``
+with default settings is activated by default if no other policy is selected
+in the config file. While the default policy may look simplistic, it may suite
+the needs of many production deployments, where user group permissions are
+used not for access control, but for filtering out unwanted plans and device to
+avoid clutter in the lists of allowed plans and devices (and GUI combo boxes
+generated based on those lists).
+
+The default group name can be changed in the policy configuration. For example,
+the following policy configuration sets the returned group name to ``test_user``::
+
+    resource_access:
+      policy: bluesky_httpserver.authorization:DefaultResourceAccessControl
+      args:
+        default_group: test_user
+
+See the documentation on ``DefaultResourceAccessControl`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authorization.DefaultResourceAccessControl
