@@ -640,7 +640,8 @@ def revoke_session(
             )
         session.revoked = True
         db.commit()
-        return Response(status_code=204)
+        # return Response(status_code=204)
+        return JSONResponse(status_code=200, content={"success": True, "msg": ""})
 
 
 def slide_session(refresh_token, settings, db, api_access_manager):

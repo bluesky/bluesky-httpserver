@@ -266,3 +266,73 @@ def test_api_auth_session_refresh_01(
     assert "access_token" in resp2, pprint.pformat(resp2)
     assert "refresh_token" in resp2, pprint.pformat(resp2)
     assert resp2["access_token"] != token1
+
+
+def test_api_auth_whoami_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/whoami``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in resp1
+    assert "refresh_token" in resp1
+    token = resp1["access_token"]
+
+    # It is assumed that there are only 1 session running (test is using a fresh instance of the database)
+    resp2 = request_to_json("get", "/auth/whoami", token=token)
+    assert resp2["identities"][0]["id"] == "bob"
+    assert len(resp2["sessions"]) == 1
+
+    resp3 = request_to_json("post", "/auth/apikey", json={"expires_in": 900}, token=token)
+    assert "secret" in resp3, pprint.pformat(resp3)
+    api_key = resp3["secret"]
+
+    resp4 = request_to_json("get", "/auth/whoami", api_key=api_key)
+    assert resp4["identities"][0]["id"] == "bob"
+    assert len(resp4["sessions"]) == 1
+
+
+def test_api_auth_session_revoke_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/session/revoke``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in resp1
+    assert "refresh_token" in resp1
+    token = resp1["access_token"]
+    refresh_token = resp1["refresh_token"]
+
+    # Make sure that the token can be refreshed
+    resp2 = request_to_json("post", "/auth/session/refresh", json={"refresh_token": refresh_token})
+    assert "access_token" in resp2, pprint.pformat(resp2)
+    assert "refresh_token" in resp2, pprint.pformat(resp2)
+
+    resp3 = request_to_json("get", "/auth/whoami", token=token)
+    assert resp3["identities"][0]["id"] == "bob"
+    assert len(resp3["sessions"]) == 1
+    session_uuid = resp3["sessions"][0]["uuid"]
+
+    resp4 = request_to_json("delete", f"/auth/session/revoke/{session_uuid}", token=token)
+    assert "success" in resp4
+    assert resp4["success"] is True
+
+    resp5 = request_to_json("post", "/auth/session/refresh", json={"refresh_token": refresh_token})
+    assert "detail" in resp5
+    assert "Session has expired. Please re-authenticate" in resp5["detail"]

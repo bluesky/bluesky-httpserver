@@ -9,6 +9,10 @@ for testing the server and understanding how the API work.
 
 Installation instructions for ``httpie``: `<https://httpie.io/docs/cli/installation>`_.
 
+In the examples it is assumed that the server address is ``localhost`` and the server
+port is ``60610``. The address and the port are used by default by Bluesky Queue Server
+components and should be substituted by custom address and/or port if necessary.
+
 Starting the Server
 ===================
 
@@ -234,6 +238,31 @@ Refresh token returned by ``/auth/apikey`` can be used to obtain replacement acc
 ``/auth/session/refresh`` API::
 
   http POST http://localhost:60610/api/auth/session/refresh refresh_token=<refresh-token>
+
+
+whoami
+======
+
+An access token or an API key may be used to obtain full information about the user, including
+principal identities and open sessions by calling ``/auth/whoami`` API::
+
+  # 'whoami' using the access token
+  http GET http://localhost:60610/api/auth/scopes 'Authorization: Bearer <token>'
+  # 'whoami' using the API key
+  http GET http://localhost:60610/api/auth/scopes 'Authorization: ApiKey <api-key>'
+
+
+Revoking Sessions
+=================
+
+Authenticated user may revoke any of the open sessions using session UUID. The list of sessions
+is returned by ``/auth/whoami`` API. Revoking the session invalidates the respective refresh token.
+Access tokens and API keys will continue working until expiration.
+
+  # Revoke session using access token
+  http DELETE http://localhost:60610/api/auth/session/revoke/<full-session-uid>  'Authorization: Bearer <token>'
+  # Revoke session using API key
+  http DELETE http://localhost:60610/api/auth/session/revoke/<full-session-uid>  'Authorization: ApiKey <api-key>'
 
 
 Using Tokens and API Keys in API Requests
