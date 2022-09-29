@@ -39,6 +39,8 @@ Substitute `<generated-api-key>` for the generated API key::
 
   QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=<generated-api-key> uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
 
+.. _passing_single_user_API_key_in_config:
+
 Specifying single-user API key in configuration file
 ****************************************************
 

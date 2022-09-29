@@ -28,6 +28,55 @@ The settings in config file override any settings defined using environment vari
 Authentication
 **************
 
+The server may be configured to run in single-user mode or multi-user mode. In nulti-user
+mode the server is using one or more authentication providers to validate user login
+data and allows users to obtain access tokens or API keys for authorization of requests.
+Single-user and multi-user modes are mutually exclusive: activation of one or more
+authentication providers automatically disables single-user mode.
+
+In addition, the server supports autonomous public mode, which could be enabled in
+the server configuration. The public mode can be activated for the server running in
+single-user or multi-user mode.
+
+Single-User Mode
+++++++++++++++++
+
+Single-user access mode is activated by passing single-user API key to the server using
+:ref:`environment variable<passing_single_user_API_key_as_ev>` or server config file
+:ref:`configuration file<passing_single_user_API_key_in_config>`. The single-user
+API key can be used for making API requests. The scopes for single-user access are
+defined by API access policy (see :ref:`basic_api_access_policy` for details).
+
+.. note::
+
+    Single-user mode is disabled if any providers are listed in the server config file.
+
+Public Access
++++++++++++++
+
+Dictionary Authenticator
+++++++++++++++++++++++++
+
+LDAP Authenticator
+++++++++++++++++++
+
+Expiration Time for Tokens and Sessions
++++++++++++++++++++++++++++++++++++++++
+
+The server is using reasonable default values for lifetimes of the access token (15 minutes)
+refresh token (7 days) and sessions (365 days). The default values may be changed in
+configuration by setting authentication parameters ``access_token_max_age``,
+``refresh_token_max_age`` and ``session_max_age``, which define maximum age of the respecitvely
+items in seconds. For example, the following configuration sets maximum age of the tokens
+and the session to 10, 3600 and 7200 seconds respectively::
+
+    authentication:
+      providers:
+        <list one or more providers here ...>
+      access_token_max_age: 10
+      refresh_token_max_age: 3600
+      session_max_age: 7200
+
 Authorization: API Access
 *************************
 
@@ -43,8 +92,10 @@ a convenient tool for testing, demos and small local deployments.
 More sophysticated policies based on ``BasicAPIAccessControl`` should be implemented
 for production deployments, where user roles are stored on a secure server.
 
-BasicAPIAccessControl
-+++++++++++++++++++++
+.. _basic_api_access_policy:
+
+Basic API Access Policy
++++++++++++++++++++++++
 
 ``BasicAPIAccessControl`` is used by default if no API access policy is specified in
 the config file. The policy supports access in single-user mode and anonymous public mode.
@@ -83,8 +134,8 @@ See the documentation on ``BasicAPIAccessControl`` for more details.
 
     authorization.BasicAPIAccessControl
 
-DictionaryAPIAccessControl
-++++++++++++++++++++++++++
+Dictionary API Access Policy
+++++++++++++++++++++++++++++
 
 ``DictionaryAPIAccessControl`` is a subclass of ``BasicAPIAccessControl`` and
 provides five additional default roles ``admin``, ``expert``, ``advanced``,
@@ -132,8 +183,8 @@ Resource access policy is used to manage user access to resources, such as
 plans and devices. The policy associates user name with the group name, which
 is passed to Run Engine Manager in some API calls.
 
-DefaultResourceAccessControl
-++++++++++++++++++++++++++++
+Default Resource Access Policy
+++++++++++++++++++++++++++++++
 
 Only the default policy ``DefaultResourceAccessControl`` is currently implemented.
 This is a simple policy, which associates one fixed group name with all users.
