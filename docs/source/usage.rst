@@ -277,6 +277,16 @@ Generated access tokens or API keys can be used for authorization in API request
   http GET http://localhost:60610/api/status 'Authorization: ApiKey <api-key>'
 
 
+Logging Out of the Server
+=========================
+
+The API ``/auth/logout`` is not changing the state of the server and returns ``{}`` (empty
+dictionary). The purpose of the API is to delete any tokens or API keys stored locally by
+the browser. The API request does not require authentication::
+
+  http POST http://localhost:60610/api/logout
+
+
 Administrative API
 ==================
 

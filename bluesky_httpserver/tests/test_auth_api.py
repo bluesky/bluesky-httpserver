@@ -336,3 +336,20 @@ def test_api_auth_session_revoke_01(
     resp5 = request_to_json("post", "/auth/session/refresh", json={"refresh_token": refresh_token})
     assert "detail" in resp5
     assert "Session has expired. Please re-authenticate" in resp5["detail"]
+
+
+def test_api_auth_logout_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/logout``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    resp1 = request_to_json("post", "/auth/logout", api_key=None)
+    assert resp1 == {}
