@@ -382,10 +382,18 @@ def test_api_admin_auth_principal_01(
     # Get a list of all principals
     resp3 = request_to_json("get", "/auth/principal", token=token)
     assert len(resp3) == 2
-    principal_ids = [_["identities"][0]["id"] for _ in resp3]
-    assert set(principal_ids) == {"bob", "alice"}
+    principals = {_["identities"][0]["id"]: _["uuid"] for _ in resp3}
+    assert set(principals.keys()) == {"bob", "alice"}
+
+    # Request information on a user
+    resp4 = request_to_json("get", f"/auth/principal/{principals['alice']}", token=token)
+    assert resp4["identities"][0]["id"] == "alice"
 
     # Attempt to do the same without admin permissions
-    resp4 = request_to_json("get", "/auth/principal", token=token_user)
-    assert "detail" in resp4
-    assert "Not enough permissions" in resp4["detail"]
+    resp5 = request_to_json("get", "/auth/principal", token=token_user)
+    assert "detail" in resp5
+    assert "Not enough permissions" in resp5["detail"]
+
+    resp6 = request_to_json("get", f"/auth/principal/{principals['bob']}", token=token_user)
+    assert "detail" in resp6
+    assert "Not enough permissions" in resp6["detail"]

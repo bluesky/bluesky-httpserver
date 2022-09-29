@@ -308,3 +308,16 @@ for all principal::
   http GET http://localhost:60610/api/auth/principal 'Authorization: Bearer <token>'
   # Get information on all principals using API key with admin privileges
   http GET http://localhost:60610/api/auth/principal 'Authorization: ApiKey <api-key>'
+
+Getting Information on a Selected Principal
+-------------------------------------------
+
+Clients with ``admin:read:principals`` may get information on any principals.
+The principals are identified by UUID. The returned data is structured
+identically as the data returned by ``/auth/whoami``, but may represent any
+user of the server, not only the authorized user::
+
+  # Get information on a selected principal using token with admin privileges
+  http GET http://localhost:60610/api/auth/principal/<principal-UUID> 'Authorization: Bearer <token>'
+  # Get information on all principals using API key with admin privileges
+  http GET http://localhost:60610/api/auth/principal/<principal-UUID> 'Authorization: ApiKey <api-key>'
