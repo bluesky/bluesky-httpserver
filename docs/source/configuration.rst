@@ -51,14 +51,105 @@ defined by API access policy (see :ref:`basic_api_access_policy` for details).
 
     Single-user mode is disabled if any providers are listed in the server config file.
 
-Public Access
-+++++++++++++
+Anonymous Public Access
++++++++++++++++++++++++
+
+Public access may enabled by setting ``authentication/allow_anonymous_access`` parameter
+in the server config file (see :ref:`enabling_anonymous_public_access`). In most practical
+deployment anonymous access is expected to be disabled or provide minimal monitoring
+privileges.
 
 Dictionary Authenticator
 ++++++++++++++++++++++++
 
+Dictionary authenticator is recommended for server testing and demos. The authenticator
+is receiving username-to-password mapping during initialization. The mapping is defined
+as ``users_to_password`` argument define in server config file.
+
+The following example shows server configured to use with ``DictionaryAuthenticator``
+for user authentication (named as *'toy'* provider), ``DictionaryAPIAccessControl``
+authorization policy and enabled public access::
+
+    authentication:
+      allow_anonymous_access: True
+      providers:
+        - provider: toy
+          authenticator: bluesky_httpserver.authenticators:DictionaryAuthenticator
+          args:
+            users_to_passwords:
+              bob: ${BOB_PASSWORD}
+              alice: ${ALICE_PASSWORD}
+              cara: ${CARA_PASSWORD}
+    api_access:
+      policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+      args:
+        users:
+          bob:
+            roles:
+              - admin
+              - expert
+          alice:
+            roles: advanced
+          cara:
+            roles: user
+
+The passwords are defined in the configuration as environment variable names,
+which should be set before starting the server::
+
+    export BOB_PASSWORD=bob_password
+    export ALICE_PASSWORD=alice_password
+    export CARA_PASSWORD=cara_password
+
+The users *'bob'*, *'alice'* and *'cara'* should now be able to log into the server
+and generate tokens and apikeys.
+
+See the documentation on ``DictionaryAuthenticator`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authenticators.DictionaryAuthenticator
+
 LDAP Authenticator
 ++++++++++++++++++
+
+LDAP authenticator is designed for production deployments. The authenticator validates
+user login information (username/password) by communicating with LDAP server (e.g. active
+Directory server). The following example illustrates how to configure the server to
+use demo OpenLDAP server running in docker container (run ``./start_LDAP.sh`` in the root
+of the repository to start the server). The server is configured to authenticate
+two users: *'user01'* and *'user02'* with passwords *'password1'* and *'password2'*
+respectively. The configuration does not enable public access. ::
+
+    authentication:
+      providers:
+        - provider: ldap
+          authenticator: bluesky_httpserver.authenticators:LDAPAuthenticator
+          args:
+            server_address: localhost
+            server_port: 1389
+            use_tls: false
+            use_ssl: false
+    api_access:
+      policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
+      args:
+        users:
+          user01:
+            roles:
+              - admin
+              - expert
+          user02:
+            roles: user
+
+See the documentation on ``LDAPAuthenticator`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authenticators.LDAPAuthenticator
+
 
 Expiration Time for Tokens and Sessions
 +++++++++++++++++++++++++++++++++++++++

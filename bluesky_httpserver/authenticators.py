@@ -33,6 +33,12 @@ class DictionaryAuthenticator:
     For test and demo purposes only!
 
     Check passwords from a dictionary of usernames mapped to passwords.
+
+    Parameters
+    ----------
+
+    users_to_passwords: dict(str, str)
+        Mapping of usernames to passwords.
     """
 
     mode = Mode.password
@@ -326,6 +332,7 @@ async def prepare_saml_from_fastapi_request(request, debug=False):
 
 class LDAPAuthenticator:
     """
+    LDAP authenticator.
     The authenticator code is based on https://github.com/jupyterhub/ldapauthenticator
     The parameter ``use_tls`` was added for convenience of testing.
 

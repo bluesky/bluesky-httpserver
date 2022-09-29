@@ -83,6 +83,8 @@ override settings passed as environment variables. ::
     # Multiple config files in the directory '~/.config/qserver/http'
     QSERVER_HTTP_SERVER_CONFIG=~/.config/qserver/http uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
 
+.. _enabling_anonymous_public_access:
+
 Enabling Anonymous Public Access
 --------------------------------
 
