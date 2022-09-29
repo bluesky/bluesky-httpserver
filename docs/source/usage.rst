@@ -2,10 +2,10 @@
 Starting and Using the Server
 =============================
 
-The examples illustrate how to access API of the Bluesky HTTP Server using 
+The examples illustrate how to access API of the Bluesky HTTP Server using
 ``httpie`` command-line tool. Though it is unlikely that ``httpie`` is ever used
-to control the server in practical deployments, the instructions could be useful for application developers 
-for testing the server and understanding how the API work. 
+to control the server in practical deployments, the instructions could be useful for application developers
+for testing the server and understanding how the API work.
 
 Installation instructions for ``httpie``: `<https://httpie.io/docs/cli/installation>`_.
 
@@ -60,6 +60,8 @@ The environment variable must be set to the generated API key::
 and the path to the config file passed to the server::
 
     QSERVER_HTTP_SERVER_CONFIG=config.yml uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
+
+.. _passing_config_to_server:
 
 Passing Configuration to the Server
 -----------------------------------
@@ -121,9 +123,9 @@ is an example of a config file sets up ``DictionaryAPIAccessControl`` as a provi
           roles:
             - admin
             - expert
-        alice: 
+        alice:
           roles: user
-        tom: 
+        tom:
           roles: observer
 
 Generally it is not a good idea to explicitly list passwords in configuration files. Using environment
@@ -216,15 +218,15 @@ API key may be deleted by an authenticated user by calling ``/auth/apikey`` (DEL
 used for authorization of the API request can also be deleted::
 
   # Authorization using token
-  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: Bearer <token>'  
+  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: Bearer <token>'
   # Authorization using API key
-  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: ApiKey <api-key>'  
+  http DELETE http://localhost:60610/api/auth/apikey first_eight==<first-eight-chars-of-key> 'Authorization: ApiKey <api-key>'
 
 
 Refreshing Sessions
 ===================
 
-Refresh token returned by ``/auth/apikey`` can be used to obtain replacement access tokens by calling 
+Refresh token returned by ``/auth/apikey`` can be used to obtain replacement access tokens by calling
 ``/auth/session/refresh`` API::
 
   http POST http://localhost:60610/api/auth/session/refresh refresh_token=<refresh-token>

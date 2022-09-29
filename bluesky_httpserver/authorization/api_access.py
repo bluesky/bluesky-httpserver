@@ -45,7 +45,7 @@ components:
 
 class BasicAPIAccessControl:
     """
-    The class that defines basic API access control policy, which is used by HTTP server
+    Basic API access policy. The policy is used by HTTP server
     by default. The basic policy supports two default users: ``UNAUTHENTICATED_SINGLE_USER``
     (user authorized with single-user API key) and ``UNAUTHENTICATED_PUBLIC`` (unauthorized user,
     sending no token or API key with the request). The default users are assigned to
