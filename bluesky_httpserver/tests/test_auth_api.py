@@ -353,3 +353,39 @@ def test_api_auth_logout_01(
 
     resp1 = request_to_json("post", "/auth/logout", api_key=None)
     assert resp1 == {}
+
+
+def test_api_admin_auth_principal_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/principal``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    # Login with admin access
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in resp1
+    assert "refresh_token" in resp1
+    token = resp1["access_token"]
+
+    # Another user log sin
+    resp2 = request_to_json("post", "/auth/provider/toy/token", login=("alice", "alice_password"))
+    assert "access_token" in resp2
+    token_user = resp2["access_token"]
+
+    # Get a list of all principals
+    resp3 = request_to_json("get", "/auth/principal", token=token)
+    assert len(resp3) == 2
+    principal_ids = [_["identities"][0]["id"] for _ in resp3]
+    assert set(principal_ids) == {"bob", "alice"}
+
+    # Attempt to do the same without admin permissions
+    resp4 = request_to_json("get", "/auth/principal", token=token_user)
+    assert "detail" in resp4
+    assert "Not enough permissions" in resp4["detail"]

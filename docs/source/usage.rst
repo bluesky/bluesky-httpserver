@@ -101,8 +101,11 @@ in the server config file::
 Anonymous public access rules are applied when no API key or token is passed with API requests.
 API calls with invalid token or API key are rejected even if public access is enabled.
 
+Authentication API for Users
+============================
+
 Logging into the Server (Requesting Token)
-==========================================
+------------------------------------------
 
 Users log into the server by calling ``/auth/provider/<provider-name>/token``, where ``<provider-name>``
 should be substituted by the name of authentication provider. A user submits *username* and *password*
@@ -150,7 +153,7 @@ Then users ``bob``, ``alice`` and ``tom`` can log into the server as ::
 If authentication is successful, then the server returns access and refresh tokens.
 
 Generating API Keys
-===================
+-------------------
 
 Users that are assigned the scope ``user:apikeys`` can generate API keys used for authorization
 without logging into the server. API keys are often used for long-running applications or
@@ -199,7 +202,7 @@ Request API key with fixed set of scopes using an existing API key::
 
 
 Verifying Scopes of Access Tokens and API Keys
-==============================================
+----------------------------------------------
 
 User can verify currently permissions for a token or API key at any time by sending ``/auth/scopes`` request.
 The API returns the list of assigned roles and the list of scopes applied to the token or the API key::
@@ -211,7 +214,7 @@ The API returns the list of assigned roles and the list of scopes applied to the
 
 
 Getting Information on API Key
-==============================
+------------------------------
 
 Information on an existing API key may be obtained calling ``/auth/apikey`` (GET) API and using
 the API key for authentication::
@@ -220,7 +223,7 @@ the API key for authentication::
 
 
 Deleting API Key
-================
+----------------
 
 API key may be deleted by an authenticated user by calling ``/auth/apikey`` (DELETE). The API key
 used for authorization of the API request can also be deleted::
@@ -232,7 +235,7 @@ used for authorization of the API request can also be deleted::
 
 
 Refreshing Sessions
-===================
+-------------------
 
 Refresh token returned by ``/auth/apikey`` can be used to obtain replacement access tokens by calling
 ``/auth/session/refresh`` API::
@@ -241,7 +244,7 @@ Refresh token returned by ``/auth/apikey`` can be used to obtain replacement acc
 
 
 whoami
-======
+------
 
 An access token or an API key may be used to obtain full information about the user, including
 principal identities and open sessions by calling ``/auth/whoami`` API::
@@ -253,7 +256,7 @@ principal identities and open sessions by calling ``/auth/whoami`` API::
 
 
 Revoking Sessions
-=================
+-----------------
 
 Authenticated user may revoke any of the open sessions using session UUID. The list of sessions
 is returned by ``/auth/whoami`` API. Revoking the session invalidates the respective refresh token.
@@ -266,7 +269,7 @@ Access tokens and API keys will continue working until expiration.
 
 
 Using Tokens and API Keys in API Requests
-=========================================
+-----------------------------------------
 
 Generated access tokens or API keys can be used for authorization in API requests.
 ``/status`` API returns the status of RE Manager::
@@ -278,7 +281,7 @@ Generated access tokens or API keys can be used for authorization in API request
 
 
 Logging Out of the Server
-=========================
+-------------------------
 
 The API ``/auth/logout`` is not changing the state of the server and returns ``{}`` (empty
 dictionary). The purpose of the API is to delete any tokens or API keys stored locally by
@@ -290,4 +293,18 @@ the browser. The API request does not require authentication::
 Administrative API
 ==================
 
-(documentation is coming soon)
+Some API are available only to clients with administrative permissons
+(scope ``admin:read:principals`` and/or ``admin:apikeys``).
+
+Getting Information on All Principals
+-------------------------------------
+
+Clients with ``admin:read:principals`` may get information on all active principals using
+``/auth/principal`` API. The API is similar to ``/auth/whoami``, but instead of returning
+a single item with information on authorized principal it returns the list of items
+for all principal::
+
+  # Get information on all principals using token with admin privileges
+  http GET http://localhost:60610/api/auth/principal 'Authorization: Bearer <token>'
+  # Get information on all principals using API key with admin privileges
+  http GET http://localhost:60610/api/auth/principal 'Authorization: ApiKey <api-key>'
