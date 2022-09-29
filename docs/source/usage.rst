@@ -296,6 +296,7 @@ Administrative API
 Some API are available only to clients with administrative permissons
 (scope ``admin:read:principals`` and/or ``admin:apikeys``).
 
+
 Getting Information on All Principals
 -------------------------------------
 
@@ -309,10 +310,12 @@ for all principal::
   # Get information on all principals using API key with admin privileges
   http GET http://localhost:60610/api/auth/principal 'Authorization: ApiKey <api-key>'
 
+
 Getting Information on a Selected Principal
 -------------------------------------------
 
-Clients with ``admin:read:principals`` may get information on any principals.
+Clients with ``admin:read:principals`` may get information on any principals
+using ``/auth/principal/<principal-UUID>`` API.
 The principals are identified by UUID. The returned data is structured
 identically as the data returned by ``/auth/whoami``, but may represent any
 user of the server, not only the authorized user::
@@ -321,3 +324,21 @@ user of the server, not only the authorized user::
   http GET http://localhost:60610/api/auth/principal/<principal-UUID> 'Authorization: Bearer <token>'
   # Get information on all principals using API key with admin privileges
   http GET http://localhost:60610/api/auth/principal/<principal-UUID> 'Authorization: ApiKey <api-key>'
+
+
+Generating an API Key for a Principal
+-------------------------------------
+
+Clients with ``admin:apikeys`` scope may generate API keys for any principal in the system
+using ``/auth/principal/<principal-UUID>/apikey`` API.
+The scopes for the generated API key are limited by permissions assigned to the principal
+(not the client sending the request). The API works similarly to ``/auth/apikey``
+and accepts identical set of parameters: ``expires_in`` is a required parameter
+representing API key expiration time in seconds, ``scopes`` and ``note`` are optional parameters.
+The API call must be authorized using a token or an API key of the client with administrative
+privileges. ::
+
+  # Generate API key for a given selected principal using token with admin privileges
+  http POST http://localhost:60610/api/auth/principal/<principal-UUID>/apikey expires_in:=900 'Authorization: Bearer <token>'
+  # Generate API key for a given selected principal using API key with admin privileges
+  http POST http://localhost:60610/api/auth/principal/<principal-UUID>/apikey expires_in:=900 'Authorization: ApiKey <api-key>'

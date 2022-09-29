@@ -362,7 +362,7 @@ def test_api_admin_auth_principal_01(
     fastapi_server_fs,  # noqa: F811
 ):
     """
-    ``/auth/principal``: basic tests.
+    ``/auth/principal``, ``/auth/principal/<principal-UUID>``: basic tests.
     """
 
     setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
@@ -397,3 +397,70 @@ def test_api_admin_auth_principal_01(
     resp6 = request_to_json("get", f"/auth/principal/{principals['bob']}", token=token_user)
     assert "detail" in resp6
     assert "Not enough permissions" in resp6["detail"]
+
+
+def test_api_admin_auth_principal_apikey_01(
+    tmpdir,
+    monkeypatch,
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ``/auth/principal/<principal-UUID>/apikey``: basic tests.
+    """
+
+    setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    # Login with admin access
+    resp1 = request_to_json("post", "/auth/provider/toy/token", login=("bob", "bob_password"))
+    assert "access_token" in resp1
+    assert "refresh_token" in resp1
+    token = resp1["access_token"]
+
+    # Another user log sin
+    resp2 = request_to_json("post", "/auth/provider/toy/token", login=("alice", "alice_password"))
+    assert "access_token" in resp2
+    token_user = resp2["access_token"]
+
+    # Get a list of all principals
+    resp3 = request_to_json("get", "/auth/principal", token=token)
+    assert len(resp3) == 2
+    principals = {_["identities"][0]["id"]: _["uuid"] for _ in resp3}
+    assert set(principals.keys()) == {"bob", "alice"}
+
+    # Get an API key for the user ('inherit' scope)
+    resp4 = request_to_json(
+        "post", f"/auth/principal/{principals['alice']}/apikey", json={"expires_in": 900}, token=token
+    )
+    assert "secret" in resp4
+    api_key1 = resp4["secret"]
+    resp4a = request_to_json("get", "/auth/whoami", api_key=api_key1)
+    assert resp4a["identities"][0]["id"] == "alice"
+    assert len(resp4a["sessions"]) == 1
+    resp4b = request_to_json("get", "/auth/scopes", api_key=api_key1)
+    assert "scopes" in resp4b
+    assert set(resp4b["scopes"]) == _DEFAULT_ROLES["advanced"]
+
+    # Get an API key for the user (fixed scope)
+    resp5 = request_to_json(
+        "post",
+        f"/auth/principal/{principals['alice']}/apikey",
+        json={"expires_in": 900, "scopes": ["read:status", "read:console"]},
+        token=token,
+    )
+    assert "secret" in resp5
+    api_key2 = resp5["secret"]
+    resp5b = request_to_json("get", "/auth/scopes", api_key=api_key2)
+    assert "scopes" in resp5b
+    assert set(resp5b["scopes"]) == {"read:status", "read:console"}
+
+    # Get an API key for the user (fixed scopes outside the scopes of the user)
+    resp6 = request_to_json(
+        "post",
+        f"/auth/principal/{principals['alice']}/apikey",
+        json={"expires_in": 900, "scopes": ["admin:apikeys", "read:status", "read:console"]},
+        token=token,
+    )
+    assert "detail" in resp6
+    assert "must be a subset of the allowed principal's scopes" in resp6["detail"]
