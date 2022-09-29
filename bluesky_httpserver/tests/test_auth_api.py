@@ -374,7 +374,7 @@ def test_api_admin_auth_principal_01(
     assert "refresh_token" in resp1
     token = resp1["access_token"]
 
-    # Another user log sin
+    # Another user logs in
     resp2 = request_to_json("post", "/auth/provider/toy/token", login=("alice", "alice_password"))
     assert "access_token" in resp2
     token_user = resp2["access_token"]
