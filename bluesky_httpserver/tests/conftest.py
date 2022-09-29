@@ -69,7 +69,11 @@ def setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
     with open(config_path, "wt") as f:
         f.writelines(config_file_str)
 
+    sqlite_path = os.path.join(tmpdir, "bluesky_httpserver.sqlite")
+    sqlite_path = "sqlite:///" + sqlite_path
+
     monkeypatch.setenv("QSERVER_HTTP_SERVER_CONFIG", config_path)
+    monkeypatch.setenv("QSERVER_HTTP_SERVER_DATABASE_URI", sqlite_path)
     monkeypatch.chdir(tmpdir)
 
     return config_path
