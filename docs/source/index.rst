@@ -19,6 +19,7 @@ Bluesky HTTP Server Documentation
 
    introduction
    usage
+   control_re_manager
    configuration
 
 .. toctree::

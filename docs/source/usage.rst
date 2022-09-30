@@ -267,9 +267,10 @@ Access tokens and API keys will continue working until expiration.
   # Revoke session using API key
   http DELETE http://localhost:60610/api/auth/session/revoke/<full-session-uid>  'Authorization: ApiKey <api-key>'
 
+.. _passing_tokens_and_api_keys_with_api_requests:
 
-Using Tokens and API Keys in API Requests
------------------------------------------
+Passing Tokens and API Keys in API Requests
+-------------------------------------------
 
 Generated access tokens or API keys can be used for authorization in API requests.
 ``/status`` API returns the status of RE Manager::
