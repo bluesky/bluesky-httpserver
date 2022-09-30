@@ -1012,7 +1012,7 @@ def console_output_uid(principal=Security(get_current_principal, scopes=["read:c
 def console_output_update(payload: dict, principal=Security(get_current_principal, scopes=["read:console"])):
     """
     Download the list of new messages that were accumulated at the server. The API
-    accepts a require parameter ``last_msg_uid`` with UID of the last downloaded message.
+    accepts a required parameter ``last_msg_uid`` with UID of the last downloaded message.
     If the UID is not found in the buffer, an empty message list and valid UID is
     returned. If UID is ``"ALL"``, then all accumulated messages in the buffer is
     returned. If UID is found in the buffer, then the list of new messages is returned.

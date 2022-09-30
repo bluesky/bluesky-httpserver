@@ -20,6 +20,7 @@ properties:
 
 class DefaultResourceAccessControl:
     """
+    Default resource access policy.
     The resource access policy associates users with user groups. The groups
     define the resources, such as plans and devices users can access. The
     default policy assumes that all uses belong to a singe group (default user group).
@@ -42,9 +43,9 @@ class DefaultResourceAccessControl:
     .. code-block::
 
         resource_access:
-            policy: bluesky_httpserver.authorization:DefaultResourceAccessControl
-            args:
-                default_group: test_user
+          policy: bluesky_httpserver.authorization:DefaultResourceAccessControl
+          args:
+            default_group: test_user
     """
 
     def __init__(self, *, default_group=None):
