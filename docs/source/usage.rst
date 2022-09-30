@@ -13,6 +13,8 @@ In the examples it is assumed that the server address is ``localhost`` and the s
 port is ``60610``. The address and the port are used by default by Bluesky Queue Server
 components and should be substituted by custom address and/or port if necessary.
 
+.. _starting_http_server:
+
 Starting the Server
 ===================
 

@@ -32,36 +32,6 @@ HTTP Server that provides REST API for accessing Queue Server.
 * `'bluesky-queueserver-api': Python API for Queue Server <https://bluesky.github.io/bluesky-queueserver-api>`_.
 
 
-THE FOLLOWING IS A COPY OF THE ORIGINAL README.RST FROM BLUESKY-QUEUESERVER PROJECT. PROPER DOCUMENTATION
-FOR BLUESKY-HTTPSERVER IS COMING SOON.
-
-Features
---------
-
-This is demo version of the QueueServer. The project is in the process of active development, so
-APIs may change at any time without notice. QueueServer may not be considered stable, so install
-and use it only for evaluation purposes.
-
-QueueServer is supporting the following functions:
-
-
-- Opening, closing and destroying of RE (Run Engine) Worker environment.
-
-- Loading and publishing the lists of allowed plans and devices.
-
-- Loading beamlines' startup files from the corresponding ``profile_collection`` repositories.
-
-- Adding and removing plans from the queue; rearranging plans in the queue.
-
-- Starting/stopping execution of the queue.
-
-- Control of the running plans: pausing (immediate and deferred), resuming and stopping
-  (stop, abort and halt) the running plan.
-
-- Saving data to Databroker.
-
-- Streaming documents via Kafka.
-
 
 In some cases the program may crash and leave some sockets open. This may prevent the Manager from
 restarting. To close the sockets (we are interested in sockets on ports 60615 and 60610), find
@@ -73,20 +43,6 @@ and then kill the processes::
 
   $ kill -9 <pid>
 
-
-Installation
-------------
-
-The latest released version of HTTP Server may be installed from PyPI::
-
-  pip install bluesky-httpserver
-
-This will also install the released version of `bluesky-queueserver`. The Queue Server is
-using Redis to store and manage the queue. See the Queue Server documentation for the instructions
-on Redis installation (https://blueskyproject.io/bluesky-queueserver/installation.html).
-
-Alternatively `bluesky-queueserver` and `bluesky-httpserver` may be installed from source
-from the respective GitHub repositories.
 
 Starting QueueServer
 --------------------

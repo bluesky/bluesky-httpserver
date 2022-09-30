@@ -23,6 +23,41 @@ but may be useful for testing the server and understanding the API.
     to send tokens and API keys with API requests in section
     :ref:`passing_tokens_and_api_keys_with_api_requests`
 
+Starting Queue Server Stack for the Demo
+----------------------------------------
+
+This section contains instructions on how to start RE Manager and HTTP Server to explore the API
+in demo mode. See :ref:`starting_http_server` for more detailed information.
+
+Start RE Manager and enable publishing of console output::
+
+  $ start-re-manager --zmq-publish-console ON
+
+Start HTTP Server in single-user mode. In this example the single-user API key is ``mykey``, but 
+it may be any alphanumeric string::
+
+  $ QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=mykey uvicorn --host localhost --port 60610 bluesky_httpserver.server:app 
+
+Now the server API can be accessed by passing the API key with API requests. For example, the status of
+RE Manager can be loaded using ::
+
+  $ http GET http://localhost:60610/api/status 'Authorization: ApiKey mykey'
+
+.. note::
+
+  In rare cases RE Manager or HTTP Server may crash and leave some sockets open. This was observed
+  when running development versions of RE Manager that contain bugs. The remaining open sockets
+  may prevent RE Manager or HTTP Server from restarting. The sockets could be closed by
+  running ::
+  
+    $ netstat -ltnp
+
+  and finding PIDs of the offending processes. The default ports used by RE Manager are
+  60615 and 60625 and port used by the HTTP Server is 60610. Kill the offending processes::
+
+    $ kill -9 <pid>
+
+
 Guide to RE Manager API
 -----------------------
 
