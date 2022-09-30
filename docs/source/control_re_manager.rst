@@ -11,7 +11,7 @@ each time. Caching removes the load on RE Manager, especially if multiple client
 are monitoring the experiment simultaneously.
 
 Users are expected to control the server using Python scripts based on
-`Bluesky Queue Server API <https://blueskyproject.io/bluesky-queueserver-api/>`,
+`Bluesky Queue Server API <https://blueskyproject.io/bluesky-queueserver-api/>`_,
 GUI programs or Web applications. This manual demonstrates how to send the API requests
 from command line using `httpie <https://httpie.io/>`_. This approach is not practical,
 but may be useful for testing the server and understanding the API.

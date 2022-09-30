@@ -25,6 +25,36 @@ variable ``QSERVER_HTTP_SERVER_CONFIG`` as described in :ref:`passing_config_to_
 The path may point to a single config file or a directory containing multiple config files.
 The settings in config file override any settings defined using environment variables.
 
+Communication With Run Engine Manager
+*************************************
+
+HTTP Server is communicating with Run Engine (RE) Manager over 0MQ. The default server
+configuration assumes that RE Manager is running on ``localhost`` and port 60615 is used
+for control channel (REQ-REP), the console output is published using port 60625 (PUB-SUB),
+and encryption for control channel is disabled. The default settings allow Queue Server to
+run 'out of the box' if all system components are running on the same machine, which 
+is the case in testing and simple demos. In practical deployments the settings need to be
+customized.
+
+Currently, the configuration for 0MQ communication with RE Manager can be customized Only
+using environment variables. Support for the respective configuration options will be 
+added to the server config files in the future.
+
+The following environment variables are used to configure 0MQ communication settings:
+
+- ``QSERVER_ZMQ_CONTROL_ADDRESS`` - the address of REQ-REP 0MQ socket of RE Manager used
+  for control channel. The default address: ``tcp://localhost:60615``.
+
+- ``QSERVER_ZMQ_INFO_ADDRESS`` - the address of PUB-SUB 0MQ socket used by RE Manager
+  to publish console output. The default address: ``tcp://localhost:60625``.
+
+- ``QSERVER_ZMQ_PUBLIC_KEY`` - the public key used for encryption of control messages 
+  sent to RE Manager over 0MQ. The encryption is disabled by default. To enable the encryption,
+  generate the public/private key pair using 
+  `'qserver-zmq-keys' CLI tool <https://blueskyproject.io/bluesky-queueserver/cli_tools.html#qserver-zmq-keys>`_, 
+  pass the private key to RE Manager. Pass the public key to HTTP Server using 
+  ``QSERVER_ZMQ_PUBLIC_KEY`` environment variable.
+
 Authentication
 **************
 
