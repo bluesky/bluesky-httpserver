@@ -14,7 +14,53 @@ and allow high level of customization of functionality, using configuration YML 
 allows greater fexibility and is considered a preferable way of configuring the server in production
 deployments.
 
-(Include reference to the supported environment variables)
+Environment variable for passing the path to server configuration file(s):
+
+- ``QSERVER_HTTP_SERVER_CONFIG`` - path to a single YML file or a directory with multiple YML files.
+
+Environment variables for controlling 0MQ communication with Run Engine Manager:
+
+- ``QSERVER_ZMQ_CONTROL_ADDRESS`` - 0MQ socket (REQ-REP) for control channel of RE Manager.
+
+- ``QSERVER_ZMQ_INFO_ADDRESS`` -  0MQ socket (PUB-SUB) for console output of RE Manager.
+
+- ``QSERVER_ZMQ_PUBLIC_KEY`` - public key for encryption of control API requests.
+
+Environment variables for configuring authentication:
+
+- ``QSERVER_HTTP_SERVER_SERVER_SECRET_KEYS`` - the value may be a single key or a ``;``-separated list of keys to 
+  support key rotation. The first key will be used for encryption. Each key will be tried in turn for decryption.
+
+- ``QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY`` - Single-user API key. Enable single-user mode.
+
+- ``QSERVER_HTTP_SERVER_ALLOW_ANONYMOUS_ACCESS`` - Enables public anonymous access if the expression evaluates ``True``.
+
+- ``QSERVER_HTTP_SERVER_ALLOW_ORIGINS`` - the list of domains enables web apps served from other domains to make
+  requests to the server.
+
+Environment variables for controlling token and session lifetimes:
+
+- ``QSERVER_HTTP_SERVER_ACCESS_TOKEN_MAX_AGE`` - maximum age of an access token
+
+- ``QSERVER_HTTP_SERVER_REFRESH_TOKEN_MAX_AGE`` - maximum age of a refresh token
+
+- ``QSERVER_HTTP_SERVER_SESSION_MAX_AGE`` - maximum age of a session
+
+Environment variables for database configuration:
+
+- ``QSERVER_HTTP_SERVER_DATABASE_URI`` - database URI. The default URI is *'sqlite:///bluesky_httpserver.sqlite'*.
+
+- ``QSERVER_HTTP_SERVER_DATABASE_POOL_SIZE`` - connection pool size. Default is 5.
+
+- ``QSERVER_HTTP_SERVER_DATABASE_POOL_PRE_PING`` - if true (default), use pessimistic connection testings. 
+  This is recommended.
+
+Environment variables for customization of the server:
+
+- ``QSERVER_HTTP_CUSTOM_ROUTERS`` - one or multiple custom routers (module names) separated with ``:`` or ``,``. 
+
+- ``QSERVER_CUSTOM_MODULES`` - THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS.  
+
 
 Configuration Files
 -------------------
@@ -67,6 +113,41 @@ authentication providers automatically disables single-user mode.
 In addition, the server supports autonomous public mode, which could be enabled in
 the server configuration. The public mode can be activated for the server running in
 single-user or multi-user mode.
+
+Setting Secret Keys
++++++++++++++++++++
+
+The server is using secret keys for authentication and authorization algorithms.
+If the secret keys are not set in the configuration, the server generates random
+secret keys upon startup and the existing tokens stop working after the restart 
+of the server. This is not acceptable in production deployments, therefore 
+the server configuration must contain secret keys that do not change between restarts.
+
+The server configuration may contain multiple secret keys (a list of keys).
+The first key in the list is used to encode tokens. The server attempts to decode
+the received tokens by trying all secret keys.
+
+One method to pass the keys is to set the environment variable ``QSERVER_HTTP_SERVER_SERVER_SECRET_KEYS``
+with the string value of the key or multiple keys separated by ';'. Alternatively
+the secret key can be set as part of *authentication* parameters in the server config file::
+
+  authentication:
+    secret_key:
+      - ${SECRET_KEY_1}
+      - ${SECRET_KEY_2}
+
+It is considered unsafe to keep secret keys in text files, but instead use environment variables
+to list the secret keys. In this example, the environment variables ``SECRET_KEY_1`` and 
+``SECRET_KEY_2`` must be set before starting the server.
+
+Secure secret keys may be generated using ``openssl`` or by running a Python script from Linux
+command line. Generating a secret key using ``openssl``::
+
+  openssl rand -hex 32
+
+Generating a secret key Python script::
+
+  python -c "import secrets; print(secrets.token_hex(32))"
 
 Single-User Mode
 ++++++++++++++++
