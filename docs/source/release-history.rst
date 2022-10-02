@@ -2,6 +2,29 @@
 Release History
 ===============
 
+v0.0.7 (2022-10-02)
+===================
+
+Added
+-----
+
+- New parameters of ``LDAPAuthenticator``: ``connect_timeout``, ``receive_timeout``.
+
+- Implementation of framework for API and resource access control.
+
+- Implementation of simple API access control policies: ``BasicAPIAccessControl`` and ``DictionaryAPIAccessControl``.
+
+- Implementation of a simple resource access control policy: ``DefaultResourceAccessControl``.
+
+Changed
+-------
+
+- ``LDAPAuthenticator`` is not blocking the server event loop while waiting for the response from the server.
+
+- ``LDAPAuthenticator`` now works with the pool of LDAP servers. The parameter ``server_address`` accepts
+  a string representing a single server or a list of strings representing multiple servers.
+
+
 v0.0.6 (2022-07-30)
 ===================
 
