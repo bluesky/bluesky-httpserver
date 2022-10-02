@@ -262,7 +262,7 @@ Revoking Sessions
 
 Authenticated user may revoke any of the open sessions using session UUID. The list of sessions
 is returned by ``/auth/whoami`` API. Revoking the session invalidates the respective refresh token.
-Access tokens and API keys will continue working until expiration.
+Access tokens and API keys will continue working until expiration. ::
 
   # Revoke session using access token
   http DELETE http://localhost:60610/api/auth/session/revoke/<full-session-uid>  'Authorization: Bearer <token>'
