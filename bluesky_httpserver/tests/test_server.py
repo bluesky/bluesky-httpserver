@@ -21,6 +21,7 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     wait_for_environment_to_be_created,
     wait_for_queue_execution_to_complete,
     wait_for_manager_state_idle,
+    setup_server_with_config_file,
 )
 
 from bluesky_queueserver import generate_zmq_keys
@@ -32,10 +33,16 @@ _plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_
 _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 
 
+_config_public_key = """
+qserver_zmq_configuration:
+  public_key: {0}
+"""
+
+
 # fmt: off
-@pytest.mark.parametrize("test_mode", ["none", "ev"])
+@pytest.mark.parametrize("test_mode", ["none", "ev", "cfg_file", "both"])
 # fmt: on
-def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, test_mode):  # noqa: F811
+def test_http_server_secure_1(monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, test_mode):  # noqa: F811
     """
     Test operation of HTTP server with enabled encryption. Security of HTTP server can be enabled
     only by setting the environment variable to the value of the public key.
@@ -49,6 +56,19 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
         # Set server private key using environment variable
         monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", public_key)  # HTTP server
+        set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
+    elif test_mode == "cfg_file":
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
+        setup_server_with_config_file(
+            config_file_str=_config_public_key.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+        )
+        set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
+    elif test_mode == "both":
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
+        setup_server_with_config_file(
+            config_file_str=_config_public_key.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+        )
+        monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", "abc")  # IGNORED
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     else:
         raise RuntimeError(f"Unrecognized test mode '{test_mode}'")
@@ -93,7 +113,19 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
     wait_for_manager_state_idle(10)
 
 
-def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
+_config_zmq_address = """
+qserver_zmq_configuration:
+  control_address: {0}
+  info_address: {1}
+"""
+
+
+# fmt: off
+@pytest.mark.parametrize("option", ["ev", "cfg_file", "both"])
+# fmt: on
+def test_http_server_set_zmq_address_1(
+    monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, option  # noqa: F811
+):
     """
     Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS_CONTROL'
     environment variable. Start RE Manager and HTTP server with ZMQ address for control communication
@@ -105,8 +137,20 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     zmq_info_address_server = "tcp://*:60617"
     zmq_control_address = "tcp://localhost:60616"
     zmq_info_address = "tcp://localhost:60617"
-    monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
-    monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
+    if option == "ev":
+        monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
+    elif option in ("cfg_file", "both"):
+        setup_server_with_config_file(
+            config_file_str=_config_zmq_address.format(zmq_control_address, zmq_info_address),
+            tmpdir=tmpdir,
+            monkeypatch=monkeypatch,
+        )
+        if option == "both":
+            monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", "something")  # Ignored
+            monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", "something")  # Ignored
+    else:
+        assert False, f"Unknown option {option!r}"
     fastapi_server_fs()
 
     set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_control_address)
@@ -186,8 +230,22 @@ async def status_duplicate_post(payload: dict = {}):
     return msg
 """
 
+_config_routers = """
+server_configuration:
+  custom_routers:
+    - {0}
+    - {1}
+"""
 
-def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_server_fs):  # noqa: F811
+
+# fmt: off
+@pytest.mark.parametrize("option", ["ev", "cfg_file", "both"])
+# fmt: on
+def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_server_fs, option):  # noqa: F811
+    """
+    Test if custom routers can be passed to the server using EV and config file and if settings in config file
+    override the settings passed as EV (if both are used).
+    """
     dir_mod_root = os.path.join(tmpdir, "mod_dir")
     dir_submod = os.path.join(dir_mod_root, "submod_dir")
 
@@ -202,16 +260,30 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_s
     mod1_name, mod2_name = "mod1", "submod_dir.mod2"
 
     monkeypatch.setenv("PYTHONPATH", dir_mod_root)
-    monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{mod1_name}.router:{mod2_name}.router2")
+
+    routers = [f"{mod1_name}.router", f"{mod2_name}.router2"]
+
+    if option in ("cfg_file", "both"):
+        config = _config_routers.format(routers[0], routers[1])
+        setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+        if option == "both":
+            monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", "non.existing:router")
+    elif option == "ev":
+        monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{routers[0]}:{routers[1]}")
+    else:
+        assert False, f"Unknown test option {option!r}"
+
     fastapi_server_fs()
 
     # Test router from mod1
     resp1 = request_to_json("get", "/testing_custom_router_1", request_prefix="")
+    assert "success" in resp1, pprint.pformat(resp1)
     assert resp1["success"] is True
     assert resp1["msg"] == "Response from 'testing_custom_router_1'"
 
     # Test router from mod2
     resp2 = request_to_json("get", "/some_prefix/testing_custom_router_2", request_prefix="")
+    assert "success" in resp2, pprint.pformat(resp1)
     assert resp2["success"] is True
     assert resp2["msg"] == "Response from 'testing_custom_router_2'"
 

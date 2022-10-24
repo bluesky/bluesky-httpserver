@@ -26,7 +26,7 @@ Bluesky HTTP Server implements REST API for controlling experiments using Queue 
 
 * Free software: 3-clause BSD license
 * `Installation instructions <https://bluesky.github.io/bluesky-httpserver/installation.html>`_.
-* `Brief description of the project <https://bluesky.github.io/bluesky-httpserver/introduction.html>`_.
+* `Overview of the project <https://bluesky.github.io/bluesky-httpserver/introduction.html>`_.
 * `Guide to API for experiment control <https://bluesky.github.io/bluesky-httpserver/control_re_manager.html>`_.
 * `Full documentation <https://bluesky.github.io/bluesky-httpserver>`_.
 * `'bluesky-queueserver': Queue Server (Run Engine Manager) <https://bluesky.github.io/bluesky-queueserver>`_.

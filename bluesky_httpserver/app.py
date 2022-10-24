@@ -140,10 +140,16 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     app.include_router(core_api.router)
 
     # Include custom routers
+    router_names = []
     router_names_str = os.getenv("QSERVER_HTTP_CUSTOM_ROUTERS", None)
-    if router_names_str:
+    if "custom_routers" in server_settings["server_configuration"]:
+        router_names = server_settings["server_configuration"]["custom_routers"]
+        logger.info("Custom routers are specified in the config file: %s", router_names)
+    elif router_names_str:
         router_names = re.split(":|,", router_names_str)
-        logger.info("Custom routers to include (env. variable): %s", pprint.pformat(router_names))
+        logger.info("Custom routers are specified in the environment variable: %s", router_names)
+
+    if router_names:
         routers_already_included = set()
         for rn in router_names:
             if rn and (rn not in routers_already_included):
@@ -284,15 +290,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
             app.state.tasks.append(asyncio.create_task(purge_expired_sessions_and_api_keys()))
 
-        # Read private key from the environment variable, then check if the CLI parameter exists
-        zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
-        zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
-        if zmq_public_key is not None:
-            try:
-                validate_zmq_key(zmq_public_key)
-            except Exception as ex:
-                raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
-
         # TODO: implement nicer exit with error reporting in case of failure
         zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
         if zmq_control_addr is None:
@@ -322,6 +319,20 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                     "Environment variable QSERVER_ZMQ_ADDRESS_CONSOLE is deprecated: use environment variable "
                     "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
                 )
+
+        # Check if ZMQ setting were specified in config file. Overrid the parameters from EVs.
+        zmq_control_addr = server_settings["qserver_zmq_configuration"].get("control_address", zmq_control_addr)
+        zmq_info_addr = server_settings["qserver_zmq_configuration"].get("info_address", zmq_info_addr)
+
+        # Read public key from the environment variable or config file.
+        zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
+        zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
+        zmq_public_key = server_settings["qserver_zmq_configuration"].get("public_key", zmq_public_key)
+        if zmq_public_key is not None:
+            try:
+                validate_zmq_key(zmq_public_key)
+            except Exception as ex:
+                raise ValueError(f"ZMQ public key is improperly formatted: {ex}")
 
         logger.info(
             f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
@@ -355,10 +366,15 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             )
         module_names_str = module_names_str or os.getenv("QSERVER_CUSTOM_MODULE", None)
 
-        if module_names_str:
+        module_names = []
+        if "custom_modules" in server_settings["server_configuration"]:
+            module_names = server_settings["server_configuration"]["custom_modules"]
+            logger.info("Custom modules from config file: %s", pprint.pformat(module_names))
+        elif module_names_str:
             module_names = re.split(":|,", module_names_str)
-            logger.info("Custom modules to import (env. variable): %s", pprint.pformat(module_names))
+            logger.info("Custom modules from environment variable: %s", pprint.pformat(module_names))
 
+        if module_names:
             # Import all listed custom modules
             custom_code_modules = []
             for name in module_names:

@@ -62,6 +62,7 @@ def setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
     Creates config file for the server in ``tmpdir/config/`` directory and
     sets up the respective environment variable. Sets ``tmpdir`` as a current directory.
     """
+    print(f"SERVER CONFIGURATION:\n{'-'*50}\n{config_file_str}\n{'-'*50}")
     config_fln = "config_httpserver.yml"
     config_dir = os.path.join(tmpdir, "config")
     config_path = os.path.join(config_dir, config_fln)
