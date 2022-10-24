@@ -102,8 +102,8 @@ def merge(configs):
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
-    qserver_zmq_configuration_config_source = None
-    server_configuration_config_source = None
+    qserver_zmq_config_source = None
+    server_config_source = None
     authentication_config_source = None
     uvicorn_config_source = None
     metrics_config_source = None
@@ -117,20 +117,20 @@ def merge(configs):
         if "qserver_zmq_configuration" in config:
             if "qserver_zmq_configuration" in merged:
                 raise ConfigError(
-                    "qserver zmq settings can only be specified in one file. "
-                    f"It was found in both {qserver_zmq_configuration_config_source} and "
+                    "'qserver_zmq_configuration' can only be specified in one file. "
+                    f"It was found in both {qserver_zmq_config_source} and "
                     f"{filepath}"
                 )
-            qserver_zmq_configuration_config_source = filepath
+            qserver_zmq_config_source = filepath
             merged["qserver_zmq_configuration"] = config["qserver_zmq_configuration"]
         if "server_configuration" in config:
             if "server_configuration" in merged:
                 raise ConfigError(
-                    "server configuration can only be specified in one file. "
-                    f"It was found in both {server_configuration_config_source} and "
+                    "'server_configuration' can only be specified in one file. "
+                    f"It was found in both {server_config_source} and "
                     f"{filepath}"
                 )
-            server_configuration_config_source = filepath
+            server_config_source = filepath
             merged["server_configuration"] = config["server_configuration"]
         if "authentication" in config:
             if "authentication" in merged:

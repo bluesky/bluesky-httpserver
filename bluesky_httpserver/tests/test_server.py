@@ -33,7 +33,7 @@ _plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_
 _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 
 
-_config_public_key_format = """
+_config_public_key = """
 qserver_zmq_configuration:
   public_key: {0}
 """
@@ -60,13 +60,13 @@ def test_http_server_secure_1(monkeypatch, tmpdir, re_manager_cmd, fastapi_serve
     elif test_mode == "cfg_file":
         monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         setup_server_with_config_file(
-            config_file_str=_config_public_key_format.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+            config_file_str=_config_public_key.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
         )
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     elif test_mode == "both":
         monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         setup_server_with_config_file(
-            config_file_str=_config_public_key_format.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+            config_file_str=_config_public_key.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
         )
         monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", "abc")  # IGNORED
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
@@ -113,7 +113,19 @@ def test_http_server_secure_1(monkeypatch, tmpdir, re_manager_cmd, fastapi_serve
     wait_for_manager_state_idle(10)
 
 
-def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_server_fs):  # noqa: F811
+_config_zmq_address = """
+qserver_zmq_configuration:
+  control_address: {0}
+  info_address: {1}
+"""
+
+
+# fmt: off
+@pytest.mark.parametrize("option", ["ev", "cfg_file", "both"])
+# fmt: on
+def test_http_server_set_zmq_address_1(
+    monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, option  # noqa: F811
+):
     """
     Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS_CONTROL'
     environment variable. Start RE Manager and HTTP server with ZMQ address for control communication
@@ -125,8 +137,20 @@ def test_http_server_set_zmq_address_1(monkeypatch, re_manager_cmd, fastapi_serv
     zmq_info_address_server = "tcp://*:60617"
     zmq_control_address = "tcp://localhost:60616"
     zmq_info_address = "tcp://localhost:60617"
-    monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
-    monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
+    if option == "ev":
+        monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)
+    elif option in ("cfg_file", "both"):
+        setup_server_with_config_file(
+            config_file_str=_config_zmq_address.format(zmq_control_address, zmq_info_address),
+            tmpdir=tmpdir,
+            monkeypatch=monkeypatch,
+        )
+        if option == "both":
+            monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", "something")  # Ignored
+            monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", "something")  # Ignored
+    else:
+        assert False, f"Unknown option {option!r}"
     fastapi_server_fs()
 
     set_qserver_zmq_address(monkeypatch, zmq_server_address=zmq_control_address)
@@ -206,7 +230,7 @@ async def status_duplicate_post(payload: dict = {}):
     return msg
 """
 
-_config_routers_format = """
+_config_routers = """
 server_configuration:
   custom_routers:
     - {0}
@@ -240,7 +264,7 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_s
     routers = [f"{mod1_name}.router", f"{mod2_name}.router2"]
 
     if option in ("cfg_file", "both"):
-        config = _config_routers_format.format(routers[0], routers[1])
+        config = _config_routers.format(routers[0], routers[1])
         setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
         if option == "both":
             monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", "non.existing:router")
