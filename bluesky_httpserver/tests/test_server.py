@@ -33,10 +33,16 @@ _plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_
 _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 
 
+_config_public_key_format = """
+qserver_zmq_configuration:
+  public_key: {0}
+"""
+
+
 # fmt: off
-@pytest.mark.parametrize("test_mode", ["none", "ev"])
+@pytest.mark.parametrize("test_mode", ["none", "ev", "cfg_file", "both"])
 # fmt: on
-def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, test_mode):  # noqa: F811
+def test_http_server_secure_1(monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, test_mode):  # noqa: F811
     """
     Test operation of HTTP server with enabled encryption. Security of HTTP server can be enabled
     only by setting the environment variable to the value of the public key.
@@ -50,6 +56,19 @@ def test_http_server_secure_1(monkeypatch, re_manager_cmd, fastapi_server_fs, te
         # Set server private key using environment variable
         monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
         monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", public_key)  # HTTP server
+        set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
+    elif test_mode == "cfg_file":
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
+        setup_server_with_config_file(
+            config_file_str=_config_public_key_format.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+        )
+        set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
+    elif test_mode == "both":
+        monkeypatch.setenv("QSERVER_ZMQ_PRIVATE_KEY_FOR_SERVER", private_key)  # RE Manager
+        setup_server_with_config_file(
+            config_file_str=_config_public_key_format.format(public_key), tmpdir=tmpdir, monkeypatch=monkeypatch
+        )
+        monkeypatch.setenv("QSERVER_ZMQ_PUBLIC_KEY", "abc")  # IGNORED
         set_qserver_zmq_public_key(monkeypatch, server_public_key=public_key)  # For test functions
     else:
         raise RuntimeError(f"Unrecognized test mode '{test_mode}'")

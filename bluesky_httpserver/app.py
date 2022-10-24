@@ -290,15 +290,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
             app.state.tasks.append(asyncio.create_task(purge_expired_sessions_and_api_keys()))
 
-        # Read private key from the environment variable, then check if the CLI parameter exists
-        zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
-        zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
-        if zmq_public_key is not None:
-            try:
-                validate_zmq_key(zmq_public_key)
-            except Exception as ex:
-                raise ValueError("ZMQ public key is improperly formatted: %s", str(ex))
-
         # TODO: implement nicer exit with error reporting in case of failure
         zmq_control_addr = os.getenv("QSERVER_ZMQ_CONTROL_ADDRESS", None)
         if zmq_control_addr is None:
@@ -330,9 +321,18 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                 )
 
         # Check if ZMQ setting were specified in config file. Overrid the parameters from EVs.
-        zmq_control_addr = server_settings["qserver_zmq_settings"].get("control_address", zmq_control_addr)
-        zmq_info_addr = server_settings["qserver_zmq_settings"].get("info_address", zmq_info_addr)
-        zmq_public_key = server_settings["qserver_zmq_settings"].get("public_key", zmq_public_key)
+        zmq_control_addr = server_settings["qserver_zmq_configuration"].get("control_address", zmq_control_addr)
+        zmq_info_addr = server_settings["qserver_zmq_configuration"].get("info_address", zmq_info_addr)
+
+        # Read public key from the environment variable or config file.
+        zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
+        zmq_public_key = zmq_public_key if zmq_public_key else None  # Case of ""
+        zmq_public_key = server_settings["qserver_zmq_configuration"].get("public_key", zmq_public_key)
+        if zmq_public_key is not None:
+            try:
+                validate_zmq_key(zmq_public_key)
+            except Exception as ex:
+                raise ValueError(f"ZMQ public key is improperly formatted: {ex}")
 
         logger.info(
             f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"

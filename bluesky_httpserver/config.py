@@ -87,7 +87,7 @@ def construct_build_app_kwargs(
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
         server_settings["metrics"] = metrics
-        server_settings["qserver_zmq_settings"] = config.get("qserver_zmq_settings", {})
+        server_settings["qserver_zmq_configuration"] = config.get("qserver_zmq_configuration", {})
         server_settings["server_configuration"] = config.get("server_configuration", {})
     return {
         "authentication": auth_spec,
@@ -102,7 +102,7 @@ def merge(configs):
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
-    qserver_zmq_settings_config_source = None
+    qserver_zmq_configuration_config_source = None
     server_configuration_config_source = None
     authentication_config_source = None
     uvicorn_config_source = None
@@ -114,15 +114,15 @@ def merge(configs):
 
     for filepath, config in configs.items():
         allow_origins.extend(config.get("allow_origins", []))
-        if "qserver_zmq_settings" in config:
-            if "qserver_zmq_settings" in merged:
+        if "qserver_zmq_configuration" in config:
+            if "qserver_zmq_configuration" in merged:
                 raise ConfigError(
                     "qserver zmq settings can only be specified in one file. "
-                    f"It was found in both {qserver_zmq_settings_config_source} and "
+                    f"It was found in both {qserver_zmq_configuration_config_source} and "
                     f"{filepath}"
                 )
-            qserver_zmq_settings_config_source = filepath
-            merged["qserver_zmq_settings"] = config["qserver_zmq_settings"]
+            qserver_zmq_configuration_config_source = filepath
+            merged["qserver_zmq_configuration"] = config["qserver_zmq_configuration"]
         if "server_configuration" in config:
             if "server_configuration" in merged:
                 raise ConfigError(
