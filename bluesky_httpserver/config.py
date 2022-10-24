@@ -84,6 +84,8 @@ def construct_build_app_kwargs(
                     f"({prometheus_multiproc_dir}) is not writable"
                 )
         server_settings["metrics"] = metrics
+        server_settings["qserver_zmq_settings"] = config.get("qserver_zmq_settings", {})
+        server_settings["server_configuration"] = config.get("server_configuration", {})
     return {
         "authentication": auth_spec,
         "api_access": api_access_spec,

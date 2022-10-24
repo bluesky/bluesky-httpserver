@@ -14,6 +14,47 @@ $schema": http://json-schema.org/draft-07/schema#
 type: object
 additionalProperties: false
 properties:
+  qserver_zmq_settings:
+    type: [object]
+    additionalProperties: false
+    properties:
+      control_address:
+        type: string
+        description: |
+          The address of 0MQ control (REQ-REP) socket of RE Manager, e.g. tcp://localhost:60615.
+          Overrides the address set using QSERVER_ZMQ_CONTROL_ADDRESS environment variable.
+      info_address:
+        type: string
+        description: |
+          The address of 0MQ info (PUB-SUB) socket of RE Manager, used to publish console output
+          e.g. tcp://localhost:60625. Overrides the address set using QSERVER_ZMQ_INFO_ADDRESS
+          environment variable
+      public_key:
+        type: string
+        description: |
+          Public key used to encode control messages sent to RE Manager. Typically the public
+          key is passed using the environment variable QSERVER_ZMQ_PUBLIC_KEY (recommended),
+          but it could be specified in the config file, e.g. as a name of a different environment
+          variable (such as ${PUBLIC_KEY}) if needed. Overrides the public key set using
+          QSERVER_ZMQ_PUBLIC_KEY environment variable.
+  server_configuration:
+    type: [object]
+    additionalProperties: false
+    properties:
+      custom_routers:
+        type: array
+        item:
+          type: string
+        description: |
+          The list of Python modules with custom routers. Overrides the list of modules set using
+          QSERVER_HTTP_CUSTOM_ROUTERS environment variable.
+      custom_modules:
+        type: array
+        item:
+          type: string
+        description: |
+          THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS. Overrides the list of modules
+          set using QSERVER_CUSTOM_MODULES environment variable.
   authentication:
     type: [object, "null"]
     additionalProperties: false
