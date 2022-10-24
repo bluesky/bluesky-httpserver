@@ -21,6 +21,7 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     wait_for_environment_to_be_created,
     wait_for_queue_execution_to_complete,
     wait_for_manager_state_idle,
+    setup_server_with_config_file,
 )
 
 from bluesky_queueserver import generate_zmq_keys
@@ -186,8 +187,22 @@ async def status_duplicate_post(payload: dict = {}):
     return msg
 """
 
+_config_routers_format = """
+server_configuration:
+  custom_routers:
+    - {0}
+    - {1}
+"""
 
-def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_server_fs):  # noqa: F811
+
+# fmt: off
+@pytest.mark.parametrize("option", ["ev", "cfg_file", "both"])
+# fmt: on
+def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_server_fs, option):  # noqa: F811
+    """
+    Test if custom routers can be passed to the server using EV and config file and if settings in config file
+    override the settings passed as EV (if both are used).
+    """
     dir_mod_root = os.path.join(tmpdir, "mod_dir")
     dir_submod = os.path.join(dir_mod_root, "submod_dir")
 
@@ -202,16 +217,30 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_s
     mod1_name, mod2_name = "mod1", "submod_dir.mod2"
 
     monkeypatch.setenv("PYTHONPATH", dir_mod_root)
-    monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{mod1_name}.router:{mod2_name}.router2")
+
+    routers = [f"{mod1_name}.router", f"{mod2_name}.router2"]
+
+    if option in ("cfg_file", "both"):
+        config = _config_routers_format.format(routers[0], routers[1])
+        setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+        if option == "both":
+            monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", "non.existing:router")
+    elif option == "ev":
+        monkeypatch.setenv("QSERVER_HTTP_CUSTOM_ROUTERS", f"{routers[0]}:{routers[1]}")
+    else:
+        assert False, f"Unknown test option {option!r}"
+
     fastapi_server_fs()
 
     # Test router from mod1
     resp1 = request_to_json("get", "/testing_custom_router_1", request_prefix="")
+    assert "success" in resp1, pprint.pformat(resp1)
     assert resp1["success"] is True
     assert resp1["msg"] == "Response from 'testing_custom_router_1'"
 
     # Test router from mod2
     resp2 = request_to_json("get", "/some_prefix/testing_custom_router_2", request_prefix="")
+    assert "success" in resp2, pprint.pformat(resp1)
     assert resp2["success"] is True
     assert resp2["msg"] == "Response from 'testing_custom_router_2'"
 

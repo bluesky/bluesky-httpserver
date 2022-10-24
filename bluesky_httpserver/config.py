@@ -7,11 +7,14 @@ import copy
 from datetime import timedelta
 import os
 from pathlib import Path
+import logging
 
 import jsonschema
 
 from .utils import import_object, parse, prepend_to_sys_path
 from .config_schemas.loading import load_schema_from_yml, ConfigError
+
+logger = logging.getLogger(__name__)
 
 
 SERVICE_CONFIGURATION_FILE_NAME = "service_configuration.yml"
@@ -99,6 +102,8 @@ def merge(configs):
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
+    qserver_zmq_settings_config_source = None
+    server_configuration_config_source = None
     authentication_config_source = None
     uvicorn_config_source = None
     metrics_config_source = None
@@ -109,6 +114,24 @@ def merge(configs):
 
     for filepath, config in configs.items():
         allow_origins.extend(config.get("allow_origins", []))
+        if "qserver_zmq_settings" in config:
+            if "qserver_zmq_settings" in merged:
+                raise ConfigError(
+                    "qserver zmq settings can only be specified in one file. "
+                    f"It was found in both {qserver_zmq_settings_config_source} and "
+                    f"{filepath}"
+                )
+            qserver_zmq_settings_config_source = filepath
+            merged["qserver_zmq_settings"] = config["qserver_zmq_settings"]
+        if "server_configuration" in config:
+            if "server_configuration" in merged:
+                raise ConfigError(
+                    "server configuration can only be specified in one file. "
+                    f"It was found in both {server_configuration_config_source} and "
+                    f"{filepath}"
+                )
+            server_configuration_config_source = filepath
+            merged["server_configuration"] = config["server_configuration"]
         if "authentication" in config:
             if "authentication" in merged:
                 raise ConfigError(

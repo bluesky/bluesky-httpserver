@@ -367,8 +367,8 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         module_names_str = module_names_str or os.getenv("QSERVER_CUSTOM_MODULE", None)
 
         module_names = []
-        if "custom_routers" in server_settings["server_configuration"]:
-            module_names = server_settings["server_configuration"]["custom_routers"]
+        if "custom_modules" in server_settings["server_configuration"]:
+            module_names = server_settings["server_configuration"]["custom_modules"]
             logger.info("Custom modules from config file: %s", pprint.pformat(module_names))
         elif module_names_str:
             module_names = re.split(":|,", module_names_str)
