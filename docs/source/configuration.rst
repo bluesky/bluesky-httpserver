@@ -82,9 +82,8 @@ run 'out of the box' if all system components are running on the same machine, w
 is the case in testing and simple demos. In practical deployments the settings need to be
 customized.
 
-Currently, the configuration for 0MQ communication with RE Manager can be customized Only
-using environment variables. Support for the respective configuration options will be 
-added to the server config files in the future.
+The configuration for 0MQ communication with RE Manager can be customized using environment 
+variables or configuration files. 
 
 The following environment variables are used to configure 0MQ communication settings:
 
@@ -100,6 +99,36 @@ The following environment variables are used to configure 0MQ communication sett
   `'qserver-zmq-keys' CLI tool <https://blueskyproject.io/bluesky-queueserver/cli_tools.html#qserver-zmq-keys>`_, 
   pass the private key to RE Manager. Pass the public key to HTTP Server using 
   ``QSERVER_ZMQ_PUBLIC_KEY`` environment variable.
+
+The same parameters can be specified by including ``qserver_zmq_configuration`` into
+the config file::
+
+  qserver_zmq_configuration:
+    control_address: tcp://localhost:60615
+    info_address: tcp://localhost:60625
+    public_key: ${PUBLIC_KEY}
+
+All parameters in the config file are optional and override the values passed using 
+environment variables and the default values. The public key is typically passed using environment
+variable ``QSERVER_ZMQ_PUBLIC_KEY``, but different environment variable name could be specified
+in the config file as in the example above. Explicitly including public key in the config file
+is considered unsafe practice in production systems.
+
+Custom Routers
+**************
+
+The HTTP Server can be extended to support application-specific functionality by developing
+Python modules with custom routers. The module names are passed to the server as ``:``-separated 
+list using the environment variable ``QSERVER_HTTP_CUSTOM_ROUTERS``::
+
+  export QSERVER_HTTP_CUSTOM_ROUTERS modu.le1:mod.ule2
+
+Alternatively, the list of modules can be specified in the configuration file::
+
+  server_configuration:
+    custom_routers:
+      - modu.le1
+      - mod.ule2
 
 Authentication
 **************
