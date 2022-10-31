@@ -7,6 +7,7 @@ fastapi[all]
 flake8
 pytest
 pytest-xprocess
+py
 sphinx
 ipython
 numpydoc
