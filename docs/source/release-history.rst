@@ -2,6 +2,17 @@
 Release History
 ===============
 
+v0.0.8 (2022-10-31)
+===================
+
+Added
+-----
+
+- The parameters passed using the environment variables ``QSERVER_ZMQ_CONTROL_ADDRESS``,
+  ``QSERVER_ZMQ_INFO_ADDRESS``, ``QSERVER_ZMQ_PUBLIC_KEY`` and ``QSERVER_HTTP_CUSTOM_ROUTERS``
+  can now be passed in the configuration YML file.
+
+
 v0.0.7 (2022-10-02)
 ===================
 
