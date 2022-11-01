@@ -15,7 +15,9 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 1000  # should be enough to reach the most recent tag
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -23,6 +25,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt install redis
+
+        # Versioneer uses the most recent git tag to generate __version__, which appears
+        # in the published documentation.
+        git fetch --tags
 
         # These packages are installed in the base environment but may be older
         # versions. Explicitly upgrade them because they often create
