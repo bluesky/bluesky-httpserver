@@ -1,10 +1,18 @@
+import asyncio
 import copy
 from collections.abc import Iterable
+import httpx
 import jsonschema
+import logging
+import random
+import time as ttime
 import yaml
 
 from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
 from ..config_schemas.loading import ConfigError
+
+logger = logging.getLogger(__name__)
+
 
 _schema_BasicAPIAccessControl = """
 $schema": http://json-schema.org/draft-07/schema#
@@ -449,3 +457,86 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
             else:
                 v["roles"] = [_.lower() for _ in v["roles"]]
         self._user_info.update(user_info)
+
+
+class ServerBasedAPIAccessControl(BasicAPIAccessControl):
+    """
+    Requests API access information from dedicated REST API server.
+    """
+
+    def __init__(
+        self,
+        *,
+        roles=None,
+        server="localhost",
+        port=8000,
+        update_period=900,
+        expiration_period=None,
+        http_timeout=5,
+        instrument=None,
+        endstation="default",
+    ):
+        super().__init__(roles=roles)
+
+        self._instrument = instrument
+        self._endstation = endstation
+
+        self._server = server
+        self._port = port
+        self._update_period = update_period
+        self._http_timeout = http_timeout
+        self._expiration_period = expiration_period or (update_period * 2.5)
+
+        current_time = ttime.time()
+        self._time_next_update = current_time
+        self._time_expiration = current_time
+
+        self.background_tasks = [self.background_update_authentication_info]
+
+    async def request_authentication_info(self):
+        base_url = f"http://{self._server}:{self._port}"
+        access_api = f"/instruments/{self._instrument}/{self._endstation}/qserver/access"
+        async with httpx.AsyncClient(base_url=base_url, timeout=self._http_timeout) as client:
+            response = await client.get(access_api)
+            response.raise_for_status()
+            groups = response.json()
+
+            user_info = {}
+            for g, gmembers in groups.items():
+                if g in self._roles:
+                    for u, ui in gmembers.items():
+                        user_info.setdefault(u, {})
+                        user_info[u].setdefault("roles", []).append(g)
+                        if "displayed_name" in ui:
+                            user_info[u].setdefault("displayed_name", ui["displayed_name"])
+                        if "mail" in ui:
+                            user_info[u].setdefault("mail", ui["mail"])
+                else:
+                    logger.error("Unsupported role %r. Supported roles: %s", g, list(self._roles.keys()))
+
+            self.clear_user_info()
+            self._user_info.update(user_info)
+
+            self._time_expiration = ttime.time() + self._expiration_period
+
+    async def background_update_authentication_info(self):
+        while True:
+            try:
+                await self.request_authentication_info()
+            except Exception as ex:
+                logger.error(f"Failed to update access control data: {ex}.")
+                if ttime.time() > self._time_expiration:
+                    logger.error("Access control data expired.")
+                    self.clear_user_info()
+
+            # Wait for the next update. Randomize waiting time.
+            t_next = self._update_period
+            t_next_variation = t_next * 0.2
+            t_next = t_next + random.uniform(-t_next_variation, t_next_variation)
+            await asyncio.sleep(t_next)
+
+    def clear_user_info(self):
+        # Clear non-default entries from user info dict
+        for k in list(self._user_info.keys()):
+            if k not in _DEFAULT_USER_INFO:
+                self._user_info.pop(k)
