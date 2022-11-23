@@ -459,6 +459,31 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
         self._user_info.update(user_info)
 
 
+
+_schema_ServerBasedAPIAccessControl = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  instrument:
+    type: string
+  endstation:
+    type: string
+  roles:  # Detailed validation is performed elsewhere
+    description: The value is passed to BasicAPIAccessControl object
+  server:
+    type: string
+  port:
+    type: integer
+  update_period:
+    type: integer
+  expiration_period:
+    type: [integer, "null"]
+  http_timeout:
+    type: integer
+"""
+
+
 class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     """
     Requests API access information from dedicated REST API server.
@@ -467,16 +492,36 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     def __init__(
         self,
         *,
+        instrument=None,
+        endstation="default",
         roles=None,
         server="localhost",
         port=8000,
         update_period=900,
         expiration_period=None,
         http_timeout=5,
-        instrument=None,
-        endstation="default",
     ):
         super().__init__(roles=roles)
+
+        if instrument is None:
+          raise ConfigError("The required parameter 'instrument' is not specified")
+
+        try:
+            config = {
+                "instrument": instrument,
+                "endstation": endstation,
+                "roles": roles,
+                "server": server,
+                "port": port,
+                "update_period": update_period,
+                "expiration_period": expiration_period,
+                "http_timeout": http_timeout,
+            }
+            schema = yaml.safe_load(_schema_ServerBasedAPIAccessControl)
+            jsonschema.validate(instance=config, schema=schema)
+        except jsonschema.ValidationError as err:
+            msg = err.args[0]
+            raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
 
         self._instrument = instrument
         self._endstation = endstation
