@@ -459,7 +459,6 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
         self._user_info.update(user_info)
 
 
-
 _schema_ServerBasedAPIAccessControl = """
 $schema": http://json-schema.org/draft-07/schema#
 type: object
@@ -504,7 +503,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         super().__init__(roles=roles)
 
         if instrument is None:
-          raise ConfigError("The required parameter 'instrument' is not specified")
+            raise ConfigError("The required parameter 'instrument' is not specified")
 
         try:
             config = {
