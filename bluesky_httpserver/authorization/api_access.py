@@ -485,7 +485,69 @@ properties:
 
 class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     """
-    Requests API access information from dedicated REST API server.
+    API access policy, which is using access control information provided by dedicated
+    REST API server. The information is requested from the server by calling
+    ``/instruments/{instrument}/{endstation}/qserver/access`` API, where ``instrument``
+    and ``endstation`` are the strings passed with the respective class constructor parameters.
+    The API is expected to return a dictionary which maps roles ('admin', 'expert', 'advanced',
+    'user', 'observer') to dictionaries with user information, for example
+
+    .. code-block::
+
+        {
+            "admin": {
+                "bob": {"mail": "bob@gmail.com"},
+                "tom": {},
+            },
+            "expert": {
+                "bob": {"mail": "bob@gmail.com"}
+            },
+            "advanced": {
+                "jdoe": {"mail": "jdoe@gmail.com", "displayed_name": "Doe, John"}
+            },
+            "user": {},
+            "observer": {},
+        }
+
+    User information consists of the username (dictionary key, which makes it mandatory) and
+    optional ``'mail'`` and ``'displayed_name'``. Additional user information is ignored.
+
+    Access information is requested from the server at startup and periodically updated
+    during operation with the period ``update_period +/-20%``. If the server is not accessible,
+    the user access rights do not change until access information expires. The expiration
+    period is set using the parameter ``expiration_period``. If the access information
+    expires and an attempt to update it fails, all users lose access to the HTTP server.
+
+    The scopes for the roles can be modified by passing the parameter dictionary with
+    the parameter ``roles``. The dictionary is handled by the constructor of
+    ``BasicAPIAccessControl``. See the class documentation for more details.
+
+    Parameters
+    ----------
+    instrument: str
+        Instrument ID, such as 'SRX' or 'TES'. This is the required parameter.
+    endstation: str, optional
+        Endstation ID (if applicable). The default value is ``'default'``.
+    roles: dict or None, optional
+        The dictionary that defines new and/or modifies existing roles. The dictionary
+        is passed to the ``BasicAPIAccessControl`` constructor. Default: ``None``.
+    server: str, optional
+        Server address, such as ``'some.server.com'`` or ``'110.43.6.45'``. The default
+        address is ``localhost``.
+    port: int, optional
+        Server port. The default port is `8000`.
+    update_period: int, optional
+        Average period in seconds between consecutive requests for updated access data.
+        The actual period is randomized (uniform distribution in the range +/-20% of
+        the update period). Default: 600.
+    expiration_period: int or None, optional
+        Expiration period for the current access data. If a request to the API server
+        fails and the data is expired, then users lose access. Longer expiration period
+        allows users to continue operation if the API server is temporarily unavailable.
+        If the value is ``None``, then the period is set to ``1.5 * update_period``.
+        Default: ``None``.
+    http_timeout: int, optional
+        Timeout for requests to the API server.
     """
 
     def __init__(
@@ -496,7 +558,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         roles=None,
         server="localhost",
         port=8000,
-        update_period=900,
+        update_period=600,
         expiration_period=None,
         http_timeout=5,
     ):
@@ -529,15 +591,18 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         self._port = port
         self._update_period = update_period
         self._http_timeout = http_timeout
-        self._expiration_period = expiration_period or (update_period * 2.5)
+        self._expiration_period = expiration_period or (update_period * 1.5)
 
         current_time = ttime.time()
         self._time_next_update = current_time
         self._time_expiration = current_time
 
-        self.background_tasks = [self.background_update_authentication_info]
+        self.background_tasks = [self._background_updates]
 
-    async def request_authentication_info(self):
+    async def update_access_info(self):
+        """
+        Send a single request to the API server and update locally stored access control info.
+        """
         base_url = f"http://{self._server}:{self._port}"
         access_api = f"/instruments/{self._instrument}/{self._endstation}/qserver/access"
         async with httpx.AsyncClient(base_url=base_url, timeout=self._http_timeout) as client:
@@ -558,20 +623,24 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
                 else:
                     logger.error("Unsupported role %r. Supported roles: %s", g, list(self._roles.keys()))
 
-            self.clear_user_info()
+            self._clear_user_info()
             self._user_info.update(user_info)
 
             self._time_expiration = ttime.time() + self._expiration_period
 
-    async def background_update_authentication_info(self):
+    async def _background_updates(self):
+        """
+        Start this task during the server startup. The task periodically sends requests
+        to API server and updates locally stored access control data.
+        """
         while True:
             try:
-                await self.request_authentication_info()
+                await self.update_access_info()
             except Exception as ex:
                 logger.error(f"Failed to update access control data: {ex}.")
                 if ttime.time() > self._time_expiration:
                     logger.error("Access control data expired.")
-                    self.clear_user_info()
+                    self._clear_user_info()
 
             # Wait for the next update. Randomize waiting time.
             t_next = self._update_period
@@ -579,8 +648,10 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
             t_next = t_next + random.uniform(-t_next_variation, t_next_variation)
             await asyncio.sleep(t_next)
 
-    def clear_user_info(self):
-        # Clear non-default entries from user info dict
+    def _clear_user_info(self):
+        """
+        Clear non-default entries from user info dict
+        """
         for k in list(self._user_info.keys()):
             if k not in _DEFAULT_USER_INFO:
                 self._user_info.pop(k)

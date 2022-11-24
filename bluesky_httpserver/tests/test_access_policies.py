@@ -272,7 +272,7 @@ def test_ServerBasedAPIAccessControl_01(access_api_server, n_requests):
     # Read user info from the API server (once)
     async def read_info():
         for _ in range(n_requests):
-            await ac_manager.request_authentication_info()
+            await ac_manager.update_access_info()
 
     asyncio.run(read_info())
 
@@ -313,7 +313,7 @@ def test_ServerBasedAPIAccessControl_02(access_api_server):
     def func():
         # Read user info from the API server (once)
         async def read_info():
-            task = asyncio.create_task(ac_manager.background_update_authentication_info())
+            task = asyncio.create_task(ac_manager._background_updates())
             while True:
                 await asyncio.sleep(0.1)
                 if stop_loop:
@@ -381,7 +381,7 @@ def test_ServerBasedAPIAccessControl_03(access_api_server, ac_params, delay):
     def func():
         # Read user info from the API server (once)
         async def read_info():
-            task = asyncio.create_task(ac_manager.background_update_authentication_info())
+            task = asyncio.create_task(ac_manager._background_updates())
             while True:
                 await asyncio.sleep(0.1)
                 if stop_loop:
