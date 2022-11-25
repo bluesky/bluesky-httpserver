@@ -485,12 +485,13 @@ properties:
 
 class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     """
-    API access policy, which is using access control information provided by dedicated
-    REST API server. The information is requested from the server by calling
-    ``/instruments/{instrument}/{endstation}/qserver/access`` API, where ``instrument``
-    and ``endstation`` are the strings passed with the respective class constructor parameters.
-    The API is expected to return a dictionary which maps roles ('admin', 'expert', 'advanced',
-    'user', 'observer') to dictionaries with user information, for example
+    Access policy based on external Access Control Server. The user access data is
+    periodically requested from the server using REST API. The access control server is
+    expected to expose ``/instruments/{instrument}/{endstation}/qserver/access`` API,
+    where ``instrument`` and ``endstation`` are the identifiers of the instrument and
+    endstation (optional) passed as class constructor parameters. The API is expected to
+    return a dictionary which maps roles ('admin', 'expert', 'advanced', 'user', 'observer')
+    to dictionaries with information on users that are assigned the role, for example
 
     .. code-block::
 
@@ -532,10 +533,10 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         The dictionary that defines new and/or modifies existing roles. The dictionary
         is passed to the ``BasicAPIAccessControl`` constructor. Default: ``None``.
     server: str, optional
-        Server address, such as ``'some.server.com'`` or ``'110.43.6.45'``. The default
-        address is ``localhost``.
+        Access Control server address, such as ``'accesscontrol.server.com'`` or
+        ``'110.43.6.45'``. The default address is ``localhost``.
     port: int, optional
-        Server port. The default port is `8000`.
+        Access Control server port. The default port is `8000`.
     update_period: int, optional
         Average period in seconds between consecutive requests for updated access data.
         The actual period is randomized (uniform distribution in the range +/-20% of

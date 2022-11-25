@@ -7,6 +7,10 @@ import time as ttime
 import threading
 from xprocess import ProcessStarter
 
+from bluesky_httpserver.tests.conftest import setup_server_with_config_file, request_to_json
+from bluesky_queueserver.manager.tests.common import re_manager  # noqa F401
+
+
 from bluesky_httpserver.authorization import (
     BasicAPIAccessControl,
     DictionaryAPIAccessControl,
@@ -24,6 +28,7 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_SCOPES_PUBLIC,
     _DEFAULT_RESOURCE_ACCESS_GROUP,
     _DEFAULT_USER_INFO,
+    _DEFAULT_ROLES,
 )
 
 
@@ -266,7 +271,7 @@ def test_ServerBasedAPIAccessControl_01(access_api_server, n_requests):
     requests.post("http://localhost:60001/test/set_info", json=groups)
 
     ac_manager = ServerBasedAPIAccessControl(
-        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="TST", endstation="default"
+        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst", endstation="default"
     )
 
     # Read user info from the API server (once)
@@ -305,7 +310,7 @@ def test_ServerBasedAPIAccessControl_02(access_api_server):
     requests.post("http://localhost:60001/test/set_info", json=groups)
 
     ac_manager = ServerBasedAPIAccessControl(
-        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="TST", endstation="default"
+        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst", endstation="default"
     )
 
     stop_loop = False
@@ -347,13 +352,13 @@ def test_ServerBasedAPIAccessControl_02(access_api_server):
 # fmt: off
 @pytest.mark.parametrize("ac_params, delay", [
     # Wrong port (fails to connect)
-    ({"port": 60002, "instrument": "TST", "endstation": "default"}, 0),
+    ({"port": 60002, "instrument": "tst", "endstation": "default"}, 0),
     # Wrong instrument
-    ({"port": 60001, "instrument": "NEX", "endstation": "default"}, 0),
+    ({"port": 60001, "instrument": "nex", "endstation": "default"}, 0),
     # Wrong endstation
-    ({"port": 60001, "instrument": "TST", "endstation": "nonexisting"}, 0),
+    ({"port": 60001, "instrument": "tst", "endstation": "nonexisting"}, 0),
     # Long response delay (request timeout)
-    ({"port": 60001, "instrument": "TST", "endstation": "default"}, 10),
+    ({"port": 60001, "instrument": "tst", "endstation": "default"}, 10),
 ])
 # fmt: on
 def test_ServerBasedAPIAccessControl_03(access_api_server, ac_params, delay):
@@ -403,6 +408,73 @@ def test_ServerBasedAPIAccessControl_03(access_api_server, ac_params, delay):
 
     stop_loop = True
     th.join()
+
+
+config_server_based_access_control = """
+authentication:
+    providers:
+        - provider: toy
+          authenticator: bluesky_httpserver.authenticators:DictionaryAuthenticator
+          args:
+              users_to_passwords:
+                  bob: bob_password
+                  alice: alice_password
+                  cara: cara_password
+                  tom: tom_password
+api_access:
+    policy: bluesky_httpserver.authorization:ServerBasedAPIAccessControl
+    args:
+        instrument: tst
+        server: localhost
+        port: 60001
+        update_period: 10
+        expiration_period: 60
+"""
+
+
+def test_ServerBasedAPIAccessControl_04(
+    tmpdir,
+    monkeypatch,
+    access_api_server,  # noqa: F811
+    re_manager,  # noqa: F811
+    fastapi_server_fs,  # noqa: F811
+):
+    """
+    ServerBasedAPIAccessControl: test if the policy works correctly with the server.
+    """
+    groups = user_access_info_to_groups(_user_access_info_1)
+    requests.post("http://localhost:60001/test/set_info", json=groups)
+
+    config = config_server_based_access_control
+    setup_server_with_config_file(config_file_str=config, tmpdir=tmpdir, monkeypatch=monkeypatch)
+    fastapi_server_fs()
+
+    for username in ("alice", "cara"):
+        print(f"Testing access for the username {username!r}")
+
+        resp1 = request_to_json("post", "/auth/provider/toy/token", login=(username, username + "_password"))
+        assert "access_token" in resp1, pprint.pformat(resp1)
+        token = resp1["access_token"]
+
+        resp2 = request_to_json("get", "/status", token=token)
+        assert "msg" in resp2, pprint.pformat(resp2)
+        assert "RE Manager" in resp2["msg"]
+
+        # Compute modified scopes for roles
+        if username == "alice":
+            roles_user = ["advanced"]
+            scopes_user = _DEFAULT_ROLES["advanced"]
+        elif username == "cara":
+            roles_user = ["observer"]
+            scopes_user = _DEFAULT_ROLES["observer"]
+        else:
+            assert False, f"Username {username!r} is not supported in this test."
+
+        resp3 = request_to_json("get", "/auth/scopes", token=token)
+        assert "roles" in resp3, pprint.pformat(resp3)
+        assert "scopes" in resp3, pprint.pformat(resp3)
+        assert set(resp3["roles"]) == set(roles_user)
+        assert set(resp3["scopes"]) == scopes_user
 
 
 # ====================================================================================

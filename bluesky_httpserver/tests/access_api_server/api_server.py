@@ -19,7 +19,7 @@ _access_info = {
     "observer": {},
 }
 
-_instrument = "TST"
+_instrument = "tst"
 _endstation = "default"
 
 _delay = 0
