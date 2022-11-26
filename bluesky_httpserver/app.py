@@ -38,7 +38,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 logging.basicConfig(level=logging.WARNING)
-logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
+# logging.getLogger("bluesky_queueserver").setLevel("DEBUG")
+logging.getLogger(__name__).setLevel("DEBUG")
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -227,6 +228,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         background_tasks = []
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
+        background_tasks.extend(getattr(api_access_manager, "background_tasks", []))
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)

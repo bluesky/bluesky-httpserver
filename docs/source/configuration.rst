@@ -28,7 +28,7 @@ Environment variables for controlling 0MQ communication with Run Engine Manager:
 
 Environment variables for configuring authentication:
 
-- ``QSERVER_HTTP_SERVER_SERVER_SECRET_KEYS`` - the value may be a single key or a ``;``-separated list of keys to 
+- ``QSERVER_HTTP_SERVER_SERVER_SECRET_KEYS`` - the value may be a single key or a ``;``-separated list of keys to
   support key rotation. The first key will be used for encryption. Each key will be tried in turn for decryption.
 
 - ``QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY`` - Single-user API key. Enable single-user mode.
@@ -52,14 +52,14 @@ Environment variables for database configuration:
 
 - ``QSERVER_HTTP_SERVER_DATABASE_POOL_SIZE`` - connection pool size. Default is 5.
 
-- ``QSERVER_HTTP_SERVER_DATABASE_POOL_PRE_PING`` - if true (default), use pessimistic connection testings. 
+- ``QSERVER_HTTP_SERVER_DATABASE_POOL_PRE_PING`` - if true (default), use pessimistic connection testings.
   This is recommended.
 
 Environment variables for customization of the server:
 
-- ``QSERVER_HTTP_CUSTOM_ROUTERS`` - one or multiple custom routers (module names) separated with ``:`` or ``,``. 
+- ``QSERVER_HTTP_CUSTOM_ROUTERS`` - one or multiple custom routers (module names) separated with ``:`` or ``,``.
 
-- ``QSERVER_CUSTOM_MODULES`` - THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS.  
+- ``QSERVER_CUSTOM_MODULES`` - THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS.
 
 
 Configuration Files
@@ -78,12 +78,12 @@ HTTP Server is communicating with Run Engine (RE) Manager over 0MQ. The default 
 configuration assumes that RE Manager is running on ``localhost`` and port 60615 is used
 for control channel (REQ-REP), the console output is published using port 60625 (PUB-SUB),
 and encryption for control channel is disabled. The default settings allow Queue Server to
-run 'out of the box' if all system components are running on the same machine, which 
+run 'out of the box' if all system components are running on the same machine, which
 is the case in testing and simple demos. In practical deployments the settings need to be
 customized.
 
-The configuration for 0MQ communication with RE Manager can be customized using environment 
-variables or configuration files. 
+The configuration for 0MQ communication with RE Manager can be customized using environment
+variables or configuration files.
 
 The following environment variables are used to configure 0MQ communication settings:
 
@@ -93,11 +93,11 @@ The following environment variables are used to configure 0MQ communication sett
 - ``QSERVER_ZMQ_INFO_ADDRESS`` - the address of PUB-SUB 0MQ socket used by RE Manager
   to publish console output. The default address: ``tcp://localhost:60625``.
 
-- ``QSERVER_ZMQ_PUBLIC_KEY`` - the public key used for encryption of control messages 
+- ``QSERVER_ZMQ_PUBLIC_KEY`` - the public key used for encryption of control messages
   sent to RE Manager over 0MQ. The encryption is disabled by default. To enable the encryption,
-  generate the public/private key pair using 
-  `'qserver-zmq-keys' CLI tool <https://blueskyproject.io/bluesky-queueserver/cli_tools.html#qserver-zmq-keys>`_, 
-  pass the private key to RE Manager. Pass the public key to HTTP Server using 
+  generate the public/private key pair using
+  `'qserver-zmq-keys' CLI tool <https://blueskyproject.io/bluesky-queueserver/cli_tools.html#qserver-zmq-keys>`_,
+  pass the private key to RE Manager. Pass the public key to HTTP Server using
   ``QSERVER_ZMQ_PUBLIC_KEY`` environment variable.
 
 The same parameters can be specified by including ``qserver_zmq_configuration`` into
@@ -108,7 +108,7 @@ the config file::
     info_address: tcp://localhost:60625
     public_key: ${PUBLIC_KEY}
 
-All parameters in the config file are optional and override the values passed using 
+All parameters in the config file are optional and override the values passed using
 environment variables and the default values. The public key is typically passed using environment
 variable ``QSERVER_ZMQ_PUBLIC_KEY``, but different environment variable name could be specified
 in the config file as in the example above. Explicitly including public key in the config file
@@ -118,7 +118,7 @@ Custom Routers
 **************
 
 The HTTP Server can be extended to support application-specific functionality by developing
-Python modules with custom routers. The module names are passed to the server as ``:``-separated 
+Python modules with custom routers. The module names are passed to the server as ``:``-separated
 list using the environment variable ``QSERVER_HTTP_CUSTOM_ROUTERS``::
 
   export QSERVER_HTTP_CUSTOM_ROUTERS modu.le1:mod.ule2
@@ -148,8 +148,8 @@ Setting Secret Keys
 
 The server is using secret keys for authentication and authorization algorithms.
 If the secret keys are not set in the configuration, the server generates random
-secret keys upon startup and the existing tokens stop working after the restart 
-of the server. This is not acceptable in production deployments, therefore 
+secret keys upon startup and the existing tokens stop working after the restart
+of the server. This is not acceptable in production deployments, therefore
 the server configuration must contain secret keys that do not change between restarts.
 
 The server configuration may contain multiple secret keys (a list of keys).
@@ -166,7 +166,7 @@ the secret key can be set as part of *authentication* parameters in the server c
       - ${SECRET_KEY_2}
 
 It is considered unsafe to keep secret keys in text files, but instead use environment variables
-to list the secret keys. In this example, the environment variables ``SECRET_KEY_1`` and 
+to list the secret keys. In this example, the environment variables ``SECRET_KEY_1`` and
 ``SECRET_KEY_2`` must be set before starting the server.
 
 Secure secret keys may be generated using ``openssl`` or by running a Python script from Linux
@@ -353,7 +353,7 @@ scopes from ``unauthenticated_single_user`` role::
           unauthenticated_public:
             scopes_add: read:console
           unauthenticated_single_user:
-            scipes_remove:
+            scopes_remove:
               - write:scripts
               - user:apikeys
 
@@ -406,6 +406,42 @@ See the documentation on ``DictionaryAPIAccessControl`` for more details.
    :toctree: generated
 
     authorization.DictionaryAPIAccessControl
+
+Access Policy Based on External Access Control Server
++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The policy is periodically loading user access data from the external
+Access Control server. The server holds user access information obtained from other
+services, such as Active Directory, and serves the purpose of reducing the load
+on those services.
+
+The following example shows configuration of ``ServerBasedAPIAccessControl``
+to use hypothetical ``accesscontrol.server.com:60001`` as Access Control server.
+The requests are sent with the average period of 300 seconds (+/- 20%). If the server
+can not be contacted for 3600 seconds (1 hour), the access control data expires and
+users lose access to the Queue Server. ::
+
+    api_access:
+      policy: bluesky_httpserver.authorization:ServerBasedAPIAccessControl
+      args:
+        instrument: srx
+        server: accesscontrol.server.com
+        port: 60001
+        update_period: 300
+        expiration_period: 3600
+        roles:
+          expert:
+            scopes_remove:
+              - write:scripts
+              - write:permissions
+
+See the documentation on ``ServerBasedAPIAccessControl`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authorization.ServerBasedAPIAccessControl
 
 Authorization: Resource Access
 ******************************
