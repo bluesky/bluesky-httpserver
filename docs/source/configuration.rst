@@ -393,11 +393,11 @@ for two users (``bob`` and ``jdoe`` are login usernames)::
             roles:
               - admin
               - expert
-            mail: bob@gmail.com
+            email: bob@gmail.com
           jdoe:
             roles: advanced
             dislayed_name: Doe, John
-            mail: jdoe@gmail.com
+            email: jdoe@gmail.com
 
 See the documentation on ``DictionaryAPIAccessControl`` for more details.
 

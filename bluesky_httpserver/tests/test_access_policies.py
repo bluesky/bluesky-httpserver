@@ -168,15 +168,15 @@ def test_BasicAPIAccessControl_04():
     ({"users": {"user1": {"roles": "admin"}}}, True),
     ({"users": {"user1": {"displayed_name": None}}}, True),
     ({"users": {"user1": {"displayed_name": "Doe, John"}}}, True),
-    ({"users": {"user1": {"mail": None}}}, True),
-    ({"users": {"user1": {"mail": "jdoe25@gmail.com"}}}, True),
+    ({"users": {"user1": {"email": None}}}, True),
+    ({"users": {"user1": {"email": "jdoe25@gmail.com"}}}, True),
 
     # Failing cases
     ({"users": 10}, False),
     ({"users": {"user1": {"unknown": None}}}, False),
     ({"users": {"user1": {"roles": 10}}}, False),
     ({"users": {"user1": {"displayed_name": 10}}}, False),
-    ({"users": {"user1": {"mail": 10}}}, False),
+    ({"users": {"user1": {"email": 10}}}, False),
 ])
 # fmt: on
 def test_DictionaryAPIAccessControl_01(parameters, success):
@@ -205,14 +205,14 @@ def test_DictionaryAPIAccessControl_02(params, existing_scopes, missing_scopes):
     """
     class BasicAPIAccessControl: modify scopes with parameters.
     """
-    name, displayed_name, mail, roles = "jdoe", "Doe, John", "jdoe25@gmail.com", ["admin", "observer"]
-    users = {"jdoe": {"displayed_name": displayed_name, "mail": mail, "roles": roles}}
+    name, displayed_name, email, roles = "jdoe", "Doe, John", "jdoe25@gmail.com", ["admin", "observer"]
+    users = {"jdoe": {"displayed_name": displayed_name, "email": email, "roles": roles}}
 
     ac_manager = DictionaryAPIAccessControl(users=users)
 
     assert ac_manager.is_user_known(name) is True
     assert ac_manager.get_user_roles(name) == set(roles)
-    assert ac_manager.get_displayed_user_name(name) == f'{name} "{displayed_name} <{mail}>"'
+    assert ac_manager.get_displayed_user_name(name) == f'{name} "{displayed_name} <{email}>"'
     scopes = ac_manager.get_user_scopes(name)
     assert "read:status" in scopes
     assert "write:permissions" not in scopes
@@ -238,12 +238,53 @@ def access_api_server(xprocess):
 _user_access_info_1 = {
     "bob": {
         "roles": ["admin", "expert"],
-        "mail": "bob@mail.com",
-        "displayed_name": "Doe, Bob",
+        "email": "bob@gmail.com",
+        "first_name": "Bob",
+        "last_name": "Doe",
     },
-    "alice": {"roles": ["advanced"], "mail": "alice@mail.com"},
-    "tom": {"roles": ["user"], "displayed_name": "Doe, Tom"},
+    "alice": {"roles": ["advanced"], "email": "alice@gmail.com"},
+    "tom": {"roles": ["user"], "first_name": "Tom", "last_name": "Doe"},
     "cara": {"roles": ["observer"]},
+}
+
+
+_user_access_info_1_displayed_names = {
+    "bob": {
+        "roles": ["admin", "expert"],
+        "email": "bob@gmail.com",
+        "displayed_name": "Bob Doe",
+    },
+    "alice": {"roles": ["advanced"], "email": "alice@gmail.com"},
+    "tom": {"roles": ["user"], "displayed_name": "Tom Doe"},
+    "cara": {"roles": ["observer"]},
+}
+
+
+_user_access_info_2 = {
+    "user1": {"roles": ["user"], "first_name": "User", "last_name": "One"},
+    "user2": {"roles": ["user"], "first_name": "User"},
+    "user3": {"roles": ["user"], "last_name": "Three"},
+    "user4": {"roles": ["user"], "first_name": "", "last_name": "Four"},
+    "user5": {"roles": ["user"], "first_name": "User", "last_name": ""},
+    "user6": {"roles": ["user"], "first_name": "", "last_name": ""},
+    "user7": {"roles": ["user"], "first_name": None, "last_name": "Seven"},
+    "user8": {"roles": ["user"], "first_name": "User", "last_name": None},
+    "user9": {"roles": ["user"], "first_name": None, "last_name": None},
+    "user10": {"roles": ["user"], "first_name": 10, "last_name": [1, 2, 3]},
+}
+
+
+_user_access_info_2_displayed_names = {
+    "user1": {"roles": ["user"], "displayed_name": "User One"},
+    "user2": {"roles": ["user"], "displayed_name": "User"},
+    "user3": {"roles": ["user"], "displayed_name": "Three"},
+    "user4": {"roles": ["user"], "displayed_name": "Four"},
+    "user5": {"roles": ["user"], "displayed_name": "User"},
+    "user6": {"roles": ["user"]},
+    "user7": {"roles": ["user"], "displayed_name": "Seven"},
+    "user8": {"roles": ["user"], "displayed_name": "User"},
+    "user9": {"roles": ["user"]},
+    "user10": {"roles": ["user"]},
 }
 
 
@@ -253,25 +294,33 @@ def user_access_info_to_groups(user_access_info):
         for role in user_info["roles"]:
             groups.setdefault(role, {})
             groups[role].setdefault(username, {})
-            if "displayed_name" in user_info:
-                groups[role][username].update({"displayed_name": user_info["displayed_name"]})
-            if "mail" in user_info:
-                groups[role][username].update({"mail": user_info["mail"]})
+            if "last_name" in user_info:
+                groups[role][username].update({"last_name": user_info["last_name"]})
+            if "first_name" in user_info:
+                groups[role][username].update({"first_name": user_info["first_name"]})
+            if "email" in user_info:
+                groups[role][username].update({"email": user_info["email"]})
     return groups
 
 
 # fmt: off
-@pytest.mark.parametrize("n_requests", [1, 2, 3])
+@pytest.mark.parametrize("n_requests, user_info, user_info_dn", [
+    (1, _user_access_info_1, _user_access_info_1_displayed_names),
+    (2, _user_access_info_1, _user_access_info_1_displayed_names),
+    (3, _user_access_info_1, _user_access_info_1_displayed_names),
+    # Additional test that verifies formatting of the displayed name
+    (1, _user_access_info_2, _user_access_info_2_displayed_names),
+])
 # fmt: on
-def test_ServerBasedAPIAccessControl_01(access_api_server, n_requests):
+def test_ServerBasedAPIAccessControl_01(access_api_server, n_requests, user_info, user_info_dn):
     """
     ServerBasedAPIAccessControl: basic test
     """
-    groups = user_access_info_to_groups(_user_access_info_1)
+    groups = user_access_info_to_groups(user_info)
     requests.post("http://localhost:60001/test/set_info", json=groups)
 
     ac_manager = ServerBasedAPIAccessControl(
-        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst", endstation="default"
+        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst"
     )
 
     # Read user info from the API server (once)
@@ -282,24 +331,25 @@ def test_ServerBasedAPIAccessControl_01(access_api_server, n_requests):
     asyncio.run(read_info())
 
     # Verify loaded user info
-    expected_info = copy.deepcopy(_user_access_info_1)
+    expected_info = copy.deepcopy(user_info_dn)
     expected_info.update(_DEFAULT_USER_INFO)
     assert ac_manager._user_info == expected_info
 
-    # Recognizing users
-    assert ac_manager.is_user_known("bob")
-    assert not ac_manager.is_user_known("unknown_user")
+    if user_info == _user_access_info_1:
+        # Recognizing users
+        assert ac_manager.is_user_known("bob")
+        assert not ac_manager.is_user_known("unknown_user")
 
-    # Checking roles
-    for username, user_info in _user_access_info_1.items():
-        assert ac_manager.get_user_roles(username) == set(user_info["roles"])
+        # Checking roles
+        for username, uinfo in user_info.items():
+            assert ac_manager.get_user_roles(username) == set(uinfo["roles"])
 
-    # Checking name formatting
-    assert ac_manager.get_displayed_user_name("bob") == 'bob "Doe, Bob <bob@mail.com>"'
+        # Checking name formatting
+        assert ac_manager.get_displayed_user_name("bob") == 'bob "Bob Doe <bob@gmail.com>"'
 
-    # Brief check of scopes
-    assert "admin:apikeys" in ac_manager.get_user_scopes("bob")
-    assert "admin:apikeys" not in ac_manager.get_user_scopes("alice")
+        # Brief check of scopes
+        assert "admin:apikeys" in ac_manager.get_user_scopes("bob")
+        assert "admin:apikeys" not in ac_manager.get_user_scopes("alice")
 
 
 def test_ServerBasedAPIAccessControl_02(access_api_server):
@@ -310,7 +360,7 @@ def test_ServerBasedAPIAccessControl_02(access_api_server):
     requests.post("http://localhost:60001/test/set_info", json=groups)
 
     ac_manager = ServerBasedAPIAccessControl(
-        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst", endstation="default"
+        server="localhost", port=60001, update_period=2, http_timeout=1, instrument="tst"
     )
 
     stop_loop = False
@@ -352,13 +402,11 @@ def test_ServerBasedAPIAccessControl_02(access_api_server):
 # fmt: off
 @pytest.mark.parametrize("ac_params, delay", [
     # Wrong port (fails to connect)
-    ({"port": 60002, "instrument": "tst", "endstation": "default"}, 0),
+    ({"port": 60002, "instrument": "tst"}, 0),
     # Wrong instrument
-    ({"port": 60001, "instrument": "nex", "endstation": "default"}, 0),
-    # Wrong endstation
-    ({"port": 60001, "instrument": "tst", "endstation": "nonexisting"}, 0),
+    ({"port": 60001, "instrument": "nex"}, 0),
     # Long response delay (request timeout)
-    ({"port": 60001, "instrument": "tst", "endstation": "default"}, 10),
+    ({"port": 60001, "instrument": "tst"}, 10),
 ])
 # fmt: on
 def test_ServerBasedAPIAccessControl_03(access_api_server, ac_params, delay):

@@ -20,7 +20,6 @@ _access_info = {
 }
 
 _instrument = "tst"
-_endstation = "default"
 
 _delay = 0
 
@@ -32,19 +31,17 @@ async def startup_event():
     logger.info("Access API Server started successfully.")
 
 
-def _get_qserver_group_members(*, beamline, endstation):
+def _get_qserver_group_members(*, beamline):
     return _access_info
 
 
-@router.get("/instruments/{instrument}/{endstation}/qserver/access")
-async def get_access_info(instrument: str, endstation: str):
+@router.get("/instrument/{instrument}/qserver/access")
+async def get_access_info(instrument: str):
     # The delay is intended for testing timeouts.
     await asyncio.sleep(_delay)
     if instrument != _instrument:
         raise HTTPException(status_code=406, detail=f"Unknown instrument: {instrument!r}")
-    if endstation != _endstation:
-        raise HTTPException(status_code=406, detail=f"Unknown endstation: {endstation!r}")
-    return _get_qserver_group_members(beamline=instrument, endstation=endstation)
+    return _get_qserver_group_members(beamline=instrument)
 
 
 # ================================================================================
@@ -61,12 +58,6 @@ async def _set_info(access_info: dict):
 async def _set_instrument(instrument: dict):
     global _instrument
     _instrument = copy.deepcopy(instrument)
-
-
-@router.post("/test/set_endstation")
-async def _set_endstation(endstation: dict):
-    global _endstation
-    _endstation = copy.deepcopy(endstation)
 
 
 @router.post("/test/set_delay")
