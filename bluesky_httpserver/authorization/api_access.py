@@ -486,10 +486,9 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     Access policy based on external Access Control Server. The user access data is
     periodically requested from the server using REST API. The access control server is
     expected to expose ``/instrument/{instrument}/qserver/access`` API,
-    where ``instrument`` and ``endstation`` are the identifiers of the instrument and
-    endstation (optional) passed as class constructor parameters. The API is expected to
-    return a dictionary which maps roles ('admin', 'expert', 'advanced', 'user', 'observer')
-    to dictionaries with information on users that are assigned the role, for example
+    where ``instrument`` is the lowercase name of the instrument passed to the class constructor.
+    The API is expected to return a dictionary which maps roles ('admin', 'expert', 'advanced', 'user',
+    'observer') to dictionaries with information on users that are assigned the role, for example
 
     .. code-block::
 
@@ -579,7 +578,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
             msg = err.args[0]
             raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
 
-        self._instrument = instrument
+        self._instrument = instrument.lower()
 
         self._server = server
         self._port = port
@@ -598,7 +597,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         Send a single request to the API server and update locally stored access control info.
         """
         base_url = f"http://{self._server}:{self._port}"
-        access_api = f"/instrument/{self._instrument}/qserver/access"
+        access_api = f"/instrument/{self._instrument.lower()}/qserver/access"
         async with httpx.AsyncClient(base_url=base_url, timeout=self._http_timeout) as client:
             response = await client.get(access_api)
             response.raise_for_status()
