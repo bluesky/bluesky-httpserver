@@ -620,7 +620,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
                             if first_name or last_name:
                                 displayed_name = first_name + last_name
                                 user_info[u].setdefault("displayed_name", displayed_name)
-                        if "email" in ui:
+                        if ("email" in ui) and ui["email"] and isinstance(ui["email"], str):
                             user_info[u].setdefault("email", ui["email"])
                 else:
                     logger.error("Unsupported role %r. Supported roles: %s", g, list(self._roles.keys()))

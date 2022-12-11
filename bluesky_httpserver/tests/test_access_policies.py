@@ -271,6 +271,9 @@ _user_access_info_2 = {
     "user8": {"roles": ["user"], "first_name": "User", "last_name": None},
     "user9": {"roles": ["user"], "first_name": None, "last_name": None},
     "user10": {"roles": ["user"], "first_name": 10, "last_name": [1, 2, 3]},
+    "user11": {"roles": ["user"], "email": None},
+    "user12": {"roles": ["user"], "email": ""},
+    "user13": {"roles": ["user"], "email": 10},
 }
 
 
@@ -285,6 +288,9 @@ _user_access_info_2_displayed_names = {
     "user8": {"roles": ["user"], "displayed_name": "User"},
     "user9": {"roles": ["user"]},
     "user10": {"roles": ["user"]},
+    "user11": {"roles": ["user"]},
+    "user12": {"roles": ["user"]},
+    "user13": {"roles": ["user"]},
 }
 
 
