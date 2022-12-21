@@ -302,16 +302,16 @@ class BasicAPIAccessControl:
             Formatted displayed user name.
         """
         user_info = self._collect_user_info(username)
-        mail = user_info.get("mail", None)
+        email = user_info.get("email", None)
         displayed_name = user_info.get("displayed_name", None)
-        if not mail and not displayed_name:
+        if not email and not displayed_name:
             return username
         elif not displayed_name:
-            return f"{username} <{mail}>"
-        elif not mail:
+            return f"{username} <{email}>"
+        elif not email:
             return f'{username} "{displayed_name}"'
         else:
-            return f'{username} "{displayed_name} <{mail}>"'
+            return f'{username} "{displayed_name} <{email}>"'
 
     def get_user_info(self, username):
         """
@@ -366,7 +366,7 @@ properties:
                       - type: string
                         pattern: "^.+$"
                       - type: "null"
-                  mail:
+                  email:
                     oneOf:
                       - type: string
                         pattern: "^.+@.+$"
@@ -412,11 +412,11 @@ class DictionaryAPIAccessControl(BasicAPIAccessControl):
                 roles:
                   - admin
                   - expert
-                mail: bob@gmail.com
+                email: bob@gmail.com
               jdoe:
                 roles: advanced
                 dislayed_name: Doe, John
-                mail: jdoe@gmail.com
+                email: jdoe@gmail.com
 
     The policy arguments may also include ``roles`` parameter, which is handled by ``BasicAPIAccessControl``.
     See docstring for ``BasicAPIAccessControl`` for more detailed information.
@@ -466,8 +466,6 @@ additionalProperties: false
 properties:
   instrument:
     type: string
-  endstation:
-    type: string
   roles:  # Detailed validation is performed elsewhere
     description: The value is passed to BasicAPIAccessControl object
   server:
@@ -487,31 +485,30 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     """
     Access policy based on external Access Control Server. The user access data is
     periodically requested from the server using REST API. The access control server is
-    expected to expose ``/instruments/{instrument}/{endstation}/qserver/access`` API,
-    where ``instrument`` and ``endstation`` are the identifiers of the instrument and
-    endstation (optional) passed as class constructor parameters. The API is expected to
-    return a dictionary which maps roles ('admin', 'expert', 'advanced', 'user', 'observer')
-    to dictionaries with information on users that are assigned the role, for example
+    expected to expose ``/instrument/{instrument}/qserver/access`` API,
+    where ``instrument`` is the lowercase name of the instrument passed to the class constructor.
+    The API is expected to return a dictionary which maps roles ('admin', 'expert', 'advanced', 'user',
+    'observer') to dictionaries with information on users that are assigned the role, for example
 
     .. code-block::
 
         {
             "admin": {
-                "bob": {"mail": "bob@gmail.com"},
+                "bob": {"email": "bob@gmail.com"},
                 "tom": {},
             },
             "expert": {
-                "bob": {"mail": "bob@gmail.com"}
+                "bob": {"email": "bob@gmail.com"}
             },
             "advanced": {
-                "jdoe": {"mail": "jdoe@gmail.com", "displayed_name": "Doe, John"}
+                "jdoe": {"email": "jdoe@gmail.com", "first_name": "John", "last_name": "Doe"}
             },
             "user": {},
             "observer": {},
         }
 
     User information consists of the username (dictionary key, which makes it mandatory) and
-    optional ``'mail'`` and ``'displayed_name'``. Additional user information is ignored.
+    optional ``'email'`` and ``'displayed_name'``. Additional user information is ignored.
 
     Access information is requested from the server at startup and periodically updated
     during operation with the period ``update_period +/-20%``. If the server is not accessible,
@@ -527,8 +524,6 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     ----------
     instrument: str
         Instrument ID, such as 'SRX' or 'TES'. This is the required parameter.
-    endstation: str, optional
-        Endstation ID (if applicable). The default value is ``'default'``.
     roles: dict or None, optional
         The dictionary that defines new and/or modifies existing roles. The dictionary
         is passed to the ``BasicAPIAccessControl`` constructor. Default: ``None``.
@@ -555,7 +550,6 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         self,
         *,
         instrument=None,
-        endstation="default",
         roles=None,
         server="localhost",
         port=8000,
@@ -571,7 +565,6 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         try:
             config = {
                 "instrument": instrument,
-                "endstation": endstation,
                 "roles": roles,
                 "server": server,
                 "port": port,
@@ -585,8 +578,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
             msg = err.args[0]
             raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
 
-        self._instrument = instrument
-        self._endstation = endstation
+        self._instrument = instrument.lower()
 
         self._server = server
         self._port = port
@@ -605,7 +597,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         Send a single request to the API server and update locally stored access control info.
         """
         base_url = f"http://{self._server}:{self._port}"
-        access_api = f"/instruments/{self._instrument}/{self._endstation}/qserver/access"
+        access_api = f"/instrument/{self._instrument.lower()}/qserver/access"
         async with httpx.AsyncClient(base_url=base_url, timeout=self._http_timeout) as client:
             response = await client.get(access_api)
             response.raise_for_status()
@@ -617,10 +609,19 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
                     for u, ui in gmembers.items():
                         user_info.setdefault(u, {})
                         user_info[u].setdefault("roles", []).append(g)
-                        if "displayed_name" in ui:
-                            user_info[u].setdefault("displayed_name", ui["displayed_name"])
-                        if "mail" in ui:
-                            user_info[u].setdefault("mail", ui["mail"])
+                        if ("first_name" in ui) or ("last_name" in ui):
+                            first_name = ui.get("first_name", "") or ""
+                            first_name = first_name if isinstance(first_name, str) else ""
+                            last_name = ui.get("last_name", "") or ""
+                            last_name = last_name if isinstance(last_name, str) else ""
+                            first_name, last_name = first_name.strip(), last_name.strip()
+                            if first_name and last_name:
+                                last_name = " " + last_name
+                            if first_name or last_name:
+                                displayed_name = first_name + last_name
+                                user_info[u].setdefault("displayed_name", displayed_name)
+                        if ("email" in ui) and ui["email"] and isinstance(ui["email"], str):
+                            user_info[u].setdefault("email", ui["email"])
                 else:
                     logger.error("Unsupported role %r. Supported roles: %s", g, list(self._roles.keys()))
 
