@@ -4,7 +4,6 @@ import yaml
 from ..config_schemas.loading import ConfigError
 from ._defaults import _DEFAULT_RESOURCE_ACCESS_GROUP
 
-
 _schema_DefaultResourceAccessControl = """
 $schema": http://json-schema.org/draft-07/schema#
 type: object

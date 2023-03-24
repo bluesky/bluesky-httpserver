@@ -1,7 +1,8 @@
 import asyncio
 import copy
-import fastapi
 import logging
+
+import fastapi
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)

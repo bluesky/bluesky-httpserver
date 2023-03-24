@@ -90,7 +90,6 @@ ALL_REVISIONS = ["722ff4e4fcc7", "481830dd6c11"]
 
 
 def initialize_database(engine):
-
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
@@ -137,7 +136,6 @@ class DatabaseUpgradeNeeded(Exception):
 
 
 def get_current_revision(engine):
-
     redacted_url = engine.url._replace(password="[redacted]")
     with engine.begin() as conn:
         context = migration.MigrationContext.configure(conn)

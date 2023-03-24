@@ -8,16 +8,7 @@ Create Date: 2022-01-13 11:26:35.432786
 import uuid
 
 from alembic import op
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    LargeBinary,
-    Unicode,
-)
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode
 from sqlalchemy.sql import func
 
 from bluesky_httpserver.database.orm import UUID, JSONList, PrincipalType

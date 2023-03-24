@@ -17,7 +17,6 @@ from bluesky_httpserver.utils import validate_payload_keys
 ])
 # fmt: on
 def test_validate_payload_keys(payload, req_keys, opt_keys, success):
-
     if success:
         validate_payload_keys(payload, required_keys=req_keys, optional_keys=opt_keys)
     else:

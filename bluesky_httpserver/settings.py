@@ -11,7 +11,6 @@ DatabaseSettings = collections.namedtuple("DatabaseSettings", "uri pool_size poo
 
 
 class Settings(BaseSettings):
-
     tree: Any = None
     allow_anonymous_access: bool = bool(int(os.getenv("QSERVER_HTTP_SERVER_ALLOW_ANONYMOUS_ACCESS", False)))
     allow_origins: List[str] = [

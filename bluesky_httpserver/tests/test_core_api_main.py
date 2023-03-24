@@ -1,16 +1,16 @@
-import time as ttime
 import copy
-import re
 import pprint
+import re
+import time as ttime
 
 import pytest
-
+from bluesky_queueserver.manager.profile_ops import gen_list_of_plans_and_devices
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
-    re_manager,
-    re_manager_pc_copy,
-    re_manager_cmd,
-    copy_default_profile_collection,
     append_code_to_last_startup_file,
+    copy_default_profile_collection,
+    re_manager,
+    re_manager_cmd,
+    re_manager_pc_copy,
 )
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
@@ -19,14 +19,11 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     add_plans_to_queue,
     fastapi_server,
     request_to_json,
-    wait_for_environment_to_be_created,
     wait_for_environment_to_be_closed,
-    wait_for_queue_execution_to_complete,
+    wait_for_environment_to_be_created,
     wait_for_manager_state_idle,
+    wait_for_queue_execution_to_complete,
 )
-
-from bluesky_queueserver.manager.profile_ops import gen_list_of_plans_and_devices
-
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
@@ -191,7 +188,6 @@ def test_http_server_queue_item_add_handler_1(re_manager, fastapi_server):  # no
 ])
 # fmt: on
 def test_http_server_queue_item_add_handler_2(re_manager, fastapi_server, pos, pos_result, success):  # noqa F811
-
     plan1 = {"name": "count", "args": [["det1"]], "item_type": "plan"}
     plan2 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
 
@@ -221,7 +217,6 @@ def test_http_server_queue_item_add_handler_2(re_manager, fastapi_server, pos, p
 
 
 def test_http_server_queue_item_add_handler_3(re_manager, fastapi_server):  # noqa F811
-
     # Unknown plan name
     plan1 = {"item": {"name": "count_test", "args": [["det1", "det2"]], "item_type": "plan"}}
     resp1 = request_to_json("post", "/queue/item/add", json=plan1)
@@ -498,7 +493,6 @@ def test_http_server_queue_item_update_2_fail(re_manager, fastapi_server, replac
 
 
 def test_http_server_queue_item_get_remove_handler_1(re_manager, fastapi_server):  # noqa F811
-
     add_plans_to_queue()
 
     resp1 = request_to_json("get", "/queue/get")
@@ -1065,7 +1059,6 @@ def test_http_server_close_environment_handler(re_manager, fastapi_server):  # n
 
 
 def test_http_server_queue_start_handler(re_manager, fastapi_server):  # noqa F811
-
     add_plans_to_queue()
 
     resp1 = request_to_json("post", "/queue/start")
@@ -1154,7 +1147,6 @@ def test_http_server_re_pause_continue_handlers(
 
 
 def test_http_server_close_print_db_uids_handler(re_manager, fastapi_server):  # noqa F811
-
     add_plans_to_queue()
 
     resp1 = request_to_json("post", "/environment/open")
@@ -1173,7 +1165,6 @@ def test_http_server_close_print_db_uids_handler(re_manager, fastapi_server):  #
 
 
 def test_http_server_clear_queue_handler_1(re_manager, fastapi_server):  # noqa F811
-
     add_plans_to_queue()
 
     resp1 = request_to_json("get", "/queue/get")
@@ -1212,7 +1203,6 @@ def test_http_server_plan_history(re_manager, fastapi_server):  # noqa F811
 
 
 def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
-
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
@@ -1234,7 +1224,6 @@ def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
 @pytest.mark.parametrize("option", [None, "safe_on", "safe_off"])
 # fmt: on
 def test_http_server_manager_stop_handler_1(re_manager, fastapi_server, option):  # noqa F811
-
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
@@ -1249,7 +1238,6 @@ def test_http_server_manager_stop_handler_1(re_manager, fastapi_server, option):
 @pytest.mark.parametrize("option", [None, "safe_on", "safe_off"])
 # fmt: on
 def test_http_server_manager_stop_handler_2(re_manager, fastapi_server, option):  # noqa F811
-
     add_plans_to_queue()
 
     request_to_json("post", "/environment/open")

@@ -1,38 +1,36 @@
 import asyncio
 import collections
-from functools import lru_cache, partial
 import importlib
 import logging
-import re
 import os
 import pprint
+import re
 import secrets
 import urllib.parse
-
-from fastapi import FastAPI, APIRouter, Request, Response
-from fastapi.openapi.utils import get_openapi
-from fastapi.middleware.cors import CORSMiddleware
+from functools import lru_cache, partial
 
 from bluesky_queueserver.manager.comms import validate_zmq_key
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
+from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
+from .authentication import Mode
 from .console_output import CollectPublishedConsoleOutput
+from .core import PatchedStreamingResponse
+from .database.core import purge_expired
 from .resources import SERVER_RESOURCES as SR
-from .utils import (
-    get_default_login_data,
-    get_authenticators,
-    get_api_access_manager,
-    get_resource_access_manager,
-    record_timing,
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-)
-
 from .routers import core_api
 from .settings import get_settings
-from .authentication import Mode
-from .database.core import purge_expired
-from .core import PatchedStreamingResponse
+from .utils import (
+    API_KEY_COOKIE_NAME,
+    CSRF_COOKIE_NAME,
+    get_api_access_manager,
+    get_authenticators,
+    get_default_login_data,
+    get_resource_access_manager,
+    record_timing,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -172,7 +170,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     authentication_router.include_router(base_authentication_router)
 
     if authentication.get("providers", []):
-
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
         oauth2_scheme.model.flows.password.tokenUrl = f"/api/auth/provider/{first_provider}/token"
@@ -204,7 +201,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
     @app.on_event("startup")
     async def startup_event():
-
         # Validate the single-user API key.
         settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
@@ -246,14 +242,12 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             from sqlalchemy import create_engine
 
             # from sqlalchemy.orm import sessionmaker
-
             from .database import orm
-            from .database.core import (
+            from .database.core import (  # make_admin_by_identity,
                 REQUIRED_REVISION,
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
-                # make_admin_by_identity,
             )
 
             connect_args = {}

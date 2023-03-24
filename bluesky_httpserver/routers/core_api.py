@@ -1,20 +1,24 @@
+import asyncio
 import io
-from fastapi import APIRouter, File, UploadFile, Form, Request, Security, Depends
+import logging
 import pprint
 from typing import Optional
-import asyncio
-from pydantic import BaseSettings
-from ..settings import get_settings
 
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
+from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile
+from pydantic import BaseSettings
 
-from ..resources import SERVER_RESOURCES as SR
-from ..utils import process_exception, validate_payload_keys
-from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
 from ..authentication import get_current_principal
-from ..utils import get_api_access_manager, get_resource_access_manager, get_current_username
-
-import logging
+from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
+from ..resources import SERVER_RESOURCES as SR
+from ..settings import get_settings
+from ..utils import (
+    get_api_access_manager,
+    get_current_username,
+    get_resource_access_manager,
+    process_exception,
+    validate_payload_keys,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +244,6 @@ async def queue_upload_spreadsheet(
     api_access_manager=Depends(get_api_access_manager),
     resource_access_manager=Depends(get_resource_access_manager),
 ):
-
     """
     The endpoint receives uploaded spreadsheet, converts it to the list of plans and adds
     the plans to the queue.

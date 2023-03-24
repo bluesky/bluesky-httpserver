@@ -3,17 +3,17 @@ import collections
 import contextlib
 import copy
 import enum
-from fastapi import HTTPException
 import importlib
 import operator
 import os
 import sys
 import time
 
-from .authorization import _DEFAULT_USERNAME_SINGLE_USER, _DEFAULT_USERNAME_PUBLIC
-from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
-
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
+from fastapi import HTTPException
+
+from .authorization import _DEFAULT_USERNAME_PUBLIC, _DEFAULT_USERNAME_SINGLE_USER
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 
 
 def process_exception():

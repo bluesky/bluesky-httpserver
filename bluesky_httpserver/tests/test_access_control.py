@@ -1,29 +1,26 @@
 # Tests for user authorization and authentication on the working server
 import copy
-import pytest
 import pprint
 
-from bluesky_queueserver.manager.tests.common import (  # noqa F401
-    re_manager,
-    re_manager_cmd,
-)
-from .conftest import fastapi_server_fs  # noqa: F401
-from .conftest import request_to_json, setup_server_with_config_file
+import pytest
+from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd  # noqa F401
 
 from bluesky_httpserver.authorization._defaults import (
-    _DEFAULT_ROLE_SINGLE_USER,
-    _DEFAULT_ROLE_PUBLIC,
-    _DEFAULT_ROLE_ADMIN,
-    _DEFAULT_ROLE_EXPERT,
-    _DEFAULT_ROLE_ADVANCED,
-    _DEFAULT_ROLE_USER,
-    _DEFAULT_ROLE_OBSERVER,
-    _DEFAULT_SCOPES_SINGLE_USER,
-    _DEFAULT_SCOPES_PUBLIC,
-    _DEFAULT_ROLES,
     _DEFAULT_RESOURCE_ACCESS_GROUP,
+    _DEFAULT_ROLE_ADMIN,
+    _DEFAULT_ROLE_ADVANCED,
+    _DEFAULT_ROLE_EXPERT,
+    _DEFAULT_ROLE_OBSERVER,
+    _DEFAULT_ROLE_PUBLIC,
+    _DEFAULT_ROLE_SINGLE_USER,
+    _DEFAULT_ROLE_USER,
+    _DEFAULT_ROLES,
+    _DEFAULT_SCOPES_PUBLIC,
+    _DEFAULT_SCOPES_SINGLE_USER,
 )
 
+from .conftest import fastapi_server_fs  # noqa: F401
+from .conftest import request_to_json, setup_server_with_config_file
 
 config_noauth_with_anonymous_access = """
 authentication:

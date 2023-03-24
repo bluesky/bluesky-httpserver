@@ -1,21 +1,22 @@
-import requests
 import json
-import threading
 import pprint
-import pytest
 import re
+import threading
 import time as ttime
 
-from bluesky_httpserver.tests.conftest import SERVER_ADDRESS, SERVER_PORT, request_to_json
+import pytest
+import requests
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
-    request_to_json,
-    fastapi_server_fs,
-    wait_for_environment_to_be_created,
-    wait_for_environment_to_be_closed,
-    wait_for_manager_state_idle,
     API_KEY_FOR_TESTS,
+    SERVER_ADDRESS,
+    SERVER_PORT,
+    fastapi_server_fs,
+    request_to_json,
+    wait_for_environment_to_be_closed,
+    wait_for_environment_to_be_created,
+    wait_for_manager_state_idle,
 )
 
 
@@ -33,7 +34,6 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
         self._api_key = api_key
 
     def run(self):
-
         kwargs = {"stream": True}
         if self._api_key:
             auth = None

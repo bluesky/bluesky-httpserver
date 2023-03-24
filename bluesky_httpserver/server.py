@@ -1,17 +1,16 @@
 import argparse
 import logging
 import os
-from pathlib import Path
 import pprint
 import sys
+from pathlib import Path
 
 import bluesky_httpserver
 
 from .app import build_app
+from .config import construct_build_app_kwargs, parse_configs
 from .settings import get_settings
 from .utils import get_authenticators
-from .config import construct_build_app_kwargs, parse_configs
-
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,6 @@ default_http_server_port = 60610
 
 
 def start_server():
-
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("bluesky_httpserver").setLevel("INFO")
 
