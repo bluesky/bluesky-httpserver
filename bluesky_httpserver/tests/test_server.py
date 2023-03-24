@@ -33,7 +33,7 @@ _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "del
 
 _config_public_key = """
 qserver_zmq_configuration:
-  public_key: {0}
+  public_key: "{0}"
 """
 
 
