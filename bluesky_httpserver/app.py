@@ -229,15 +229,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
-        app.state.allow_origins.extend(settings.allow_origins)
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=app.state.allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
         if settings.database_uri is not None:
             from sqlalchemy import create_engine
 
@@ -522,5 +513,18 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     app.dependency_overrides[get_api_access_manager] = override_get_api_access_manager
     app.dependency_overrides[get_resource_access_manager] = override_get_resource_access_manager
     app.dependency_overrides[get_settings] = override_get_settings
+
+    def add_custom_middleware():
+        settings = app.dependency_overrides[get_settings]()
+        app.state.allow_origins.extend(settings.allow_origins)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=app.state.allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    add_custom_middleware()
 
     return app
