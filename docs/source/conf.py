@@ -75,6 +75,7 @@ author = 'Brookhaven National Laboratory'
 # built documents.
 #
 import bluesky_httpserver
+
 # The short X.Y version.
 version = bluesky_httpserver.__version__
 # The full version, including alpha/beta/rc tags.
@@ -106,6 +107,7 @@ todo_include_todos = False
 #
 html_theme = 'sphinx_rtd_theme'
 import sphinx_rtd_theme
+
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a theme

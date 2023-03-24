@@ -1,11 +1,12 @@
 import os
-import pytest
-from xprocess import ProcessStarter
 import time as ttime
+
+import pytest
 import requests
+from bluesky_queueserver.manager.comms import zmq_single_request
+from xprocess import ProcessStarter
 
 import bluesky_httpserver.server as bqss
-from bluesky_queueserver.manager.comms import zmq_single_request
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = "60610"

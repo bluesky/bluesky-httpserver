@@ -1,15 +1,12 @@
 import pprint
 import time as ttime
 
-from bluesky_queueserver.manager.tests.common import (  # noqa F401
-    re_manager,
-    re_manager_cmd,
-)
-from .conftest import fastapi_server_fs  # noqa: F401
-from .conftest import request_to_json, setup_server_with_config_file
+from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd  # noqa F401
 
 from bluesky_httpserver.authorization._defaults import _DEFAULT_ROLES
 
+from .conftest import fastapi_server_fs  # noqa: F401
+from .conftest import request_to_json, setup_server_with_config_file
 
 config_toy_test = """
 authentication:

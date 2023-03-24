@@ -1,36 +1,33 @@
 import asyncio
 import copy
 import pprint
+import threading
+import time as ttime
+
 import pytest
 import requests
-import time as ttime
-import threading
-from xprocess import ProcessStarter
-
-from bluesky_httpserver.tests.conftest import setup_server_with_config_file, request_to_json
 from bluesky_queueserver.manager.tests.common import re_manager  # noqa F401
-
+from xprocess import ProcessStarter
 
 from bluesky_httpserver.authorization import (
     BasicAPIAccessControl,
+    DefaultResourceAccessControl,
     DictionaryAPIAccessControl,
     ServerBasedAPIAccessControl,
-    DefaultResourceAccessControl,
+)
+from bluesky_httpserver.authorization._defaults import (
+    _DEFAULT_RESOURCE_ACCESS_GROUP,
+    _DEFAULT_ROLE_PUBLIC,
+    _DEFAULT_ROLE_SINGLE_USER,
+    _DEFAULT_ROLES,
+    _DEFAULT_SCOPES_PUBLIC,
+    _DEFAULT_SCOPES_SINGLE_USER,
+    _DEFAULT_USER_INFO,
+    _DEFAULT_USERNAME_PUBLIC,
+    _DEFAULT_USERNAME_SINGLE_USER,
 )
 from bluesky_httpserver.config_schemas.loading import ConfigError
-
-from bluesky_httpserver.authorization._defaults import (
-    _DEFAULT_USERNAME_SINGLE_USER,
-    _DEFAULT_ROLE_SINGLE_USER,
-    _DEFAULT_SCOPES_SINGLE_USER,
-    _DEFAULT_USERNAME_PUBLIC,
-    _DEFAULT_ROLE_PUBLIC,
-    _DEFAULT_SCOPES_PUBLIC,
-    _DEFAULT_RESOURCE_ACCESS_GROUP,
-    _DEFAULT_USER_INFO,
-    _DEFAULT_ROLES,
-)
-
+from bluesky_httpserver.tests.conftest import request_to_json, setup_server_with_config_file
 
 # ====================================================================================
 #                                API ACCESS POLICIES

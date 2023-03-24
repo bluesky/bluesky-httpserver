@@ -1,17 +1,7 @@
 import json
 import uuid as uuid_module
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    LargeBinary,
-    # Table,
-    Unicode,
-)
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator

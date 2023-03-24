@@ -4,15 +4,15 @@ This module handles server configuration.
 See profiles.py for client configuration.
 """
 import copy
-from datetime import timedelta
-import os
-from pathlib import Path
 import logging
+import os
+from datetime import timedelta
+from pathlib import Path
 
 import jsonschema
 
+from .config_schemas.loading import ConfigError, load_schema_from_yml
 from .utils import import_object, parse, prepend_to_sys_path
-from .config_schemas.loading import load_schema_from_yml, ConfigError
 
 logger = logging.getLogger(__name__)
 

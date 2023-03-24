@@ -8,13 +8,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
-from fastapi.responses import JSONResponse
 from fastapi.openapi.models import APIKey, APIKeyIn
-from fastapi.security import (
-    OAuth2PasswordBearer,
-    OAuth2PasswordRequestForm,
-    SecurityScopes,
-)
+from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
 from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 
@@ -27,26 +23,21 @@ with warnings.catch_warnings():
 
 from pydantic import BaseModel, BaseSettings
 
-from .database import orm
-from .database.core import (
-    create_user,
-    latest_principal_activity,
-    lookup_valid_api_key,
-    lookup_valid_session,
-)
-from .utils import SpecialUsers
 from . import schemas
+from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 from .core import json_or_msgpack
+from .database import orm
+from .database.core import create_user, latest_principal_activity, lookup_valid_api_key, lookup_valid_session
 from .settings import get_sessionmaker, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
-    get_authenticators,
+    SpecialUsers,
     get_api_access_manager,
+    get_authenticators,
     get_base_url,
     get_current_username,
 )
-from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -795,7 +786,6 @@ def whoami(
     principal=Security(get_current_principal, scopes=[]),
     settings: BaseSettings = Depends(get_settings),
 ):
-
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
     if principal is SpecialUsers.public:

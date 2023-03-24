@@ -22,9 +22,10 @@ import msgpack
 
 # from fastapi import HTTPException, Response
 from fastapi import Response
-
 from starlette.responses import JSONResponse, Send, StreamingResponse
 
+# from . import schemas
+# from .etag import tokenize
 # Some are not directly used, but they register things on import.
 # from .. import queries
 # from ..adapters.mapping import MapAdapter
@@ -38,11 +39,7 @@ from starlette.responses import JSONResponse, Send, StreamingResponse
 #     modules_available,
 #     safe_json_dump,
 # )
-from .utils import safe_json_dump
-
-# from . import schemas
-# from .etag import tokenize
-from .utils import record_timing
+from .utils import record_timing, safe_json_dump
 
 # del queries
 # if modules_available("numpy", "dask.array"):

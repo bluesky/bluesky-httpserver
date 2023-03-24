@@ -1,18 +1,17 @@
 import os
+
 import pandas as pd
 import pytest
-
-from bluesky_queueserver.manager.tests.plan_lists import plan_list_sample, create_excel_file_from_plan_list
-
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
-    re_manager,
-    re_manager_pc_copy,
-    re_manager_cmd,
-    copy_default_profile_collection,
     append_code_to_last_startup_file,
-    set_qserver_zmq_public_key,
+    copy_default_profile_collection,
+    re_manager,
+    re_manager_cmd,
+    re_manager_pc_copy,
     set_qserver_zmq_address,
+    set_qserver_zmq_public_key,
 )
+from bluesky_queueserver.manager.tests.plan_lists import create_excel_file_from_plan_list, plan_list_sample
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     SERVER_ADDRESS,
@@ -21,10 +20,9 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     fastapi_server_fs,
     request_to_json,
     wait_for_environment_to_be_created,
-    wait_for_queue_execution_to_complete,
     wait_for_manager_state_idle,
+    wait_for_queue_execution_to_complete,
 )
-
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}

@@ -1,15 +1,16 @@
 import asyncio
 import copy
-from collections.abc import Iterable
-import httpx
-import jsonschema
 import logging
 import random
 import time as ttime
+from collections.abc import Iterable
+
+import httpx
+import jsonschema
 import yaml
 
-from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
 from ..config_schemas.loading import ConfigError
+from ._defaults import _DEFAULT_ROLES, _DEFAULT_USER_INFO
 
 logger = logging.getLogger(__name__)
 

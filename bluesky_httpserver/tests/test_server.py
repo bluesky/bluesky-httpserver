@@ -1,15 +1,16 @@
 import os
 import pprint
-import pytest
 
+import pytest
+from bluesky_queueserver import generate_zmq_keys
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
-    re_manager,
-    re_manager_pc_copy,
-    re_manager_cmd,
-    copy_default_profile_collection,
     append_code_to_last_startup_file,
-    set_qserver_zmq_public_key,
+    copy_default_profile_collection,
+    re_manager,
+    re_manager_cmd,
+    re_manager_pc_copy,
     set_qserver_zmq_address,
+    set_qserver_zmq_public_key,
 )
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
@@ -18,14 +19,11 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     add_plans_to_queue,
     fastapi_server_fs,
     request_to_json,
-    wait_for_environment_to_be_created,
-    wait_for_queue_execution_to_complete,
-    wait_for_manager_state_idle,
     setup_server_with_config_file,
+    wait_for_environment_to_be_created,
+    wait_for_manager_state_idle,
+    wait_for_queue_execution_to_complete,
 )
-
-from bluesky_queueserver import generate_zmq_keys
-
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
@@ -35,7 +33,7 @@ _plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "del
 
 _config_public_key = """
 qserver_zmq_configuration:
-  public_key: {0}
+  public_key: "{0}"
 """
 
 
