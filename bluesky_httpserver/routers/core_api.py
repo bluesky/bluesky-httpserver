@@ -56,6 +56,21 @@ async def status_handler(
     return msg
 
 
+@router.post("/queue/autostart")
+async def queue_mode_set_handler(
+    payload: dict,
+    principal=Security(get_current_principal, scopes=["write:queue:control"]),
+):
+    """
+    Set queue mode.
+    """
+    try:
+        msg = await SR.RM.queue_autostart(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
 @router.post("/queue/mode/set")
 async def queue_mode_set_handler(
     payload: dict,
