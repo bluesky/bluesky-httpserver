@@ -4,7 +4,7 @@ import re
 import time as ttime
 
 import pytest
-from bluesky_queueserver.manager.profile_ops import gen_list_of_plans_and_devices
+from bluesky_queueserver import gen_list_of_plans_and_devices
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
     append_code_to_last_startup_file,
     copy_default_profile_collection,
@@ -58,6 +58,26 @@ def test_http_server_status_handler(re_manager, fastapi_server):  # noqa F811
     assert resp["items_in_queue"] == 0
     assert resp["running_item_uid"] is None
     assert resp["worker_environment_exists"] is False
+
+
+def test_http_server_queue_autostart_handler_1(re_manager, fastapi_server):  # noqa F811
+    """
+    Basic tests for ``queue_autostart`` API
+    """
+    status = request_to_json("get", "/status")
+    assert status["queue_autostart_enabled"] is False
+
+    resp1 = request_to_json("post", "/queue/autostart", json={"enable": True})
+    assert resp1["success"] is True
+    assert resp1["msg"] == ""
+    status = request_to_json("get", "/status")
+    assert status["queue_autostart_enabled"] is True
+
+    resp2 = request_to_json("post", "/queue/autostart", json={"enable": False})
+    assert resp2["success"] is True
+    assert resp2["msg"] == ""
+    status = request_to_json("get", "/status")
+    assert status["queue_autostart_enabled"] is False
 
 
 def test_http_server_queue_mode_set_handler_1(re_manager, fastapi_server):  # noqa F811

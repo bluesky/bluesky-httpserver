@@ -57,7 +57,7 @@ async def status_handler(
 
 
 @router.post("/queue/autostart")
-async def queue_mode_set_handler(
+async def queue_autostart_handler(
     payload: dict,
     principal=Security(get_current_principal, scopes=["write:queue:control"]),
 ):
