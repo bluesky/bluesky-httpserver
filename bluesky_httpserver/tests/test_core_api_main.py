@@ -60,6 +60,16 @@ def test_http_server_status_handler(re_manager, fastapi_server):  # noqa F811
     assert resp["worker_environment_exists"] is False
 
 
+def test_http_server_config_get_handler(re_manager, fastapi_server):  # noqa F811
+    resp = request_to_json("get", "/config/get")
+    assert resp["success"] is True, pprint.pformat(resp)
+    assert resp["msg"] == "", pprint.pformat(resp)
+    assert "config" in resp, pprint.pformat(resp)
+    assert "ip_connect_info" in resp["config"], pprint.pformat(resp)
+    # Kernel does not exist, so connect info is {}
+    assert resp["config"]["ip_connect_info"] == {}
+
+
 def test_http_server_queue_autostart_handler_1(re_manager, fastapi_server):  # noqa F811
     """
     Basic tests for ``queue_autostart`` API
