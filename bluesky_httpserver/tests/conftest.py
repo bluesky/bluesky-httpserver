@@ -167,3 +167,27 @@ def wait_for_manager_state_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR
             return True
 
     return False
+
+
+def wait_for_manager_state_idle_or_paused(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
+    """Wait until manager is in 'idle' state."""
+    time_start = ttime.time()
+    while ttime.time() < time_start + timeout:
+        ttime.sleep(polling_period)
+        resp = request_to_json("get", "/status", api_key=api_key)
+        if resp["manager_state"] in ("idle", "paused"):
+            return True
+
+    return False
+
+
+def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TESTS):
+    """Wait until manager is in 'idle' state."""
+    time_start = ttime.time()
+    while ttime.time() < time_start + timeout:
+        ttime.sleep(polling_period)
+        resp = request_to_json("get", "/status", api_key=api_key)
+        if resp["ip_kernel_state"] == "idle":
+            return True
+
+    return False
