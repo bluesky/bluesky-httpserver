@@ -2,6 +2,14 @@
 Release History
 ===============
 
+v0.0.10 (2023-06-28)
+====================
+
+Added
+-----
+
+- New API: ``/config_get``, ``/queue/autostart``, ``/environment/update``, ``/kernel/interrupt``.
+
 v0.0.9 (2023-03-24)
 ===================
 
