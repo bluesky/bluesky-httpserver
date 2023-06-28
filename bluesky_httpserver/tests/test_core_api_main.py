@@ -8,6 +8,7 @@ from bluesky_queueserver import gen_list_of_plans_and_devices
 from bluesky_queueserver.manager.tests.common import (  # noqa F401
     append_code_to_last_startup_file,
     copy_default_profile_collection,
+    ip_kernel_simple_client,
     re_manager,
     re_manager_cmd,
     re_manager_pc_copy,
@@ -21,7 +22,9 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     request_to_json,
     wait_for_environment_to_be_closed,
     wait_for_environment_to_be_created,
+    wait_for_ip_kernel_idle,
     wait_for_manager_state_idle,
+    wait_for_manager_state_idle_or_paused,
     wait_for_queue_execution_to_complete,
 )
 
@@ -1541,6 +1544,132 @@ def test_http_lock_unlock_01(re_manager, fastapi_server):  # noqa F811
     resp3 = request_to_json("post", "/unlock", json={"lock_key": lock_key})
     assert resp3["success"] is True, str(resp3)
     assert resp3["msg"] == ""
+
+
+# fmt: off
+@pytest.mark.parametrize("run_in_background", [None, False, True])
+# fmt: on
+def test_http_server_environment_update_01(re_manager, fastapi_server, run_in_background):  # noqa: F811
+    """
+    Test for `/environment/update` API (more of a 'smoke' test)
+    """
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    resp2 = request_to_json("post", "/queue/item/add", json={"item": _plan3})
+    assert resp2["success"] is True
+    assert resp2["qsize"] == 1
+
+    env_update_params = dict()
+    if run_in_background is not None:
+        env_update_params.update(dict(run_in_background=run_in_background))
+
+    resp3 = request_to_json("post", "/environment/update", json=env_update_params)
+    assert resp3["success"] is True, pprint.pformat(resp3)
+    assert resp3["msg"] == ""
+
+    wait_for_manager_state_idle(10)
+
+    ttime.sleep(1)
+
+    resp4 = request_to_json("post", "/queue/start")
+    assert resp4["success"] is True, pprint.pformat(resp4)
+    assert resp4["msg"] == ""
+
+    ttime.sleep(2)
+
+    status = request_to_json("get", "/status")
+    assert status["items_in_queue"] == 0
+    assert status["running_item_uid"] is not None
+
+    resp5 = request_to_json("post", "/environment/update", json=env_update_params)
+    if run_in_background:
+        assert resp5["success"] is True, pprint.pformat(resp5)
+        assert resp5["msg"] == ""
+    else:
+        assert resp5["success"] is False, pprint.pformat(resp5)
+        assert "RE Manager must be in idle state" in resp5["msg"]
+
+    wait_for_manager_state_idle(20)
+
+    resp10 = request_to_json("post", "/environment/close")
+    assert resp10["success"] is True, pprint.pformat(resp10)
+    assert wait_for_environment_to_be_closed(10)
+
+
+_busy_script_01 = """
+import time
+for n in range(30):
+    time.sleep(1)
+"""
+
+
+# fmt: off
+@pytest.mark.parametrize("option", ["ip_client", "script", "plan"])
+# fmt: on
+def test_http_server_kernel_interrupt_01(
+    re_manager_cmd, fastapi_server, ip_kernel_simple_client, option  # noqa: F811
+):
+    """
+    "/kernel/interrupt" API:  basic test.
+    """
+    re_manager_cmd(["--use-ipython-kernel=ON"])  # Start in IPython mode
+
+    def check_status(ip_kernel_state, ip_kernel_captured):
+        # Returned status may be used to do additional checks
+        status = request_to_json("get", "/status")
+        if isinstance(ip_kernel_state, (str, type(None))):
+            ip_kernel_state = [ip_kernel_state]
+        assert status["ip_kernel_state"] in ip_kernel_state
+        assert status["ip_kernel_captured"] == ip_kernel_captured
+        return status
+
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True
+    assert wait_for_environment_to_be_created(20)
+
+    kernel_int_params = {}
+
+    if option == "ip_client":
+        ip_kernel_simple_client.start()
+        ip_kernel_simple_client.execute_with_check(_busy_script_01)
+    elif option == "script":
+        resp2 = request_to_json("post", "/script/upload", json={"script": _busy_script_01})
+        assert resp2["success"] is True, str(resp2)
+        assert resp2["msg"] == ""
+        kernel_int_params.update(dict(interrupt_task=True))
+    elif option == "plan":
+        resp2a = request_to_json("post", "/queue/item/add", json={"item": _plan3})
+        assert resp2a["success"] is True
+        assert resp2a["qsize"] == 1
+        resp2a = request_to_json("post", "/queue/start")
+        kernel_int_params.update(dict(interrupt_plan=True))
+    else:
+        assert False, f"Unknown option {option!r}"
+
+    ttime.sleep(2)
+
+    ip_kernel_captured = option != "ip_client"
+    check_status("busy", ip_kernel_captured)
+
+    resp4 = request_to_json("post", "/kernel/interrupt", json=kernel_int_params)
+    assert resp4["success"] is True, pprint.pformat(resp4)
+
+    if option == "ip_client":
+        wait_for_ip_kernel_idle(3)
+    else:
+        wait_for_manager_state_idle_or_paused(3)
+
+    status = check_status("idle", False)
+    if status["re_state"] == "paused":
+        resp5 = request_to_json("post", "/re/stop")
+        assert resp5["success"] is True, pprint.pformat(resp5)
+        wait_for_manager_state_idle(10)
+
+    resp10 = request_to_json("post", "/environment/close")
+    assert resp10["success"] is True, pprint.pformat(resp10)
+    assert wait_for_environment_to_be_closed(10)
 
 
 def test_http_server_sleep_01(fastapi_server):  # noqa F811

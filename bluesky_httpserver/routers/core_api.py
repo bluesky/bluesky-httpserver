@@ -553,6 +553,20 @@ async def environment_destroy_handler(
     return msg
 
 
+@router.post("/environment/update")
+async def environment_update_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:control"])
+):
+    """
+    Updates RE environment cache.
+    """
+    try:
+        msg = await SR.RM.environment_update(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
 @router.post("/re/pause")
 async def re_pause_handler(
     payload: dict = {},
@@ -904,6 +918,20 @@ async def task_result(payload: dict, principal=Security(get_current_principal, s
             msg = await SR.RM.send_request(method="task_result", params=payload)
         else:
             msg = await SR.RM.task_result(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
+@router.post("/kernel/interrupt")
+async def kernel_interrupt_handler(
+    payload: dict = {}, principal=Security(get_current_principal, scopes=["write:queue:control"])
+):
+    """
+    Interrupt IPython kernel.
+    """
+    try:
+        msg = await SR.RM.kernel_interrupt(**payload)
     except Exception:
         process_exception()
     return msg
