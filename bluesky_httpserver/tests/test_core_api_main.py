@@ -1656,9 +1656,6 @@ def test_http_server_kernel_interrupt_01(
     resp4 = request_to_json("post", "/kernel/interrupt", json=kernel_int_params)
     assert resp4["success"] is True, pprint.pformat(resp4)
 
-    wait_for_manager_state_idle_or_paused,
-    wait_for_ip_kernel_idle,
-
     if option == "ip_client":
         wait_for_ip_kernel_idle(3)
     else:
