@@ -1543,6 +1543,58 @@ def test_http_lock_unlock_01(re_manager, fastapi_server):  # noqa F811
     assert resp3["msg"] == ""
 
 
+# fmt: off
+@pytest.mark.parametrize("run_in_background", [None, False, True])
+# fmt: on
+def test_http_server_environment_update_01(re_manager, fastapi_server, run_in_background):  # noqa: F811
+    """
+    Test for `/environment/update` API (more of a 'smoke' test)
+    """
+    resp1 = request_to_json("post", "/environment/open")
+    assert resp1["success"] is True
+    assert wait_for_environment_to_be_created(10)
+
+    resp2 = request_to_json("post", "/queue/item/add", json={"item": _plan3})
+    assert resp2["success"] is True
+    assert resp2["qsize"] == 1
+
+    env_update_params = dict()
+    if run_in_background is not None:
+        env_update_params.update(dict(run_in_background=run_in_background))
+
+    resp3 = request_to_json("post", "/environment/update", json=env_update_params)
+    assert resp3["success"] is True, pprint.pformat(resp3)
+    assert resp3["msg"] == ""
+
+    wait_for_manager_state_idle(10)
+
+    ttime.sleep(1)
+
+    resp4 = request_to_json("post", "/queue/start")
+    assert resp4["success"] is True, pprint.pformat(resp4)
+    assert resp4["msg"] == ""
+
+    ttime.sleep(2)
+
+    status = request_to_json("get", "/status")
+    assert status["items_in_queue"] == 0
+    assert status["running_item_uid"] is not None
+
+    resp5 = request_to_json("post", "/environment/update", json=env_update_params)
+    if run_in_background:
+        assert resp5["success"] is True, pprint.pformat(resp5)
+        assert resp5["msg"] == ""
+    else:
+        assert resp5["success"] is False, pprint.pformat(resp5)
+        assert "RE Manager must be in idle state" in resp5["msg"]
+
+    wait_for_manager_state_idle(20)
+
+    resp10 = request_to_json("post", "/environment/close")
+    assert resp10["success"] is True, pprint.pformat(resp10)
+    assert wait_for_environment_to_be_closed(10)
+
+
 def test_http_server_sleep_01(fastapi_server):  # noqa F811
     """
     Basic test for '/test/server/sleep' API.
