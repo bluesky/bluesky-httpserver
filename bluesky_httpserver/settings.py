@@ -4,8 +4,13 @@ import secrets
 from datetime import timedelta
 from functools import lru_cache
 from typing import Any, List, Optional
+from packaging import version
+import pydantic
 
-from pydantic import BaseSettings
+if version.parse(pydantic.__version__) < version.parse("2.0.0"):
+    from pydantic import BaseSettings
+else:
+    from pydantic_settings import BaseSettings
 
 DatabaseSettings = collections.namedtuple("DatabaseSettings", "uri pool_size pool_pre_ping")
 
@@ -16,11 +21,11 @@ class Settings(BaseSettings):
     allow_origins: List[str] = [
         item for item in os.getenv("QSERVER_HTTP_SERVER_ALLOW_ORIGINS", "").split() if item
     ]
-    authentication_provider_names = []  # The list of authentication provider names
+    authentication_provider_names: List[str] = []  # The list of authentication provider names
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
-    single_user_api_key = os.getenv("QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY", secrets.token_hex(32))
-    single_user_api_key_generated = not ("QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY" in os.environ)
+    single_user_api_key: str = os.getenv("QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY", secrets.token_hex(32))
+    single_user_api_key_generated: bool = not ("QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY" in os.environ)
     # The QSERVER_HTTP_SERVER_SERVER_SECRET_KEYS may be a single key or a ;-separated list of
     # keys to support key rotation. The first key will be used for encryption. Each
     # key will be tried in turn for decryption.
@@ -37,7 +42,7 @@ class Settings(BaseSettings):
     # Put a fairly low limit on the maximum size of one chunk, keeping in mind
     # that data should generally be chunked. When we implement async responses,
     # we can raise this global limit.
-    response_bytesize_limit = int(os.getenv("QSERVER_HTTP_SERVER_RESPONSE_BYTESIZE_LIMIT", 300_000_000))  # 300 MB
+    response_bytesize_limit: int = int(os.getenv("QSERVER_HTTP_SERVER_RESPONSE_BYTESIZE_LIMIT", 300_000_000))  # 300 MB
     database_uri: Optional[str] = os.getenv("QSERVER_HTTP_SERVER_DATABASE_URI")
     database_pool_size: Optional[int] = int(os.getenv("QSERVER_HTTP_SERVER_DATABASE_POOL_SIZE", 5))
     database_pool_pre_ping: Optional[bool] = bool(int(os.getenv("QSERVER_HTTP_SERVER_DATABASE_POOL_PRE_PING", 1)))

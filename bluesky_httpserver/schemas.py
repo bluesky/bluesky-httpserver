@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Generic, List, Optional, TypeVar, Union
 
+from packaging import version
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
@@ -13,17 +14,24 @@ DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
 
+if version.parse(pydantic.__version__) < version.parse("2.0.0"):
+    generic_model = pydantic.generics.GenericModel
+    orm = dict(orm_mode=True)
+else:
+    generic_model = pydantic.BaseModel
+    orm = dict(from_attributes=True)
+
 
 class Error(pydantic.BaseModel):
     code: int
     message: str
 
 
-class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
-    data: Optional[DataT]
-    error: Optional[Error]
-    links: Optional[LinksT]
-    meta: Optional[MetaT]
+class Response(generic_model, Generic[DataT, LinksT, MetaT]):
+    data: Optional[DataT] = None
+    error: Optional[Error] = None
+    links: Optional[LinksT] = None
+    meta: Optional[MetaT] = None
 
     @pydantic.validator("error", always=True)
     def check_consistency(cls, v, values):
@@ -54,8 +62,8 @@ class EntryFields(str, enum.Enum):
 
 
 class Structure(pydantic.BaseModel):
-    micro: Optional[dict]
-    macro: Optional[dict]
+    micro: Optional[dict] = None
+    macro: Optional[dict] = None
 
 
 class SortingDirection(int, enum.Enum):
@@ -134,12 +142,12 @@ class NodeMeta(pydantic.BaseModel):
     count: int
 
 
-class Resource(pydantic.generics.GenericModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
+class Resource(generic_model, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
     id: Union[str, uuid.UUID]
     attributes: AttributesT
-    links: Optional[ResourceLinksT]
-    meta: Optional[ResourceMetaT]
+    links: Optional[ResourceLinksT] = None
+    meta: Optional[ResourceMetaT] = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -163,7 +171,7 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
     provider: str
     mode: AuthenticationMode
     links: Dict[str, str]
-    confirmation_message: Optional[str]
+    confirmation_message: Optional[str] = None
 
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
@@ -177,7 +185,7 @@ class AboutAuthenticationLinks(pydantic.BaseModel):
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
     providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks]
+    links: Optional[AboutAuthenticationLinks] = None
 
 
 class About(pydantic.BaseModel):
@@ -196,22 +204,22 @@ class PrincipalType(str, enum.Enum):
     service = "service"  # TODO Add support for services.
 
 
-class Identity(pydantic.BaseModel, orm_mode=True):
+class Identity(pydantic.BaseModel, **orm):
     id: pydantic.constr(max_length=255)
     provider: pydantic.constr(max_length=255)
-    latest_login: Optional[datetime]
+    latest_login: Optional[datetime] = None
 
 
-class Role(pydantic.BaseModel, orm_mode=True):
+class Role(pydantic.BaseModel, **orm):
     name: str
     scopes: List[str]
     # principals
 
 
-class APIKey(pydantic.BaseModel, orm_mode=True):
+class APIKey(pydantic.BaseModel, **orm):
     first_eight: pydantic.constr(min_length=8, max_length=8)
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
+    expiration_time: Optional[datetime] = None
+    note: Optional[pydantic.constr(max_length=255)] = None
     scopes: List[str]
     latest_activity: Optional[datetime] = None
 
@@ -231,7 +239,7 @@ class APIKeyWithSecret(APIKey):
         )
 
 
-class Session(pydantic.BaseModel, orm_mode=True):
+class Session(pydantic.BaseModel, **orm):
     """
     This related to refresh tokens, which have a session uuid ("sid") claim.
 
@@ -247,7 +255,7 @@ class Session(pydantic.BaseModel, orm_mode=True):
     revoked: bool
 
 
-class Principal(pydantic.BaseModel, orm_mode=True):
+class Principal(pydantic.BaseModel, **orm):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
@@ -270,7 +278,7 @@ class Principal(pydantic.BaseModel, orm_mode=True):
         return instance
 
 
-class AllowedScopes(pydantic.BaseModel, orm_mode=False):
+class AllowedScopes(pydantic.BaseModel, **orm):
     "Returns roles and current allowed scopes for a user authenticated with API key or token"
     roles: List[str] = []
     scopes: List[str] = []
@@ -283,4 +291,4 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
     # scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
     scopes: Optional[List[str]] = pydantic.Field(default=["inherit"], example=["inherit"])
-    note: Optional[str]
+    note: Optional[str] = None
