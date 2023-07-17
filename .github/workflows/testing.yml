@@ -9,11 +9,11 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
-      include:
-        - pydatic-version: "<2.0.0"
-          fastapi-version: "<0.100.0"
-        - pydatic-version: ">=2.0.0"
-          fastapi-version: ">=0.100.0"
+        include:
+          - pydatic-version: "<2.0.0"
+            fastapi-version: "<0.100.0"
+          - pydatic-version: ">=2.0.0"
+            fastapi-version: ">=0.100.0"
       fail-fast: false
 
     steps:
