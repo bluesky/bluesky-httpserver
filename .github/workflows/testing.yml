@@ -9,7 +9,11 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
-        pydantic-version: [1, 2]
+      include:
+        - pydatic-version: "<2.0.0"
+          fastapi-version: "<0.100.0"
+        - pydatic-version: ">=2.0.0"
+          fastapi-version: ">=0.100.0"
       fail-fast: false
 
     steps:
@@ -44,8 +48,8 @@ jobs:
 
         pip install .
         pip install -r requirements-dev.txt
-        pip install pydantic==${{ matrix.pydantic-version }}
-        
+        pip install pydantic${{ matrix.pydantic-version }} fastapi${{ matrix.fastapi-version }}
+
         pip list
     - name: Test with pytest
       run: |
