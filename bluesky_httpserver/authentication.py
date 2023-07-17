@@ -22,15 +22,13 @@ with warnings.catch_warnings():
     from jose import ExpiredSignatureError, JWTError, jwt
 
 import pydantic
-from pydantic import BaseModel
 from packaging import version
-
+from pydantic import BaseModel
 
 if version.parse(pydantic.__version__) < version.parse("2.0.0"):
     from pydantic import BaseSettings
 else:
     from pydantic_settings import BaseSettings
-
 
 from . import schemas
 from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME

@@ -4,17 +4,15 @@ import logging
 import pprint
 from typing import Optional
 
+import pydantic
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
 from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile
-
 from packaging import version
-import pydantic
 
 if version.parse(pydantic.__version__) < version.parse("2.0.0"):
     from pydantic import BaseSettings
 else:
     from pydantic_settings import BaseSettings
-
 
 from ..authentication import get_current_principal
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass

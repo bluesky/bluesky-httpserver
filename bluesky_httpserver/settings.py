@@ -4,8 +4,9 @@ import secrets
 from datetime import timedelta
 from functools import lru_cache
 from typing import Any, List, Optional
-from packaging import version
+
 import pydantic
+from packaging import version
 
 if version.parse(pydantic.__version__) < version.parse("2.0.0"):
     from pydantic import BaseSettings
@@ -42,7 +43,9 @@ class Settings(BaseSettings):
     # Put a fairly low limit on the maximum size of one chunk, keeping in mind
     # that data should generally be chunked. When we implement async responses,
     # we can raise this global limit.
-    response_bytesize_limit: int = int(os.getenv("QSERVER_HTTP_SERVER_RESPONSE_BYTESIZE_LIMIT", 300_000_000))  # 300 MB
+    response_bytesize_limit: int = int(
+        os.getenv("QSERVER_HTTP_SERVER_RESPONSE_BYTESIZE_LIMIT", 300_000_000)
+    )  # 300 MB
     database_uri: Optional[str] = os.getenv("QSERVER_HTTP_SERVER_DATABASE_URI")
     database_pool_size: Optional[int] = int(os.getenv("QSERVER_HTTP_SERVER_DATABASE_POOL_SIZE", 5))
     database_pool_pre_ping: Optional[bool] = bool(int(os.getenv("QSERVER_HTTP_SERVER_DATABASE_POOL_PRE_PING", 1)))

@@ -3,10 +3,10 @@ import uuid
 from datetime import datetime
 from typing import Dict, Generic, List, Optional, TypeVar, Union
 
-from packaging import version
 import pydantic
 import pydantic.dataclasses
 import pydantic.generics
+from packaging import version
 
 # from ..structures.core import StructureFamily
 
