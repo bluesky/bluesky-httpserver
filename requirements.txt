@@ -6,6 +6,7 @@ ldap3
 orjson
 pamela
 pydantic
+pydantic-settings
 python-jose
 pyzmq
 sqlalchemy
