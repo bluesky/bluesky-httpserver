@@ -33,10 +33,10 @@ Start RE Manager and enable publishing of console output::
 
   $ start-re-manager --zmq-publish-console ON
 
-Start HTTP Server in single-user mode. In this example the single-user API key is ``mykey``, but 
+Start HTTP Server in single-user mode. In this example the single-user API key is ``mykey``, but
 it may be any alphanumeric string::
 
-  $ QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=mykey uvicorn --host localhost --port 60610 bluesky_httpserver.server:app 
+  $ QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY=mykey uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
 
 Now the server API can be accessed by passing the API key with API requests. For example, the status of
 RE Manager can be loaded using ::
@@ -49,7 +49,7 @@ RE Manager can be loaded using ::
   when running development versions of RE Manager that contain bugs. The remaining open sockets
   may prevent RE Manager or HTTP Server from restarting. The sockets could be closed by
   running ::
-  
+
     $ netstat -ltnp
 
   and finding PIDs of the offending processes. The default ports used by RE Manager are
