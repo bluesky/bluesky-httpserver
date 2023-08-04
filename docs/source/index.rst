@@ -12,6 +12,7 @@ Bluesky HTTP Server Documentation
 
    installation
    release-history
+   contributing
 
 .. toctree::
    :maxdepth: 1
