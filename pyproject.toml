@@ -2,8 +2,7 @@
 line-length = 115
 target-version = ['py37']
 include = '\.pyi?$'
-exclude = '''
-
+force-exclude = '''
 (
   /(
       \.eggs         # exclude a few common directories in the
