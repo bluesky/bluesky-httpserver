@@ -6,6 +6,7 @@ coverage
 fastapi[all]
 flake8
 isort
+pre-commit
 pytest
 pytest-xprocess
 py
