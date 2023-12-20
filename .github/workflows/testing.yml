@@ -46,6 +46,7 @@ jobs:
         pip install .
         pip install -r requirements-dev.txt
         pip install "pydantic${{ matrix.pydantic-version }}"
+        pip install bluesky==1.11.0
 
         pip list
     - name: Test with pytest
