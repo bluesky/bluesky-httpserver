@@ -309,7 +309,7 @@ async def prepare_saml_from_fastapi_request(request, debug=False):
         "server_port": request.url.port,
         "script_name": request.url.path,
         "post_data": {},
-        "get_data": {}
+        "get_data": {},
         # Advanced request options
         # "https": "",
         # "request_uri": "",
