@@ -25,7 +25,7 @@ properties:
       - type: object
         additionalProperties: false
         patternProperties:
-          "^[a-zA-Z_][0-9a-zA-Z_]*$":
+          "^[a-zA-Z_][0-9a-zA-Z_.@]*$":
             oneOf:
               - type: object
                 additionalProperties: false
@@ -348,7 +348,7 @@ properties:
       - type: object
         additionalProperties: false
         patternProperties:
-          "^[0-9a-zA-Z_]+$":
+          "^[0-9a-zA-Z_.@]+$":
             oneOf:
               - type: object
                 additionalProperties: false
