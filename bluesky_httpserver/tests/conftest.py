@@ -52,6 +52,7 @@ def fastapi_server_fs(xprocess):
             args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
         xprocess.ensure("fastapi_server", Starter)
+        ttime.sleep(1)
 
     yield start
 
