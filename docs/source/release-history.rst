@@ -2,6 +2,16 @@
 Release History
 ===============
 
+v0.0.12 (2024-07-25)
+====================
+
+Added
+-----
+
+- Added ``.``, ``@``, ``-``, and ``+``, to the allowed character list of ``BasicAPIAccessControl`` and
+  ``DictionaryAPIAccessControl`` username validations.
+
+
 v0.0.11 (2023-07-19)
 ====================
 
