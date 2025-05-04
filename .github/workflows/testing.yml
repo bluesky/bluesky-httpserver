@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
   build:
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: docker-practice/actions-setup-docker@master
-      timeout-minutes: 12
+    # - uses: docker-practice/actions-setup-docker@master
+    #   timeout-minutes: 12
     - name: Checkout
       uses: actions/checkout@v4
     - name: Fetch tags
