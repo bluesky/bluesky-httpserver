@@ -29,6 +29,10 @@ properties:
           The address of 0MQ info (PUB-SUB) socket of RE Manager, used to publish console output
           e.g. tcp://localhost:60625. Overrides the address set using QSERVER_ZMQ_INFO_ADDRESS
           environment variable
+      encoding:
+        type: string
+        description: |
+          The encoding for 0MQ messages. Supported values: 'json' (default) and 'msgpack'.
       public_key:
         type: string
         description: |

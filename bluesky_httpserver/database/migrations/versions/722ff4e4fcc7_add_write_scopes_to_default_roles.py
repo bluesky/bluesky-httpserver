@@ -1,4 +1,4 @@
-""""Add write scopes to default Roles."
+""" "Add write scopes to default Roles."
 
 Revision ID: 722ff4e4fcc7
 Revises: 481830dd6c11

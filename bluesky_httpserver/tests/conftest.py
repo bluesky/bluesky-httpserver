@@ -4,6 +4,7 @@ import time as ttime
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
+from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
 from xprocess import ProcessStarter
 
 import bluesky_httpserver.server as bqss
@@ -44,6 +45,8 @@ def fastapi_server_fs(xprocess):
 
     def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT, api_key=API_KEY_FOR_TESTS):
         class Starter(ProcessStarter):
+            max_read_lines = 53
+
             env = dict(os.environ)
             if api_key:
                 env["QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY"] = api_key
