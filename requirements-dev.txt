@@ -13,6 +13,7 @@ py
 sphinx
 ipython
 numpydoc
+pandas
 sphinx
 sphinx_rtd_theme
 requests

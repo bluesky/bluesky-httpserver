@@ -21,8 +21,6 @@ jobs:
       fail-fast: false
 
     steps:
-    # - uses: docker-practice/actions-setup-docker@master
-    #   timeout-minutes: 12
     - name: Checkout
       uses: actions/checkout@v4
     - name: Fetch tags
