@@ -13,6 +13,7 @@ py
 sphinx
 ipython
 numpydoc
+matplotlib
 pandas
 sphinx
 sphinx_rtd_theme
