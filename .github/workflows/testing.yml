@@ -21,6 +21,8 @@ jobs:
       fail-fast: false
 
     steps:
+    - uses: docker-practice/actions-setup-docker@master
+      timeout-minutes: 12
     - name: Checkout
       uses: actions/checkout@v4
     - name: Fetch tags
@@ -31,7 +33,6 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        sudo apt install docker
         sudo apt install redis
 
         # Start LDAP
