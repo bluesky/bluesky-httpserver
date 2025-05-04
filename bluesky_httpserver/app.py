@@ -307,9 +307,12 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                     "QSERVER_ZMQ_INFO_ADDRESS to pass address of 0MQ information socket to HTTP Server."
                 )
 
+        zmq_encoding = os.getenv("QSERVER_ZMQ_ENCODING", None)
+
         # Check if ZMQ setting were specified in config file. Overrid the parameters from EVs.
         zmq_control_addr = server_settings["qserver_zmq_configuration"].get("control_address", zmq_control_addr)
         zmq_info_addr = server_settings["qserver_zmq_configuration"].get("info_address", zmq_info_addr)
+        zmq_encoding = server_settings["qserver_zmq_configuration"].get("encoding", zmq_encoding)
 
         # Read public key from the environment variable or config file.
         zmq_public_key = os.environ.get("QSERVER_ZMQ_PUBLIC_KEY", None)
@@ -323,12 +326,13 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
         logger.info(
             f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
-            f"Information 0MQ socket address: {zmq_info_addr}"
+            f"Information 0MQ socket address: {zmq_info_addr}. Encoding: {zmq_encoding!r}\n"
         )
 
         RM = REManagerAPI(
             zmq_control_addr=zmq_control_addr,
             zmq_info_addr=zmq_info_addr,
+            zmq_encoding=zmq_encoding,
             zmq_public_key=zmq_public_key,
             request_fail_exceptions=False,
             status_expiration_period=0.4,  # Make it smaller than default

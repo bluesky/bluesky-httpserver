@@ -14,6 +14,7 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     SERVER_PORT,
     fastapi_server_fs,
     request_to_json,
+    set_qserver_zmq_encoding,
     wait_for_environment_to_be_closed,
     wait_for_environment_to_be_created,
     wait_for_manager_state_idle,
@@ -155,20 +156,28 @@ lines
 """
 
 
+@pytest.mark.parametrize("zmq_encoding", (None, "json", "msgpack"))
 @pytest.mark.parametrize("zmq_port", (None, 60619))
-def test_http_server_console_output_1(monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port):  # noqa F811
+def test_http_server_console_output_1(
+    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port, zmq_encoding  # noqa F811
+):
     """
     Test for ``console_output`` API (not a streaming version).
     """
     # Start HTTP Server
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
+    if zmq_encoding is not None:
+        monkeypatch.setenv("QSERVER_ZMQ_ENCODING", zmq_encoding)
     fastapi_server_fs()
 
     # Start RE Manager
-    params = ["--zmq-publish-console", "ON"]
+    params = ["--zmq-publish-console=ON"]
+    if zmq_encoding:
+        params.append(f"--zmq-encoding={zmq_encoding}")
+        set_qserver_zmq_encoding(monkeypatch, encoding=zmq_encoding)
     if zmq_port is not None:
-        params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
+        params.extend([f"--zmq-info-addr=tcp://*:{zmq_port}"])
     re_manager_cmd(params)
 
     script = _script1

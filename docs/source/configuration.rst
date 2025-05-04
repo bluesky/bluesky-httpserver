@@ -100,6 +100,9 @@ The following environment variables are used to configure 0MQ communication sett
   pass the private key to RE Manager. Pass the public key to HTTP Server using
   ``QSERVER_ZMQ_PUBLIC_KEY`` environment variable.
 
+- ``QSERVER_ZMQ_ENCODING`` - sets the encoding for the messages set to RE Manager over
+  0MQ. Supported values: ``"json"`` (default) or ``"msgpack"``.
+
 The same parameters can be specified by including ``qserver_zmq_configuration`` into
 the config file::
 
@@ -107,6 +110,7 @@ the config file::
     control_address: tcp://localhost:60615
     info_address: tcp://localhost:60625
     public_key: ${PUBLIC_KEY}
+    encoding: json
 
 All parameters in the config file are optional and override the values passed using
 environment variables and the default values. The public key is typically passed using environment

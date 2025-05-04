@@ -144,6 +144,7 @@ class NodeMeta(pydantic.BaseModel):
 
 class Resource(generic_model, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
+
     id: Union[str, uuid.UUID]
     attributes: AttributesT
     links: Optional[ResourceLinksT] = None
@@ -257,6 +258,7 @@ class Session(pydantic.BaseModel, **orm):
 
 class Principal(pydantic.BaseModel, **orm):
     "Represents a User or Service"
+
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
     uuid: uuid.UUID
@@ -280,6 +282,7 @@ class Principal(pydantic.BaseModel, **orm):
 
 class AllowedScopes(pydantic.BaseModel, **orm):
     "Returns roles and current allowed scopes for a user authenticated with API key or token"
+
     roles: List[str] = []
     scopes: List[str] = []
 
