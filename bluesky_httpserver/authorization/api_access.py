@@ -479,6 +479,8 @@ properties:
     type: [integer, "null"]
   http_timeout:
     type: integer
+  base_url:
+    type: [string, "null"]
 """
 
 
@@ -528,11 +530,17 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
     roles: dict or None, optional
         The dictionary that defines new and/or modifies existing roles. The dictionary
         is passed to the ``BasicAPIAccessControl`` constructor. Default: ``None``.
+    base_url: str, optional
+        The base URL for the Access Control server, such as
+        ``'http://accesscontrol.server.com:8000'``. If provided, this parameter is used
+        instead of the `server` and `port` parameters.
     server: str, optional
         Access Control server address, such as ``'accesscontrol.server.com'`` or
-        ``'110.43.6.45'``. The default address is ``localhost``.
+        ``'110.43.6.45'``. This parameter is used only if `base_url` is not provided.
+        The default address is ``localhost``.
     port: int, optional
-        Access Control server port. The default port is `8000`.
+        Access Control server port. This parameter is used only if `base_url` is not
+        provided. The default port is `8000`.
     update_period: int, optional
         Average period in seconds between consecutive requests for updated access data.
         The actual period is randomized (uniform distribution in the range +/-20% of
@@ -552,6 +560,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         *,
         instrument=None,
         roles=None,
+        base_url=None,
         server="localhost",
         port=8000,
         update_period=600,
@@ -567,6 +576,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
             config = {
                 "instrument": instrument,
                 "roles": roles,
+                "base_url": base_url,
                 "server": server,
                 "port": port,
                 "update_period": update_period,
@@ -580,9 +590,11 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
             raise ConfigError(f"ValidationError while validating parameters BasicAPIAccessControl: {msg}") from err
 
         self._instrument = instrument.lower()
+        if base_url:
+            self._base_url = base_url
+        else:
+            self._base_url = f"http://{server}:{port}"
 
-        self._server = server
-        self._port = port
         self._update_period = update_period
         self._http_timeout = http_timeout
         self._expiration_period = expiration_period or (update_period * 1.5)
@@ -597,9 +609,8 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         """
         Send a single request to the API server and update locally stored access control info.
         """
-        base_url = f"http://{self._server}:{self._port}"
         access_api = f"/instrument/{self._instrument.lower()}/qserver/access"
-        async with httpx.AsyncClient(base_url=base_url, timeout=self._http_timeout) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._http_timeout) as client:
             response = await client.get(access_api)
             response.raise_for_status()
             groups = response.json()
