@@ -469,26 +469,18 @@ properties:
     type: string
   roles:  # Detailed validation is performed elsewhere
     description: The value is passed to BasicAPIAccessControl object
-  oneOf:
-    - properties:
-        base_url:
-          type: string
-      required:
-        - base_url
-    - properties:
-        server:
-          type: string
-        port:
-          type: integer
-      required:
-        - server
-        - port
+  server:
+    type: string
+  port:
+    type: integer
   update_period:
     type: integer
   expiration_period:
     type: [integer, "null"]
   http_timeout:
     type: integer
+  base_url:
+    type: [string, "null"]
 """
 
 
