@@ -2,6 +2,15 @@
 Release History
 ===============
 
+v0.0.13 (2025-05-18)
+====================
+
+Added
+-----
+
+- Add support for ``QSERVER_ZMQ_ENCODING`` environment variable, which sets the encoding for 0MQ messages.
+
+
 v0.0.12 (2024-07-25)
 ====================
 
