@@ -736,6 +736,63 @@ async def plans_allowed_handler(
     return msg
 
 
+def get_json_schema(plan_description, allowed_plans, allowed_devices):
+    from bluesky_queueserver.manager.profile_ops import (
+        construct_parameters,
+        filter_plan_description,
+        pydantic_construct_model_class,
+    )
+
+    plan_description = filter_plan_description(
+        plan_description, allowed_plans=allowed_plans, allowed_devices=allowed_devices
+    )
+    param_list = plan_description["parameters"]
+    parameters = construct_parameters(param_list)
+    pydantic_model_class = pydantic_construct_model_class(parameters)
+    return pydantic_model_class.model_json_schema()
+
+
+@router.get("/plans/allowed/json_schema")
+async def plans_allowed_json_schema_handler(
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:resources"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
+):
+    """
+    Returns JSON schemas for plans in the list of allowed plans.
+    """
+
+    try:
+        validate_payload_keys(payload)
+
+        username = get_current_username(
+            principal=principal, settings=settings, api_access_manager=api_access_manager
+        )[0]
+        user_group = resource_access_manager.get_resource_group(username)
+        payload.update({"user_group": user_group})
+        plans_msg = await SR.RM.plans_allowed(**payload)
+        devices_msg = await SR.RM.devices_allowed(**payload)
+
+        plans_allowed = plans_msg["plans_allowed"]
+        devices_allowed = devices_msg["devices_allowed"]
+
+        plans_schemas = {}
+        for plan in plans_allowed:
+            schema = get_json_schema(plans_allowed[plan], plans_allowed, devices_allowed)
+            plans_schemas[plan] = schema
+
+        msg = plans_msg.copy()
+        msg["plans_allowed"] = plans_schemas
+
+        print(f"{list(plans_allowed.keys())=}")
+
+    except Exception:
+        process_exception()
+    return msg
+
+
 @router.get("/devices/allowed")
 async def devices_allowed_handler(
     payload: dict = {},
