@@ -865,6 +865,40 @@ async def queue_get_arguments_handler(
     return msg_queue
 
 
+@router.post("/queue/item/arguments")
+async def queue_item_arguments_handler(
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:queue"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
+):
+    """
+    Adds new plan to the queue
+    """
+    try:
+        plans_msg = await SR.RM.plans_existing()
+        devices_msg = await SR.RM.devices_existing()
+        plans_existing = plans_msg["plans_existing"]
+        devices_existing = devices_msg["devices_existing"]
+
+        try:
+            item = payload.get("item", None)
+            if item is None:
+                raise ValueError("Payload does not contain 'item' key")
+            item = plan_bind_args(item, plans_existing, devices_existing)
+            success, msg = True, ""
+        except Exception as ex:
+            success = False
+            msg = f"Failed to bind arguments for the item: {ex}"
+
+        response = {"success": success, "msg": msg, "item": item}
+    except Exception:
+        process_exception()
+
+    return response
+
+
 # ========================================================================
 
 
