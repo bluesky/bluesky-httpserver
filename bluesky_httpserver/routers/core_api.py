@@ -736,6 +736,10 @@ async def plans_allowed_handler(
     return msg
 
 
+# ========================================================================
+#                        Experimental endpoints.
+
+
 def get_json_schema(plan_description, allowed_plans, allowed_devices):
     from bluesky_queueserver.manager.profile_ops import (
         construct_parameters,
@@ -791,6 +795,77 @@ async def plans_allowed_json_schema_handler(
     except Exception:
         process_exception()
     return msg
+
+
+def plan_bind_args(item, existing_plans, existing_devices):
+    import inspect
+
+    from bluesky_queueserver.manager.profile_ops import construct_parameters, filter_plan_description
+
+    if item["item_type"] == "plan":
+        name = item.get("name", None)
+        if not name:
+            raise ValueError(f"Item {item} does not have 'name' key")
+        plan_description = existing_plans.get(name, None)
+        if not plan_description:
+            raise ValueError(f"No description is found for  plan {name!r} (item {item})")
+        call_args, call_kwargs = item.get("args", []), item.get("kwargs", {})
+
+        plan_description = filter_plan_description(
+            plan_description, allowed_plans=existing_plans, allowed_devices=existing_devices
+        )
+        param_list = plan_description["parameters"]
+        parameters = construct_parameters(param_list)
+
+        sig = inspect.Signature(parameters)
+        bound_args = sig.bind(*call_args, **call_kwargs)
+
+        arguments = bound_args.arguments
+        item["args"] = []
+        item["kwargs"] = arguments
+
+        # print(f"{args=} {kwargs=} {arguments=}")
+
+    return item
+
+
+@router.get("/queue/get/arguments")
+async def queue_get_arguments_handler(
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:queue"]),
+    settings: BaseSettings = Depends(get_settings),
+    api_access_manager=Depends(get_api_access_manager),
+    resource_access_manager=Depends(get_resource_access_manager),
+):
+    """
+    Returns plan queue. The plan args are bound to names if possible.
+    """
+
+    try:
+        validate_payload_keys(payload)
+
+        msg_queue = await SR.RM.queue_get(**payload)
+        print(f"msg_queue = {msg_queue}")
+
+        plans_msg = await SR.RM.plans_existing(**payload)
+        devices_msg = await SR.RM.devices_existing(**payload)
+        plans_existing = plans_msg["plans_existing"]
+        devices_existing = devices_msg["devices_existing"]
+
+        items = msg_queue.get("items", [])
+        items_updated = []
+        for item in items:
+            item_updated = plan_bind_args(item, plans_existing, devices_existing)
+            items_updated.append(item_updated)
+
+        msg_queue["items"] = items_updated
+
+    except Exception:
+        process_exception()
+    return msg_queue
+
+
+# ========================================================================
 
 
 @router.get("/devices/allowed")
