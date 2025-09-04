@@ -61,7 +61,7 @@ class DefaultResourceAccessControl:
         default_group = default_group or _DEFAULT_RESOURCE_ACCESS_GROUP
         self._default_group = default_group
 
-    def get_resource_group(self, username):
+    def get_resource_group(self, username, group):
         """
         Returns the name of the user group based on the user name.
 
@@ -76,3 +76,54 @@ class DefaultResourceAccessControl:
             Name of the user group.
         """
         return self._default_group
+
+
+class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
+    """
+    Single group resource access policy.
+    The resource access policy associates users with its correspondent first user group. The groups
+    define the resources, such as plans and devices users can access. The
+    single group policy assumes that one user belong to a single group or if they are unauthenticated or 
+    have authenticated with a single-user API key, it uses the default user group.
+    The arguments of the class constructor are the same as the one specified in the DefaultResourceAccessControl configuration
+    file as shown in the example below.
+
+    Parameters
+    ----------
+    default_group: str
+        The name of the group returned by the access manager by default.
+
+    Examples
+    --------
+    Configure ``SingleGroupResourceAccessControl`` policy. The default group name is ``test_user``.
+
+    .. code-block::
+
+        resource_access:
+          policy: bluesky_httpserver.authorization:SingleGroupResourceAccessControl
+          args:
+            default_group: test_user
+    """
+
+    def get_resource_group(self, username, group):
+        """
+        Returns the name of the user group based on the user name.
+
+        Parameters
+        ----------
+        username: str
+            User name.
+
+        Returns
+        -------
+        str
+            Name of the user group.
+        """
+        if isinstance(group, list):
+            if group[0] in ['unauthenticated_public', 'unauthenticated_single_user']:
+                return self.get_resource_group(username, group)
+            return group[0]
+        return group
+
+
+
