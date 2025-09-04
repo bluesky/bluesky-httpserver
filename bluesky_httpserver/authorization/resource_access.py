@@ -123,6 +123,6 @@ class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
         """
         if isinstance(group, list):
             if group[-1] in ["unauthenticated_public", "unauthenticated_single_user"]:
-                return self.get_resource_group(username, group)
+                return self._default_group
             return group[-1]
         return group
