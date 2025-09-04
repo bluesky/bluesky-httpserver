@@ -81,12 +81,13 @@ class DefaultResourceAccessControl:
 class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
     """
     Single group resource access policy.
-    The resource access policy associates users with its correspondent first user group. The groups
-    define the resources, such as plans and devices users can access. The
-    single group policy assumes that one user belong to a single group or if they are unauthenticated or 
-    have authenticated with a single-user API key, it uses the default user group.
-    The arguments of the class constructor are the same as the one specified in the DefaultResourceAccessControl configuration
-    file as shown in the example below.
+    The resource access policy associates users with its correspondent first user group. 
+    The groups define the resources, such as plans and devices users can access. The
+    single group policy assumes that one user belong to a single group or if they are 
+    unauthenticated or have authenticated with a single-user API key, it uses the default 
+    user group.
+    The arguments of the class constructor are the same as the one specified in the 
+    DefaultResourceAccessControl configuration ile as shown in the example below.
 
     Parameters
     ----------
@@ -95,7 +96,8 @@ class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
 
     Examples
     --------
-    Configure ``SingleGroupResourceAccessControl`` policy. The default group name is ``test_user``.
+    Configure ``SingleGroupResourceAccessControl`` policy. The default group name is 
+    ``test_user``.
 
     .. code-block::
 
@@ -120,10 +122,7 @@ class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
             Name of the user group.
         """
         if isinstance(group, list):
-            if group[0] in ['unauthenticated_public', 'unauthenticated_single_user']:
+            if group[0] in ["unauthenticated_public", "unauthenticated_single_user"]:
                 return self.get_resource_group(username, group)
             return group[0]
         return group
-
-
-
