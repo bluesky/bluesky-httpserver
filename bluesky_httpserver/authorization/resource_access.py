@@ -2,7 +2,7 @@ import jsonschema
 import yaml
 
 from ..config_schemas.loading import ConfigError
-from ._defaults import _DEFAULT_RESOURCE_ACCESS_GROUP
+from ._defaults import _DEFAULT_RESOURCE_ACCESS_GROUP, _DEFAULT_ROLE_PUBLIC, _DEFAULT_ROLE_SINGLE_USER
 
 _schema_DefaultResourceAccessControl = """
 $schema": http://json-schema.org/draft-07/schema#
@@ -122,7 +122,7 @@ class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
             Name of the user group.
         """
         if isinstance(group, list):
-            if group[-1] in ["unauthenticated_public", "unauthenticated_single_user"]:
+            if group[-1] in [_DEFAULT_ROLE_PUBLIC, _DEFAULT_ROLE_SINGLE_USER]:
                 return self._default_group
             return group[-1]
         return group
