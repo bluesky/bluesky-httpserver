@@ -122,7 +122,7 @@ class SingleGroupResourceAccessControl(DefaultResourceAccessControl):
             Name of the user group.
         """
         if isinstance(group, list):
-            if group[-1] in [_DEFAULT_ROLE_PUBLIC, _DEFAULT_ROLE_SINGLE_USER]:
-                return self._default_group
-            return group[-1]
+            group = group[-1]
+        if group in [_DEFAULT_ROLE_PUBLIC, _DEFAULT_ROLE_SINGLE_USER]:
+            return self._default_group
         return group
