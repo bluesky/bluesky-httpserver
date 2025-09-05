@@ -546,7 +546,7 @@ def test_DefaultResourceAccessControl_01(params, group, success):
     """
     if success:
         manager = DefaultResourceAccessControl(**params)
-        assert manager.get_resource_group("arbitrary_user_name") == group
+        assert manager.get_resource_group("arbitrary_user_name", group) == group
     else:
         with pytest.raises(ConfigError):
             DefaultResourceAccessControl(**params)
