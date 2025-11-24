@@ -3,6 +3,7 @@ import json
 import logging
 import queue
 import uuid
+import time as ttime
 
 from starlette.responses import StreamingResponse
 
@@ -167,3 +168,95 @@ class StreamingResponseFromClass(StreamingResponse):
 
     def __del__(self):
         del self._content
+
+
+class ConsoleOutputStream:
+    def __init__(self, *, rm_ref):
+        self._queues = {}
+        self._background_task = None
+        self._background_task_running = False
+        self._background_task_stopped = asyncio.Event()
+        self._background_task_stopped.set()
+        self._num = 0
+
+    @property
+    def queues(self):
+        return self._queues
+
+    def add_queue(self, key, queue):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        self._queues[key] = queue
+
+    def remove_queue(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues:
+            del self._queues[key]
+
+    def _start_background_task(self):
+        if not self._background_task_running:
+            self._background_task = asyncio.create_task(self._load_msgs_task())
+
+    async def _stop_background_task(self):
+        self._background_task_running = False
+        await self._background_task_stopped.wait()
+
+    async def _load_msgs_task(self):
+        self._background_task_stopped.clear()
+        self._background_task_running = True
+        while self._background_task_running:
+            await asyncio.sleep(1)
+            try:
+                # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
+                # self._add_message(msg=msg)
+                msg = f"Message {self._num}\n"
+                print(f"msg={msg.strip()}")  ##
+                self._num += 1
+                for q in self._queues.values():
+                    # Protect from overflow. It's ok to discard old messages.
+                    if q.full():
+                        q.get()
+                    q.put(msg)
+            except self._RM.RequestTimeoutError:
+                pass
+        self._background_task_stopped.set()
+
+    def start(self):
+        # self._RM.console_monitor.enable()
+        self._start_background_task()
+
+    async def stop(self):
+        await self._stop_background_task()
+
+
+class StatusStream:
+    def __init__(self, *, rm_ref):
+        self._queues = {}
+
+    @property
+    def queues(self):
+        return self._queues
+
+    def add_queue(self, key, queue):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        self._queues[key] = queue
+
+    def remove_queue(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues:
+            del self._queues[key]
+
+    def start(self):
+        pass
+
+    async def stop(self):
+        pass

@@ -3,10 +3,11 @@ import io
 import logging
 import pprint
 from typing import Optional
+import queue
 
 import pydantic
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
-from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Security, UploadFile, WebSocket, WebSocketDisconnect
 from packaging import version
 
 if version.parse(pydantic.__version__) < version.parse("2.0.0"):
@@ -1098,3 +1099,44 @@ def console_output_update(payload: dict, principal=Security(get_current_principa
         process_exception()
 
     return response
+
+
+@router.websocket("/console_output/ws")
+# async def console_output_ws(websocket: WebSocket, principal=Security(get_current_principal, scopes=["read:console"])):
+async def console_output_ws(websocket: WebSocket):
+    await websocket.accept()
+    q = queue.Queue(maxsize=1000)
+    SR.console_output_stream.add_queue(websocket, q)
+    try:
+        while True:
+            await asyncio.sleep(1)  ##
+            try:
+                while not q.empty():
+                    msg = q.get(block=False)
+                    # msg = "Hello"
+                    print(f"Sending message: {msg}")  ##
+                    await websocket.send_text(msg)
+            except queue.Empty:
+                pass
+    except WebSocketDisconnect:
+        pass
+        SR.console_output_stream.remove_queue(websocket)
+
+@router.websocket("/status/ws")
+async def status_ws(
+    websocket: WebSocket,
+    payload: dict = {},
+    principal=Security(get_current_principal, scopes=["read:status"]),
+):
+    await websocket.accept()
+    q = queue.Queue()
+    SR.status_stream.add_queue(websocket, q)
+    try:
+        while True:
+            try:
+                msg = q.get(block=True, timeout=0.1)
+                await websocket.send_text(msg)
+            except queue.Empty:
+                pass
+    except WebSocketDisconnect:
+        SR.status_stream.remove_queue(websocket)

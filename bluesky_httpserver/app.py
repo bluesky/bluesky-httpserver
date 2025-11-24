@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from .authentication import Mode
-from .console_output import CollectPublishedConsoleOutput
+from .console_output import CollectPublishedConsoleOutput, ConsoleOutputStream, StatusStream
 from .core import PatchedStreamingResponse
 from .database.core import purge_expired
 from .resources import SERVER_RESOURCES as SR
@@ -346,6 +346,10 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
         SR.set_console_output_loader(CollectPublishedConsoleOutput(rm_ref=RM))
         SR.console_output_loader.start()
+        SR.set_console_output_stream(ConsoleOutputStream(rm_ref=RM))
+        SR.console_output_stream.start()
+        SR.set_status_stream(StatusStream(rm_ref=RM))
+        SR.status_stream.start()
 
         # Import module with custom code
         module_names_str = os.getenv("QSERVER_CUSTOM_MODULES", None)
@@ -387,6 +391,9 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     async def shutdown_event():
         await SR.RM.close()
         await SR.console_output_loader.stop()
+        await SR.console_output_stream.stop()
+        await SR.status_stream.stop()
+
 
     @lru_cache(1)
     def override_get_authenticators():
