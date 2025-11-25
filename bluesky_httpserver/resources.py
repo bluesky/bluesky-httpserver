@@ -3,6 +3,7 @@ class _ServerResources:
         self._RM = None
         self._custom_code_modules = []
         self._console_output_loader = None
+        self._stop_server = False
 
     def set_RM(self, RM):
         self._RM = RM

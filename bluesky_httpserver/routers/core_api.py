@@ -1101,26 +1101,62 @@ def console_output_update(payload: dict, principal=Security(get_current_principa
     return response
 
 
+class WebSocketMonitor:
+    """
+    Works for sockets that only send data to clients (not receive).
+
+    The class monitors the status of a socket connection. The property 'is_alive' returns True
+    until the socket is disconnected. The purpose of the class is to break the loop in the
+    implementation of the socket that only sends data to a client when the application
+    is closed. If there is no data to send, the loop continues to run indefinitely and
+    prevents the application from closing properly. No better solution was found.
+    """
+    def __init__(self, websocket):
+        self._websocket = websocket
+        self._is_alive = True
+        self._task_ref = None
+    
+    async def _task(self):
+        while True:
+            try:
+                await asyncio.sleep(1)
+                try:
+                    # The following will raise an exception if the socket is disconnected.
+                    await asyncio.wait_for(self._websocket.receive(), timeout=0.01)
+                except asyncio.TimeoutError:
+                    # The socket is still connected.
+                    pass
+            except Exception:
+                self._is_alive = False
+                break
+
+    def start(self):
+        self._task_ref = asyncio.create_task(self._task())
+
+    @property
+    def is_alive(self):
+        return self._is_alive
+
+
 @router.websocket("/console_output/ws")
 # async def console_output_ws(websocket: WebSocket, principal=Security(get_current_principal, scopes=["read:console"])):
 async def console_output_ws(websocket: WebSocket):
     await websocket.accept()
-    q = queue.Queue(maxsize=1000)
-    SR.console_output_stream.add_queue(websocket, q)
+    q = SR.console_output_stream.add_queue(websocket)
+    wsmon = WebSocketMonitor(websocket)
+    wsmon.start()
     try:
-        while True:
-            await asyncio.sleep(1)  ##
+        while wsmon.is_alive:
             try:
-                while not q.empty():
-                    msg = q.get(block=False)
-                    # msg = "Hello"
-                    print(f"Sending message: {msg}")  ##
-                    await websocket.send_text(msg)
-            except queue.Empty:
-                pass
+                msg = await asyncio.wait_for(q.get(), timeout=1)
+                await websocket.send_text(msg)
+            except asyncio.TimeoutError:
+                pass            
     except WebSocketDisconnect:
         pass
+    finally:
         SR.console_output_stream.remove_queue(websocket)
+
 
 @router.websocket("/status/ws")
 async def status_ws(

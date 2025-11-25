@@ -4,6 +4,7 @@ import logging
 import queue
 import uuid
 import time as ttime
+import inspect
 
 from starlette.responses import StreamingResponse
 
@@ -52,6 +53,9 @@ class CollectPublishedConsoleOutput:
         self._background_task_stopped = asyncio.Event()
         self._background_task_stopped.set()
 
+        self._callbacks = []
+        self._callbacks_async = []
+
     @property
     def queues_set(self):
         """
@@ -67,6 +71,21 @@ class CollectPublishedConsoleOutput:
 
     async def get_text_buffer(self, n_lines):
         return await self._RM.console_monitor.text(n_lines)
+
+    def subscribe(self, cb):
+        """
+        Add a function or a coroutine to the list of callbacks. The callbacks must accept message as a parameter: cb(msg)
+        """
+        if inspect.iscoroutinefunction(cb):
+            self._callbacks_async.append(cb)
+        else:
+            self._callbacks.append(cb)
+
+    def unsubscribe(self, cb):
+        if inspect.iscoroutinefunction(cb):
+            self._callbacks_async.remove(cb)
+        else:
+            self._callbacks.remove(cb)
 
     def get_new_msgs(self, last_msg_uid):
         msg_list = []
@@ -95,6 +114,10 @@ class CollectPublishedConsoleOutput:
             try:
                 msg = await self._RM.console_monitor.next_msg(timeout=0.5)
                 self._add_message(msg=msg)
+                for cb in self._callbacks:
+                    cb(msg)
+                for cb in self._callbacks_async:
+                    await cb(msg)
             except self._RM.RequestTimeoutError:
                 pass
         self._background_task_stopped.set()
@@ -173,22 +196,29 @@ class StreamingResponseFromClass(StreamingResponse):
 class ConsoleOutputStream:
     def __init__(self, *, rm_ref):
         self._queues = {}
-        self._background_task = None
-        self._background_task_running = False
-        self._background_task_stopped = asyncio.Event()
-        self._background_task_stopped.set()
-        self._num = 0
+        # self._background_task = None
+        # self._background_task_running = False
+        # self._background_task_stopped = asyncio.Event()
+        # self._background_task_stopped.set()
+        # self._num = 0
+        self._queue_max_size = 1000
+
+    # @property
+    # def background_task_running(self):
+    #     return self._background_task_running
 
     @property
     def queues(self):
         return self._queues
 
-    def add_queue(self, key, queue):
+    def add_queue(self, key):
         """
         Add a new queue to the dictionary of queues. The key is a reference to the socket for
         for connection with the client.
         """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
         self._queues[key] = queue
+        return queue
 
     def remove_queue(self, key):
         """
@@ -197,40 +227,50 @@ class ConsoleOutputStream:
         if key in self._queues:
             del self._queues[key]
 
-    def _start_background_task(self):
-        if not self._background_task_running:
-            self._background_task = asyncio.create_task(self._load_msgs_task())
+    # def _start_background_task(self):
+    #     if not self._background_task_running:
+    #         self._background_task = asyncio.create_task(self._load_msgs_task())
 
-    async def _stop_background_task(self):
-        self._background_task_running = False
-        await self._background_task_stopped.wait()
+    # async def _stop_background_task(self):
+    #     self._background_task_running = False
+    #     await self._background_task_stopped.wait()
 
-    async def _load_msgs_task(self):
-        self._background_task_stopped.clear()
-        self._background_task_running = True
-        while self._background_task_running:
-            await asyncio.sleep(1)
-            try:
-                # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
-                # self._add_message(msg=msg)
-                msg = f"Message {self._num}\n"
-                print(f"msg={msg.strip()}")  ##
-                self._num += 1
-                for q in self._queues.values():
-                    # Protect from overflow. It's ok to discard old messages.
-                    if q.full():
-                        q.get()
-                    q.put(msg)
-            except self._RM.RequestTimeoutError:
-                pass
-        self._background_task_stopped.set()
+    # async def _load_msgs_task(self):
+    #     self._background_task_stopped.clear()
+    #     self._background_task_running = True
+    #     while self._background_task_running:
+    #         await asyncio.sleep(1)
+    #         try:
+    #             # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
+    #             # self._add_message(msg=msg)
+    #             msg = f"Message {self._num}\n"
+    #             print(f"msg={msg.strip()}")  ##
+    #             self._num += 1
+    #             for q in self._queues.values():
+    #                 # Protect from overflow. It's ok to discard old messages.
+    #                 if q.full():
+    #                     q.get()
+    #                 q.put(msg)
+    #         except self._RM.RequestTimeoutError:
+    #             pass
+    #     self._background_task_stopped.set()
+
+    async def add_message(self, msg):
+        msg_json = json.dumps(msg)
+        for q in self._queues.values():
+            # Protect from overflow. It's ok to discard old messages.
+            if q.full():
+                q.get_nowait()
+            await q.put(msg_json)
 
     def start(self):
+        pass
         # self._RM.console_monitor.enable()
-        self._start_background_task()
+        # self._start_background_task()
 
     async def stop(self):
-        await self._stop_background_task()
+        pass
+        # await self._stop_background_task()
 
 
 class StatusStream:

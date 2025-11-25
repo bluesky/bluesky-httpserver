@@ -8,6 +8,7 @@ import re
 import secrets
 import urllib.parse
 from functools import lru_cache, partial
+import signal
 
 from bluesky_queueserver.manager.comms import validate_zmq_key
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
@@ -348,6 +349,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         SR.console_output_loader.start()
         SR.set_console_output_stream(ConsoleOutputStream(rm_ref=RM))
         SR.console_output_stream.start()
+        SR.console_output_loader.subscribe(SR.console_output_stream.add_message)
         SR.set_status_stream(StatusStream(rm_ref=RM))
         SR.status_stream.start()
 
