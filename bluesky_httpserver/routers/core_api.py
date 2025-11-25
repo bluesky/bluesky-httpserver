@@ -1159,20 +1159,24 @@ async def console_output_ws(websocket: WebSocket):
 
 
 @router.websocket("/status/ws")
-async def status_ws(
-    websocket: WebSocket,
-    payload: dict = {},
-    principal=Security(get_current_principal, scopes=["read:status"]),
-):
+async def status_ws(websocket: WebSocket):
+# async def status_ws(
+#     websocket: WebSocket,
+#     payload: dict = {},
+#     principal=Security(get_current_principal, scopes=["read:status"]),
+# ):
     await websocket.accept()
-    q = queue.Queue()
-    SR.status_stream.add_queue(websocket, q)
+    q = SR.status_stream.add_queue(websocket)
+    wsmon = WebSocketMonitor(websocket)
+    wsmon.start()
     try:
-        while True:
+        while wsmon.is_alive:
             try:
-                msg = q.get(block=True, timeout=0.1)
+                msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
-            except queue.Empty:
-                pass
+            except asyncio.TimeoutError:
+                pass            
     except WebSocketDisconnect:
+        pass
+    finally:
         SR.status_stream.remove_queue(websocket)
