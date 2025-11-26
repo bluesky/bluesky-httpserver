@@ -196,16 +196,7 @@ class StreamingResponseFromClass(StreamingResponse):
 class ConsoleOutputStream:
     def __init__(self, *, rm_ref):
         self._queues = {}
-        # self._background_task = None
-        # self._background_task_running = False
-        # self._background_task_stopped = asyncio.Event()
-        # self._background_task_stopped.set()
-        # self._num = 0
         self._queue_max_size = 1000
-
-    # @property
-    # def background_task_running(self):
-    #     return self._background_task_running
 
     @property
     def queues(self):
@@ -227,34 +218,6 @@ class ConsoleOutputStream:
         if key in self._queues:
             del self._queues[key]
 
-    # def _start_background_task(self):
-    #     if not self._background_task_running:
-    #         self._background_task = asyncio.create_task(self._load_msgs_task())
-
-    # async def _stop_background_task(self):
-    #     self._background_task_running = False
-    #     await self._background_task_stopped.wait()
-
-    # async def _load_msgs_task(self):
-    #     self._background_task_stopped.clear()
-    #     self._background_task_running = True
-    #     while self._background_task_running:
-    #         await asyncio.sleep(1)
-    #         try:
-    #             # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
-    #             # self._add_message(msg=msg)
-    #             msg = f"Message {self._num}\n"
-    #             print(f"msg={msg.strip()}")  ##
-    #             self._num += 1
-    #             for q in self._queues.values():
-    #                 # Protect from overflow. It's ok to discard old messages.
-    #                 if q.full():
-    #                     q.get()
-    #                 q.put(msg)
-    #         except self._RM.RequestTimeoutError:
-    #             pass
-    #     self._background_task_stopped.set()
-
     async def add_message(self, msg):
         msg_json = json.dumps(msg)
         for q in self._queues.values():
@@ -265,15 +228,12 @@ class ConsoleOutputStream:
 
     def start(self):
         pass
-        # self._RM.console_monitor.enable()
-        # self._start_background_task()
 
     async def stop(self):
         pass
-        # await self._stop_background_task()
 
 
-class StatusStream:
+class SystemInfoStream:
     def __init__(self, *, rm_ref):
         self._RM = rm_ref
         self._queues = {}
@@ -320,20 +280,34 @@ class StatusStream:
         self._background_task_stopped.clear()
         self._background_task_running = True
         while self._background_task_running:
-            await asyncio.sleep(1)
             try:
-                # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
-                # self._add_message(msg=msg)
-                msg = f"Message {self._num}\n"
-                print(f"msg={msg.strip()}")  ##
-                self._num += 1
-                for q in self._queues.values():
-                    # Protect from overflow. It's ok to discard old messages.
-                    if q.full():
-                        q.get_nowait()
-                    await q.put(msg)
+                msg = await self._RM.system_info_monitor.next_msg(timeout=0.5)
+                # Discard all messages except status messages
+                if isinstance(msg, dict) and "msg" in msg and "status" in msg["msg"]:
+                    msg_json = json.dumps(msg)
+                    # self._add_message(msg=msg)
+                    for q in self._queues.values():
+                        # Protect from overflow. It's ok to discard old messages.
+                        if q.full():
+                            q.get_nowait()
+                        await q.put(msg_json)
             except self._RM.RequestTimeoutError:
                 pass
+
+            # await asyncio.sleep(1)
+            # try:
+            #     # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
+            #     # self._add_message(msg=msg)
+            #     msg = f"Message {self._num}\n"
+            #     print(f"msg={msg.strip()}")  ##
+            #     self._num += 1
+            #     for q in self._queues.values():
+            #         # Protect from overflow. It's ok to discard old messages.
+            #         if q.full():
+            #             q.get_nowait()
+            #         await q.put(msg)
+            # except self._RM.RequestTimeoutError:
+            #     pass
         self._background_task_stopped.set()
 
     def start(self):

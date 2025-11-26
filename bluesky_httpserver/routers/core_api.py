@@ -1139,7 +1139,6 @@ class WebSocketMonitor:
 
 
 @router.websocket("/console_output/ws")
-# async def console_output_ws(websocket: WebSocket, principal=Security(get_current_principal, scopes=["read:console"])):
 async def console_output_ws(websocket: WebSocket):
     await websocket.accept()
     q = SR.console_output_stream.add_queue(websocket)
@@ -1160,13 +1159,8 @@ async def console_output_ws(websocket: WebSocket):
 
 @router.websocket("/status/ws")
 async def status_ws(websocket: WebSocket):
-# async def status_ws(
-#     websocket: WebSocket,
-#     payload: dict = {},
-#     principal=Security(get_current_principal, scopes=["read:status"]),
-# ):
     await websocket.accept()
-    q = SR.status_stream.add_queue(websocket)
+    q = SR.system_info_stream.add_queue(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()
     try:
@@ -1179,4 +1173,4 @@ async def status_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        SR.status_stream.remove_queue(websocket)
+        SR.system_info_stream.remove_queue(websocket)

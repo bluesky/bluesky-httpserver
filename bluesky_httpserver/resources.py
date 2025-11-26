@@ -49,16 +49,16 @@ class _ServerResources:
     def console_output_stream(self, _):
         raise RuntimeError("Attempting to set read-only property 'console_output_stream'")
 
-    def set_status_stream(self, status_stream):
-        self._status_stream = status_stream
+    def set_system_info_stream(self, system_info_stream):
+        self._system_info_stream = system_info_stream
 
     @property
-    def status_stream(self):
-        return self._status_stream
+    def system_info_stream(self):
+        return self._system_info_stream
 
-    @status_stream.setter
-    def status_stream(self, _):
-        raise RuntimeError("Attempting to set read-only property 'status_stream'")
+    @system_info_stream.setter
+    def system_info_stream(self, _):
+        raise RuntimeError("Attempting to set read-only property 'system_info_stream'")
 
 
 SERVER_RESOURCES = _ServerResources()
