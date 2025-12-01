@@ -236,7 +236,8 @@ class ConsoleOutputStream:
 class SystemInfoStream:
     def __init__(self, *, rm_ref):
         self._RM = rm_ref
-        self._queues = {}
+        self._queues_status = {}
+        self._queues_info = {}
         self._background_task = None
         self._background_task_running = False
         self._background_task_stopped = asyncio.Event()
@@ -249,24 +250,44 @@ class SystemInfoStream:
         return self._background_task_running
 
     @property
-    def queues(self):
-        return self._queues
+    def queues_status(self):
+        return self._queues_status
 
-    def add_queue(self, key):
+    @property
+    def queues_info(self):
+        return self._queues_info
+
+    def add_queue_status(self, key):
         """
         Add a new queue to the dictionary of queues. The key is a reference to the socket for
         for connection with the client.
         """
         queue = asyncio.Queue(maxsize=self._queue_max_size)
-        self._queues[key] = queue
+        self._queues_status[key] = queue
         return queue
 
-    def remove_queue(self, key):
+    def add_queue_info(self, key):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
+        self._queues_info[key] = queue
+        return queue
+
+    def remove_queue_status(self, key):
         """
         Remove the queue identified by the key from the dictionary of queues.
         """
-        if key in self._queues:
-            del self._queues[key]
+        if key in self._queues_status:
+            del self._queues_status[key]
+
+    def remove_queue_info(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues_info:
+            del self._queues_info[key]
 
     def _start_background_task(self):
         if not self._background_task_running:
@@ -282,32 +303,24 @@ class SystemInfoStream:
         while self._background_task_running:
             try:
                 msg = await self._RM.system_info_monitor.next_msg(timeout=0.5)
-                # Discard all messages except status messages
-                if isinstance(msg, dict) and "msg" in msg and "status" in msg["msg"]:
+
+                if isinstance(msg, dict) and "msg" in msg:
                     msg_json = json.dumps(msg)
-                    # self._add_message(msg=msg)
-                    for q in self._queues.values():
+                    # ALL 'info' messages
+                    for q in self._queues_info.values():
                         # Protect from overflow. It's ok to discard old messages.
                         if q.full():
                             q.get_nowait()
                         await q.put(msg_json)
+                    if isinstance(msg["msg"], dict) and "status" in msg["msg"]:
+                        # ONLY 'status' messages
+                        for q in self._queues_status.values():
+                            # Protect from overflow. It's ok to discard old messages.
+                            if q.full():
+                                q.get_nowait()
+                            await q.put(msg_json)
             except self._RM.RequestTimeoutError:
                 pass
-
-            # await asyncio.sleep(1)
-            # try:
-            #     # msg = await self._RM.console_monitor.next_msg(timeout=0.5)
-            #     # self._add_message(msg=msg)
-            #     msg = f"Message {self._num}\n"
-            #     print(f"msg={msg.strip()}")  ##
-            #     self._num += 1
-            #     for q in self._queues.values():
-            #         # Protect from overflow. It's ok to discard old messages.
-            #         if q.full():
-            #             q.get_nowait()
-            #         await q.put(msg)
-            # except self._RM.RequestTimeoutError:
-            #     pass
         self._background_task_stopped.set()
 
     def start(self):

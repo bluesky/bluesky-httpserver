@@ -1160,7 +1160,7 @@ async def console_output_ws(websocket: WebSocket):
 @router.websocket("/status/ws")
 async def status_ws(websocket: WebSocket):
     await websocket.accept()
-    q = SR.system_info_stream.add_queue(websocket)
+    q = SR.system_info_stream.add_queue_status(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()
     try:
@@ -1173,4 +1173,23 @@ async def status_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        SR.system_info_stream.remove_queue(websocket)
+        SR.system_info_stream.remove_queue_status(websocket)
+
+
+@router.websocket("/info/ws")
+async def status_ws(websocket: WebSocket):
+    await websocket.accept()
+    q = SR.system_info_stream.add_queue_info(websocket)
+    wsmon = WebSocketMonitor(websocket)
+    wsmon.start()
+    try:
+        while wsmon.is_alive:
+            try:
+                msg = await asyncio.wait_for(q.get(), timeout=1)
+                await websocket.send_text(msg)
+            except asyncio.TimeoutError:
+                pass            
+    except WebSocketDisconnect:
+        pass
+    finally:
+        SR.system_info_stream.remove_queue_info(websocket)
