@@ -3,12 +3,11 @@ import pprint
 import re
 import threading
 import time as ttime
-from websockets.sync.client import connect
-
 
 import pytest
 import requests
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
+from websockets.sync.client import connect
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     API_KEY_FOR_TESTS,
@@ -342,7 +341,7 @@ def test_http_server_console_output_update_1(
 
 class _ReceiveConsoleOutputSocket(threading.Thread):
     """
-    Catch streaming console output by connecting to /console_output/ws socket and 
+    Catch streaming console output by connecting to /console_output/ws socket and
     save messages to the buffer.
     """
 
@@ -361,7 +360,7 @@ class _ReceiveConsoleOutputSocket(threading.Thread):
                     try:
                         msg = json.loads(msg_json)
                         self.received_data_buffer.append(msg)
-                    except json.JSONDecodeError as e:
+                    except json.JSONDecodeError:
                         pass
                 except TimeoutError:
                     pass

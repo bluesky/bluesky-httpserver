@@ -8,7 +8,6 @@ import re
 import secrets
 import urllib.parse
 from functools import lru_cache, partial
-import signal
 
 from bluesky_queueserver.manager.comms import validate_zmq_key
 from bluesky_queueserver_api.zmq.aio import REManagerAPI
@@ -395,7 +394,6 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         await SR.console_output_loader.stop()
         await SR.console_output_stream.stop()
         await SR.system_info_stream.stop()
-
 
     @lru_cache(1)
     def override_get_authenticators():

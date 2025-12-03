@@ -7,7 +7,7 @@ import warnings
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes

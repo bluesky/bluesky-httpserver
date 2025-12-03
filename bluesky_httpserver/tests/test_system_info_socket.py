@@ -1,13 +1,11 @@
 import json
 import pprint
-import re
 import threading
 import time as ttime
-from websockets.sync.client import connect
 
 import pytest
-import requests
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
+from websockets.sync.client import connect
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     API_KEY_FOR_TESTS,
@@ -24,7 +22,7 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
 
 class _ReceiveSystemInfoSocket(threading.Thread):
     """
-    Catch streaming console output by connecting to /console_output/ws socket and 
+    Catch streaming console output by connecting to /console_output/ws socket and
     save messages to the buffer.
     """
 
@@ -44,7 +42,7 @@ class _ReceiveSystemInfoSocket(threading.Thread):
                     try:
                         msg = json.loads(msg_json)
                         self.received_data_buffer.append(msg)
-                    except json.JSONDecodeError as e:
+                    except json.JSONDecodeError:
                         pass
                 except TimeoutError:
                     pass
@@ -103,9 +101,9 @@ def test_http_server_system_info_socket_1(
     for msg in buffer:
         assert "time" in msg, msg
         assert isinstance(msg["time"], float), msg
-        assert "msg"  in msg
+        assert "msg" in msg
         assert isinstance(msg["msg"], dict)
-        
+
     if endpoint == "/status/ws":
         for msg in buffer:
             assert "status" in msg["msg"], msg
@@ -122,4 +120,3 @@ def test_http_server_system_info_socket_1(
     wrk_env_exists = [_["msg"]["status"]["worker_environment_exists"] for _ in buffer if "status" in _["msg"]]
     assert wrk_env_exists.count(True) >= 0, wrk_env_exists
     assert wrk_env_exists.count(False) >= 0, wrk_env_exists
-

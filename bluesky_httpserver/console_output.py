@@ -1,10 +1,9 @@
 import asyncio
+import inspect
 import json
 import logging
 import queue
 import uuid
-import time as ttime
-import inspect
 
 from starlette.responses import StreamingResponse
 
@@ -74,7 +73,8 @@ class CollectPublishedConsoleOutput:
 
     def subscribe(self, cb):
         """
-        Add a function or a coroutine to the list of callbacks. The callbacks must accept message as a parameter: cb(msg)
+        Add a function or a coroutine to the list of callbacks. The callbacks must accept
+        message as a parameter: cb(msg)
         """
         if inspect.iscoroutinefunction(cb):
             self._callbacks_async.append(cb)
@@ -330,4 +330,3 @@ class SystemInfoStream:
     async def stop(self):
         await self._stop_background_task()
         await self._RM.system_info_monitor.disable_wait()
-

@@ -3,7 +3,6 @@ import io
 import logging
 import pprint
 from typing import Optional
-import queue
 
 import pydantic
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
@@ -1111,11 +1110,12 @@ class WebSocketMonitor:
     is closed. If there is no data to send, the loop continues to run indefinitely and
     prevents the application from closing properly. No better solution was found.
     """
+
     def __init__(self, websocket):
         self._websocket = websocket
         self._is_alive = True
         self._task_ref = None
-    
+
     async def _task(self):
         while True:
             try:
@@ -1150,7 +1150,7 @@ async def console_output_ws(websocket: WebSocket):
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
-                pass            
+                pass
     except WebSocketDisconnect:
         pass
     finally:
@@ -1169,7 +1169,7 @@ async def status_ws(websocket: WebSocket):
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
-                pass            
+                pass
     except WebSocketDisconnect:
         pass
     finally:
@@ -1177,7 +1177,7 @@ async def status_ws(websocket: WebSocket):
 
 
 @router.websocket("/info/ws")
-async def status_ws(websocket: WebSocket):
+async def info_ws(websocket: WebSocket):
     await websocket.accept()
     q = SR.system_info_stream.add_queue_info(websocket)
     wsmon = WebSocketMonitor(websocket)
@@ -1188,7 +1188,7 @@ async def status_ws(websocket: WebSocket):
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
-                pass            
+                pass
     except WebSocketDisconnect:
         pass
     finally:
