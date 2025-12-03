@@ -38,7 +38,7 @@ jobs:
 
         pushd ..
         git clone https://github.com/bitnami/containers.git
-        cd containers/bitnami/2.6/debian-12
+        cd containers/bitnami/openldap/2.6/debian-12
         docker build -t bitnami/openldap:latest .
         popd
 
