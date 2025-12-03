@@ -430,7 +430,7 @@ The following WebSockets are currently implemented:
 For example, the console output stream may be received by connecting to the socket with
 ``ws://localhost:60610/api/console_output/ws`` URI.
 
-Currently ``/info/ws`` and ``/status/ws`` sockets are streaming the same sequence of RE Manager 
+Currently ``/info/ws`` and ``/status/ws`` sockets are streaming the same sequence of RE Manager
 status messages. Additional messages may be added to the system info stream in the future.
 
 Message format for console output messages::
