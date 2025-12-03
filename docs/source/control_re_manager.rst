@@ -412,3 +412,35 @@ and generate the text output locally without repeatedly reloading the text
 buffer with each buffer update as in the case of ``/console_output`` API. ::
 
   http GET http://localhost:60610/api/console_output_update last_msg_uid=<last-message-uid>
+
+
+WebSockets for streaming System Info and Console Output
+-------------------------------------------------------
+
+The following WebSockets are currently implemented:
+
+- ``/console_output/ws`` - streaming of console output;
+
+- ``/info/ws`` - streaming of system info messages from RE Manager;
+
+- ``/status/ws`` - streaming of status messages from RE Manager. Status messages are sent each
+  time status is updated at RE Manager or at least once per second. Check status UID (part of
+  RE Manager status) to detect changes in status.
+
+For example, the console output stream may be received by connecting to the socket with
+``ws://localhost:60610/api/console_output/ws`` URI.
+
+Currently ``/info/ws`` and ``/status/ws`` sockets are streaming the same sequence of RE Manager 
+status messages. Additional messages may be added to the system info stream in the future.
+
+Message format for console output messages::
+
+  {"time": <timestamp>, "msg": <output-text>}
+
+Message format for system info messages::
+
+  {"time": <timestamp>, "msg": {<msg-class>: <msg-content>}}
+
+For example, the following format is used for status messages::
+
+  {"time": <timestamp>, "msg": {"status": {<RE-Manager-status>}}}
