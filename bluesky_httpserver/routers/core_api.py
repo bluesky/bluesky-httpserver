@@ -199,7 +199,7 @@ async def queue_item_add_handler(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
         payload.update({"user": displayed_name, "user_group": user_group})
 
         if "item" not in payload:
@@ -228,7 +228,7 @@ async def queue_item_execute_handler(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
         payload.update({"user": displayed_name, "user_group": user_group})
 
         if "item" not in payload:
@@ -257,7 +257,7 @@ async def queue_item_add_batch_handler(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
         payload.update({"user": displayed_name, "user_group": user_group})
 
         if "items" not in payload:
@@ -330,7 +330,7 @@ async def queue_upload_spreadsheet(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
 
         if custom_module:
             logger.info("Processing spreadsheet using function from external module ...")
@@ -399,7 +399,7 @@ async def queue_item_update_handler(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
         payload.update({"user": displayed_name, "user_group": user_group})
 
         msg = await SR.RM.item_update(**payload)
@@ -719,7 +719,7 @@ async def plans_allowed_handler(
         username = get_current_username(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
 
         if "reduced" in payload:
             reduced = payload["reduced"]
@@ -751,7 +751,7 @@ async def devices_allowed_handler(
         username = get_current_username(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
 
         payload.update({"user_group": user_group})
 
@@ -866,7 +866,7 @@ async def function_execute_handler(
             principal=principal, settings=settings, api_access_manager=api_access_manager
         )[0]
         displayed_name = api_access_manager.get_displayed_user_name(username)
-        user_group = resource_access_manager.get_resource_group(username)
+        user_group = resource_access_manager.get_resource_group(username, principal.roles)
         payload.update({"user": displayed_name, "user_group": user_group})
 
         if "item" not in payload:

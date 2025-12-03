@@ -457,7 +457,6 @@ is passed to Run Engine Manager in some API calls.
 Default Resource Access Policy
 ++++++++++++++++++++++++++++++
 
-Only the default policy ``DefaultResourceAccessControl`` is currently implemented.
 This is a simple policy, which associates one fixed group name with all users.
 The group name used by default is ``'primary'``. ``DefaultResourceAccessControl``
 with default settings is activated by default if no other policy is selected
@@ -482,3 +481,31 @@ See the documentation on ``DefaultResourceAccessControl`` for more details.
    :toctree: generated
 
     authorization.DefaultResourceAccessControl
+
+
+Single Group Resource Access Policy
++++++++++++++++++++++++++++++++++++
+
+This is a policy that associates one group name with one user, based on the
+specified user group in the access policy.
+The default group name is defined in the same way as the
+``DefaultResourceAccessControl``.
+This functionality can be very useful in order to provide different levels
+of access to different users directly in the server so all the clients
+can receive the same plans and devices for a specific user.
+
+The default group name can be changed in the policy configuration. For example,
+the following policy configuration sets the returned group name to ``test_user``::
+
+    resource_access:
+      policy: bluesky_httpserver.authorization:SingleGroupResourceAccessControl
+      args:
+        default_group: test_user
+
+See the documentation on ``SingleGroupResourceAccessControl`` for more details.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authorization.SingleGroupResourceAccessControl
