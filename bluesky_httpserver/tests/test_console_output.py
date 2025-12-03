@@ -7,6 +7,7 @@ import time as ttime
 import pytest
 import requests
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa F401
+from websockets.sync.client import connect
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     API_KEY_FOR_TESTS,
@@ -336,3 +337,101 @@ def test_http_server_console_output_update_1(
     assert resp7["success"] is True, pprint.pformat(resp7)
 
     assert wait_for_environment_to_be_closed(timeout=10)
+
+
+class _ReceiveConsoleOutputSocket(threading.Thread):
+    """
+    Catch streaming console output by connecting to /console_output/ws socket and
+    save messages to the buffer.
+    """
+
+    def __init__(self, api_key=API_KEY_FOR_TESTS, **kwargs):
+        super().__init__(**kwargs)
+        self.received_data_buffer = []
+        self._exit = False
+        self._api_key = api_key
+
+    def run(self):
+        websocket_uri = f"ws://{SERVER_ADDRESS}:{SERVER_PORT}/api/console_output/ws"
+        with connect(websocket_uri) as websocket:
+            while not self._exit:
+                try:
+                    msg_json = websocket.recv(timeout=0.1, decode=False)
+                    try:
+                        msg = json.loads(msg_json)
+                        self.received_data_buffer.append(msg)
+                    except json.JSONDecodeError:
+                        pass
+                except TimeoutError:
+                    pass
+
+    def stop(self):
+        """
+        Call this method to stop the thread. Then send a request to the server so that some output
+        is printed in ``stdout``.
+        """
+        self._exit = True
+
+    def __del__(self):
+        self.stop()
+
+
+@pytest.mark.parametrize("zmq_port", (None, 60619))
+def test_http_server_console_output_socket_1(
+    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
+):
+    """
+    Test for ``/console_output/ws`` websocket
+    """
+    # Start HTTP Server
+    if zmq_port is not None:
+        monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
+    fastapi_server_fs()
+
+    # Start RE Manager
+    params = ["--zmq-publish-console", "ON"]
+    if zmq_port is not None:
+        params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
+    re_manager_cmd(params)
+
+    rsc = _ReceiveConsoleOutputSocket()
+    rsc.start()
+    ttime.sleep(1)  # Wait until the client connects to the socket
+
+    resp1 = request_to_json(
+        "post",
+        "/queue/item/add",
+        json={"item": {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}},
+    )
+    assert resp1["success"] is True
+    assert resp1["qsize"] == 1
+    assert resp1["item"]["name"] == "count"
+    assert resp1["item"]["args"] == [["det1", "det2"]]
+    assert "item_uid" in resp1["item"]
+
+    # Wait until capture is complete (at least 2 message are expected) or timetout expires
+    ttime.sleep(10)
+    rsc.stop()
+    # Note, that some output from the server is is needed in order to exit the loop in the thread.
+
+    resp2 = request_to_json("get", "/queue/get")
+    assert resp2["items"] != []
+    assert len(resp2["items"]) == 1
+    assert resp2["items"][0] == resp1["item"]
+    assert resp2["running_item"] == {}
+
+    rsc.join()
+
+    assert len(rsc.received_data_buffer) >= 2, pprint.pformat(rsc.received_data_buffer)
+
+    # Verify that expected messages ('strings') are contained in captured messages.
+    expected_messages = {"Adding new item to the queue", "Item added"}
+    buffer = rsc.received_data_buffer
+    for msg in buffer:
+        for emsg in expected_messages.copy():
+            if emsg in msg["msg"]:
+                expected_messages.remove(emsg)
+
+    assert (
+        not expected_messages
+    ), f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"

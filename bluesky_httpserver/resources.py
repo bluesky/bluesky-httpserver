@@ -3,6 +3,7 @@ class _ServerResources:
         self._RM = None
         self._custom_code_modules = []
         self._console_output_loader = None
+        self._stop_server = False
 
     def set_RM(self, RM):
         self._RM = RM
@@ -36,6 +37,28 @@ class _ServerResources:
     @console_output_loader.setter
     def console_output_loader(self, _):
         raise RuntimeError("Attempting to set read-only property 'console_output_loader'")
+
+    def set_console_output_stream(self, console_output_stream):
+        self._console_output_stream = console_output_stream
+
+    @property
+    def console_output_stream(self):
+        return self._console_output_stream
+
+    @console_output_stream.setter
+    def console_output_stream(self, _):
+        raise RuntimeError("Attempting to set read-only property 'console_output_stream'")
+
+    def set_system_info_stream(self, system_info_stream):
+        self._system_info_stream = system_info_stream
+
+    @property
+    def system_info_stream(self):
+        return self._system_info_stream
+
+    @system_info_stream.setter
+    def system_info_stream(self, _):
+        raise RuntimeError("Attempting to set read-only property 'system_info_stream'")
 
 
 SERVER_RESOURCES = _ServerResources()

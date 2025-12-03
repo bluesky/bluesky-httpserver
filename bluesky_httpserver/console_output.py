@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import queue
@@ -51,6 +52,9 @@ class CollectPublishedConsoleOutput:
         self._background_task_stopped = asyncio.Event()
         self._background_task_stopped.set()
 
+        self._callbacks = []
+        self._callbacks_async = []
+
     @property
     def queues_set(self):
         """
@@ -66,6 +70,22 @@ class CollectPublishedConsoleOutput:
 
     async def get_text_buffer(self, n_lines):
         return await self._RM.console_monitor.text(n_lines)
+
+    def subscribe(self, cb):
+        """
+        Add a function or a coroutine to the list of callbacks. The callbacks must accept
+        message as a parameter: cb(msg)
+        """
+        if inspect.iscoroutinefunction(cb):
+            self._callbacks_async.append(cb)
+        else:
+            self._callbacks.append(cb)
+
+    def unsubscribe(self, cb):
+        if inspect.iscoroutinefunction(cb):
+            self._callbacks_async.remove(cb)
+        else:
+            self._callbacks.remove(cb)
 
     def get_new_msgs(self, last_msg_uid):
         msg_list = []
@@ -94,6 +114,10 @@ class CollectPublishedConsoleOutput:
             try:
                 msg = await self._RM.console_monitor.next_msg(timeout=0.5)
                 self._add_message(msg=msg)
+                for cb in self._callbacks:
+                    cb(msg)
+                for cb in self._callbacks_async:
+                    await cb(msg)
             except self._RM.RequestTimeoutError:
                 pass
         self._background_task_stopped.set()
@@ -167,3 +191,142 @@ class StreamingResponseFromClass(StreamingResponse):
 
     def __del__(self):
         del self._content
+
+
+class ConsoleOutputStream:
+    def __init__(self, *, rm_ref):
+        self._queues = {}
+        self._queue_max_size = 1000
+
+    @property
+    def queues(self):
+        return self._queues
+
+    def add_queue(self, key):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
+        self._queues[key] = queue
+        return queue
+
+    def remove_queue(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues:
+            del self._queues[key]
+
+    async def add_message(self, msg):
+        msg_json = json.dumps(msg)
+        for q in self._queues.values():
+            # Protect from overflow. It's ok to discard old messages.
+            if q.full():
+                q.get_nowait()
+            await q.put(msg_json)
+
+    def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+
+class SystemInfoStream:
+    def __init__(self, *, rm_ref):
+        self._RM = rm_ref
+        self._queues_status = {}
+        self._queues_info = {}
+        self._background_task = None
+        self._background_task_running = False
+        self._background_task_stopped = asyncio.Event()
+        self._background_task_stopped.set()
+        self._num = 0
+        self._queue_max_size = 1000
+
+    @property
+    def background_task_running(self):
+        return self._background_task_running
+
+    @property
+    def queues_status(self):
+        return self._queues_status
+
+    @property
+    def queues_info(self):
+        return self._queues_info
+
+    def add_queue_status(self, key):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
+        self._queues_status[key] = queue
+        return queue
+
+    def add_queue_info(self, key):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
+        self._queues_info[key] = queue
+        return queue
+
+    def remove_queue_status(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues_status:
+            del self._queues_status[key]
+
+    def remove_queue_info(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues_info:
+            del self._queues_info[key]
+
+    def _start_background_task(self):
+        if not self._background_task_running:
+            self._background_task = asyncio.create_task(self._load_msgs_task())
+
+    async def _stop_background_task(self):
+        self._background_task_running = False
+        await self._background_task_stopped.wait()
+
+    async def _load_msgs_task(self):
+        self._background_task_stopped.clear()
+        self._background_task_running = True
+        while self._background_task_running:
+            try:
+                msg = await self._RM.system_info_monitor.next_msg(timeout=0.5)
+
+                if isinstance(msg, dict) and "msg" in msg:
+                    msg_json = json.dumps(msg)
+                    # ALL 'info' messages
+                    for q in self._queues_info.values():
+                        # Protect from overflow. It's ok to discard old messages.
+                        if q.full():
+                            q.get_nowait()
+                        await q.put(msg_json)
+                    if isinstance(msg["msg"], dict) and "status" in msg["msg"]:
+                        # ONLY 'status' messages
+                        for q in self._queues_status.values():
+                            # Protect from overflow. It's ok to discard old messages.
+                            if q.full():
+                                q.get_nowait()
+                            await q.put(msg_json)
+            except self._RM.RequestTimeoutError:
+                pass
+        self._background_task_stopped.set()
+
+    def start(self):
+        self._RM.system_info_monitor.enable()
+        self._start_background_task()
+
+    async def stop(self):
+        await self._stop_background_task()
+        await self._RM.system_info_monitor.disable_wait()
