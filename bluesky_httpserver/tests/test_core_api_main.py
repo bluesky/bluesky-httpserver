@@ -1235,6 +1235,56 @@ def test_http_server_plan_history(re_manager, fastapi_server):  # noqa F811
     assert resp3["items"] == []
 
 
+# fmt: off
+@pytest.mark.parametrize("clear_params, exp_size", [
+    ({}, 0),
+    ({"size": 2}, 2),
+    ({"item_uid": 1}, 2),
+    ({"item_uid": -1}, 4),
+])
+# fmt: on
+def test_http_server_history_clear(re_manager, fastapi_server, clear_params, exp_size):  # noqa F811
+    """
+    Test for ``/history/clear`` API with all parameters.
+    """
+    clear_params = copy.deepcopy(clear_params)  # The dictionary is modified during the test
+
+    # Select very short plan
+    plan = {"item": {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}}
+    request_to_json("post", "/queue/item/add", json=plan)
+    request_to_json("post", "/queue/item/add", json=plan)
+    request_to_json("post", "/queue/item/add", json=plan)
+    request_to_json("post", "/queue/item/add", json=plan)
+
+    request_to_json("post", "/environment/open")
+    assert wait_for_environment_to_be_created(10), "Timeout"
+
+    request_to_json("post", "/queue/start")
+    assert wait_for_queue_execution_to_complete(10), "Timeout"
+
+    request_to_json("post", "/environment/close")
+    assert wait_for_environment_to_be_closed(10), "Timeout"
+
+    resp1 = request_to_json("get", "/history/get")
+    history = resp1["items"]
+    assert len(history) == 4
+
+    uids = [_["item_uid"] for _ in history]
+    if "item_uid" in clear_params:
+        n = clear_params["item_uid"]
+        if n >= 0:
+            clear_params["item_uid"] = uids[n]
+        else:
+            clear_params["item_uid"] = "non-existing-uid"
+
+    resp2 = request_to_json("post", "/history/clear", json=clear_params)
+    assert resp2["success"] is True
+
+    resp3 = request_to_json("get", "/history/get")
+    history2 = resp3["items"]
+    assert len(history2) == exp_size
+
+
 def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
