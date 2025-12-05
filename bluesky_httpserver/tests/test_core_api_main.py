@@ -1244,6 +1244,11 @@ def test_http_server_plan_history(re_manager, fastapi_server):  # noqa F811
 ])
 # fmt: on
 def test_http_server_history_clear(re_manager, fastapi_server, clear_params, exp_size):  # noqa F811
+    """
+    Test for ``/history/clear`` API with all parameters.
+    """
+    clear_params = copy.deepcopy(clear_params)  # The dictionary is modified during the test
+
     # Select very short plan
     plan = {"item": {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}}
     request_to_json("post", "/queue/item/add", json=plan)
