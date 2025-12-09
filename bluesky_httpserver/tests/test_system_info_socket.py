@@ -35,7 +35,8 @@ class _ReceiveSystemInfoSocket(threading.Thread):
 
     def run(self):
         websocket_uri = f"ws://{SERVER_ADDRESS}:{SERVER_PORT}/api{self._endpoint}"
-        with connect(websocket_uri) as websocket:
+        additional_headers = {"Authorization": f"ApiKey {self._api_key}"}
+        with connect(websocket_uri, additional_headers=additional_headers) as websocket:
             while not self._exit:
                 try:
                     msg_json = websocket.recv(timeout=0.1, decode=False)
