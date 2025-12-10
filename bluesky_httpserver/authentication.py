@@ -372,15 +372,21 @@ def get_current_principal_websocket(
     if auth_header.startswith("ApiKey "):
         api_key = auth_header[len("ApiKey") :].strip()
 
-    return get_current_principal(
-        request=websocket,
-        security_scopes=security_scopes,
-        access_token=access_token,
-        api_key=api_key,
-        settings=settings,
-        authenticators=authenticators,
-        api_access_manager=api_access_manager,
-    )
+    principal = None
+    try:
+        principal = get_current_principal(
+            request=websocket,
+            security_scopes=security_scopes,
+            access_token=access_token,
+            api_key=api_key,
+            settings=settings,
+            authenticators=authenticators,
+            api_access_manager=api_access_manager,
+        )
+    except HTTPException as ex:
+        print(f"WebSocket connection failed: {ex}")
+
+    return principal
 
 
 def create_session(settings, identity_provider, id, scopes):
