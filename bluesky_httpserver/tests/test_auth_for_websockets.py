@@ -94,7 +94,7 @@ class _ReceiveSystemInfoSocket(threading.Thread):
 
 
 # fmt: off
-@pytest.mark.parametrize("ws_auth_type", ["apikey", "token", "none"])
+@pytest.mark.parametrize("ws_auth_type", ["apikey", "token", "apikey_invalid", "token_invalid", "none"])
 # fmt: on
 def test_websocket_auth_01(
     tmpdir,
@@ -104,7 +104,8 @@ def test_websocket_auth_01(
     ws_auth_type,
 ):
     """
-    ``/auth/apikey`` (GET): basic tests.
+    Test authentication for websockets. The test is run only on ``/status/ws`` websocket.
+    The other websockets are expected to use the same authentication scheme.
     """
 
     # Start RE Manager
@@ -132,8 +133,12 @@ def test_websocket_auth_01(
         ws_params = {}
     elif ws_auth_type == "apikey":
         ws_params = {"api_key": api_key}
+    elif ws_auth_type == "apikey_invalid":
+        ws_params = {"api_key": "InvalidApiKey"}
     elif ws_auth_type == "token":
         ws_params = {"token": token}
+    elif ws_auth_type == "token_invalid":
+        ws_params = {"token": "InvalidToken"}
     else:
         assert False, f"Unknown authentication type: {ws_auth_type!r}"
 
@@ -157,12 +162,14 @@ def test_websocket_auth_01(
     rsc.join()
 
     buffer = rsc.received_data_buffer
-    if ws_auth_type == "none":
+    if ws_auth_type in ("none", "apikey_invalid", "token_invalid"):
         assert len(buffer) == 0
-    else:
+    elif ws_auth_type in ("apikey", "token"):
         assert len(buffer) > 0
         for msg in buffer:
             assert "time" in msg, msg
             assert isinstance(msg["time"], float), msg
             assert "msg" in msg
             assert isinstance(msg["msg"], dict)
+    else:
+        assert False, f"Unknown authentication type: {ws_auth_type!r}"
