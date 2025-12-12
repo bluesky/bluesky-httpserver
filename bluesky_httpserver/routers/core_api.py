@@ -14,7 +14,7 @@ if version.parse(pydantic.__version__) < version.parse("2.0.0"):
 else:
     from pydantic_settings import BaseSettings
 
-from ..authentication import get_current_principal
+from ..authentication import get_current_principal, get_current_principal_websocket
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
 from ..resources import SERVER_RESOURCES as SR
 from ..settings import get_settings
@@ -1139,7 +1139,12 @@ class WebSocketMonitor:
 
 
 @router.websocket("/console_output/ws")
-async def console_output_ws(websocket: WebSocket):
+async def console_output_ws(websocket: WebSocket, scopes=["read:console"]):
+    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    if not principal:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
     await websocket.accept()
     q = SR.console_output_stream.add_queue(websocket)
     wsmon = WebSocketMonitor(websocket)
@@ -1151,6 +1156,8 @@ async def console_output_ws(websocket: WebSocket):
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
                 pass
+            except RuntimeError:  # 'send' after the client is disconnected
+                pass
     except WebSocketDisconnect:
         pass
     finally:
@@ -1158,17 +1165,25 @@ async def console_output_ws(websocket: WebSocket):
 
 
 @router.websocket("/status/ws")
-async def status_ws(websocket: WebSocket):
+async def status_ws(websocket: WebSocket, scopes=["read:monitor"]):
+    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    if not principal:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
     await websocket.accept()
     q = SR.system_info_stream.add_queue_status(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()
+
     try:
         while wsmon.is_alive:
             try:
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
+                pass
+            except RuntimeError:  # 'send' after the client is disconnected
                 pass
     except WebSocketDisconnect:
         pass
@@ -1177,7 +1192,12 @@ async def status_ws(websocket: WebSocket):
 
 
 @router.websocket("/info/ws")
-async def info_ws(websocket: WebSocket):
+async def info_ws(websocket: WebSocket, scopes=["read:monitor"]):
+    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    if not principal:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
     await websocket.accept()
     q = SR.system_info_stream.add_queue_info(websocket)
     wsmon = WebSocketMonitor(websocket)
@@ -1188,6 +1208,8 @@ async def info_ws(websocket: WebSocket):
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
             except asyncio.TimeoutError:
+                pass
+            except RuntimeError:  # 'send' after the client is disconnected
                 pass
     except WebSocketDisconnect:
         pass

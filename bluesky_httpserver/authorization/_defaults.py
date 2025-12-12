@@ -73,6 +73,7 @@ _DEFAULT_SCOPES_ADVANCED = {
     "write:plan:control",
     "write:execute",
     "write:history:edit",
+    "user:apikeys",
 }
 
 _DEFAULT_SCOPES_USER = {
@@ -91,6 +92,7 @@ _DEFAULT_SCOPES_USER = {
     "write:plan:control",
     "write:execute",
     "write:history:edit",
+    "user:apikeys",
 }
 
 _DEFAULT_SCOPES_OBSERVER = {
@@ -103,6 +105,7 @@ _DEFAULT_SCOPES_OBSERVER = {
     "read:console",
     "read:lock",
     "read:testing",
+    "user:apikeys",
 }
 
 # =============================================================================================

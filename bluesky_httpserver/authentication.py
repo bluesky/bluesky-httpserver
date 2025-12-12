@@ -7,7 +7,7 @@ import warnings
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, WebSocket
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
@@ -202,7 +202,6 @@ def get_current_principal(
     #   otherwise it is None. The original set of API key scopes is used for generating new
     #   API keys.
     roles, scopes, api_key_scopes = {}, {}, None
-
     if api_key is not None:
         if authenticators:
             # Tiled is in a multi-user configuration with authentication providers.
@@ -353,6 +352,40 @@ def get_current_principal(
     else:
         api_key_scopes_list = api_key_scopes
     principal.roles, principal.scopes, principal.api_key_scopes = roles_list, scopes_list, api_key_scopes_list
+    return principal
+
+
+def get_current_principal_websocket(
+    websocket: WebSocket,
+    scopes: str,
+):
+    app = websocket.app
+    security_scopes = SecurityScopes(scopes=scopes or [])
+    settings = app.dependency_overrides[get_settings]()
+    authenticators = app.dependency_overrides[get_authenticators]()
+    api_access_manager = app.dependency_overrides[get_api_access_manager]()
+
+    auth_header = websocket.headers.get("Authorization", "")
+    access_token, api_key = None, None
+    if auth_header.startswith("Bearer "):
+        access_token = auth_header[len("Bearer") :].strip()
+    if auth_header.startswith("ApiKey "):
+        api_key = auth_header[len("ApiKey") :].strip()
+
+    principal = None
+    try:
+        principal = get_current_principal(
+            request=websocket,
+            security_scopes=security_scopes,
+            access_token=access_token,
+            api_key=api_key,
+            settings=settings,
+            authenticators=authenticators,
+            api_access_manager=api_access_manager,
+        )
+    except HTTPException as ex:
+        print(f"WebSocket connection failed: {ex}")
+
     return principal
 
 
