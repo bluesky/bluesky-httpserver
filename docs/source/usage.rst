@@ -296,7 +296,7 @@ the browser. The API request does not require authentication::
 Administrative API
 ==================
 
-Some API are available only to clients with administrative permissons
+Some API are available only to clients with administrative permissions
 (scope ``admin:read:principals`` and/or ``admin:apikeys``).
 
 

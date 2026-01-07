@@ -11,7 +11,7 @@ Basic configuration of the HTTP Server may be set using environment variables. F
 single-user API key could be :ref:`set using the environment variable<passing_single_user_API_key_as_ev>`
 ``QSERVER_HTTP_SERVER_SINGLE_USER_API_KEY``. While many environment variables are supported by the server
 and allow high level of customization of functionality, using configuration YML files is more simple,
-allows greater fexibility and is considered a preferable way of configuring the server in production
+allows greater flexibility and is considered a preferable way of configuring the server in production
 deployments.
 
 Environment variable for passing the path to server configuration file(s):
@@ -66,7 +66,7 @@ Configuration Files
 -------------------
 
 The preferable method for customizing HTTP server is using configuration YML files. The server
-not attemting to load config files unless the path is passed to the server using environment
+not attempting to load config files unless the path is passed to the server using environment
 variable ``QSERVER_HTTP_SERVER_CONFIG`` as described in :ref:`passing_config_to_server`.
 The path may point to a single config file or a directory containing multiple config files.
 The settings in config file override any settings defined using environment variables.
@@ -137,7 +137,7 @@ Alternatively, the list of modules can be specified in the configuration file::
 Authentication
 **************
 
-The server may be configured to run in single-user mode or multi-user mode. In nulti-user
+The server may be configured to run in single-user mode or multi-user mode. In multi-user
 mode the server is using one or more authentication providers to validate user login
 data and allows users to obtain access tokens or API keys for authorization of requests.
 Single-user and multi-user modes are mutually exclusive: activation of one or more
@@ -301,7 +301,7 @@ Expiration Time for Tokens and Sessions
 The server is using reasonable default values for lifetimes of the access token (15 minutes)
 refresh token (7 days) and sessions (365 days). The default values may be changed in
 configuration by setting authentication parameters ``access_token_max_age``,
-``refresh_token_max_age`` and ``session_max_age``, which define maximum age of the respecitvely
+``refresh_token_max_age`` and ``session_max_age``, which define maximum age of the respectively
 items in seconds. For example, the following configuration sets maximum age of the tokens
 and the session to 10, 3600 and 7200 seconds respectively::
 
@@ -324,7 +324,7 @@ supports API access control for single-user and anonymous public access.
 accepts the fixed dictionary that maps user names to assigned roles as an argument
 during initialization (arguments are defined in the config file) and serves as
 a convenient tool for testing, demos and small local deployments.
-More sophysticated policies based on ``BasicAPIAccessControl`` should be implemented
+More sophisticated policies based on ``BasicAPIAccessControl`` should be implemented
 for production deployments, where user roles are stored on a secure server.
 
 .. _basic_api_access_policy:
@@ -335,7 +335,7 @@ Basic API Access Policy
 ``BasicAPIAccessControl`` is used by default if no API access policy is specified in
 the config file. The policy supports access in single-user mode and anonymous public mode.
 The policy defines two user names: ``UNAUTHENTICATED_SINGLE_USER`` and ``UNAUTHENTICATED_PUBLIC``
-associated with ``unauthenticated_single_user`` and ``unauthenticated_public`` respecitvely.
+associated with ``unauthenticated_single_user`` and ``unauthenticated_public`` respectively.
 The first user name is used to manage access for clients using single-user API key and
 the second user name is used for access without API key or token (calls with an invalid
 API key or a token always fail).
