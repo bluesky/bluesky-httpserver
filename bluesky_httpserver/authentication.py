@@ -367,8 +367,9 @@ def get_current_principal_websocket(
 
     auth_header = websocket.headers.get("Authorization", "")
     access_token, api_key = None, None
-    if auth_header.startswith("Bearer "):
-        access_token = auth_header[len("Bearer") :].strip()
+    # Currently we do not support authentication with tokens
+    # if auth_header.startswith("Bearer "):
+    #     access_token = auth_header[len("Bearer") :].strip()
     if auth_header.startswith("ApiKey "):
         api_key = auth_header[len("ApiKey") :].strip()
 

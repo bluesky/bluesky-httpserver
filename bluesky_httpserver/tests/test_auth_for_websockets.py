@@ -94,7 +94,7 @@ class _ReceiveSystemInfoSocket(threading.Thread):
 
 
 # fmt: off
-@pytest.mark.parametrize("ws_auth_type", ["apikey", "token", "apikey_invalid", "token_invalid", "none"])
+@pytest.mark.parametrize("ws_auth_type", ["apikey", "apikey_invalid", "none"])
 # fmt: on
 def test_websocket_auth_01(
     tmpdir,
@@ -135,10 +135,10 @@ def test_websocket_auth_01(
         ws_params = {"api_key": api_key}
     elif ws_auth_type == "apikey_invalid":
         ws_params = {"api_key": "InvalidApiKey"}
-    elif ws_auth_type == "token":
-        ws_params = {"token": token}
-    elif ws_auth_type == "token_invalid":
-        ws_params = {"token": "InvalidToken"}
+    # elif ws_auth_type == "token":
+    #     ws_params = {"token": token}
+    # elif ws_auth_type == "token_invalid":
+    #     ws_params = {"token": "InvalidToken"}
     else:
         assert False, f"Unknown authentication type: {ws_auth_type!r}"
 
