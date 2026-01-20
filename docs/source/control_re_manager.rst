@@ -444,3 +444,7 @@ Message format for system info messages::
 For example, the following format is used for status messages::
 
   {"time": <timestamp>, "msg": {"status": {<RE-Manager-status>}}}
+
+Websockets support authentication using API keys. If a client is using tokens to access API,
+the client must request a short-lived API key and use it to connect to the websocket.
+Once the connection is established, the client should revoke the API key.
