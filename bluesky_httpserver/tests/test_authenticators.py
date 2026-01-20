@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
+# fmt: off
 from ..authenticators import LDAPAuthenticator
 
 
-# fmt: off
 @pytest.mark.parametrize("ldap_server_address, ldap_server_port", [
     ("localhost", 1389),
     ("localhost:1389", 904),  # Random port, ignored
