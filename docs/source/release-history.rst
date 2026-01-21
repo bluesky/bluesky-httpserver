@@ -2,6 +2,24 @@
 Release History
 ===============
 
+
+v0.0.14 (2026-01-21)
+====================
+
+Added
+-----
+
+- New `/console_output/ws` socket for streaming console output messages.
+
+- New `/info/ws` socket for streaming RE Manager system info messages.
+
+- New `/status/ws` socket for streaming RE Manager status messages.
+
+- Support for `size` and `item_uid` parameters of `/history/clear` API.
+
+- Support for secured access for websockets (authentication using API keys).
+
+
 v0.0.13 (2025-05-18)
 ====================
 
