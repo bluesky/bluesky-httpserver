@@ -35,17 +35,21 @@ class _ReceiveSystemInfoSocket(threading.Thread):
 
     def run(self):
         websocket_uri = f"ws://{SERVER_ADDRESS}:{SERVER_PORT}/api{self._endpoint}"
-        with connect(websocket_uri) as websocket:
-            while not self._exit:
-                try:
-                    msg_json = websocket.recv(timeout=0.1, decode=False)
+        additional_headers = {"Authorization": f"ApiKey {self._api_key}"}
+        try:
+            with connect(websocket_uri, additional_headers=additional_headers) as websocket:
+                while not self._exit:
                     try:
-                        msg = json.loads(msg_json)
-                        self.received_data_buffer.append(msg)
-                    except json.JSONDecodeError:
+                        msg_json = websocket.recv(timeout=0.1, decode=False)
+                        try:
+                            msg = json.loads(msg_json)
+                            self.received_data_buffer.append(msg)
+                        except json.JSONDecodeError:
+                            pass
+                    except TimeoutError:
                         pass
-                except TimeoutError:
-                    pass
+        except Exception as ex:
+            print(f"Failed to connect to server: {ex}")
 
     def stop(self):
         """
