@@ -31,6 +31,11 @@ else:
     from pydantic_settings import BaseSettings
 
 from . import schemas
+from .authentication.authenticator_base import (
+    ExternalAuthenticator,
+    InternalAuthenticator,
+    UserSessionState,
+)
 from .authorization._defaults import _DEFAULT_ANONYMOUS_PROVIDER_NAME
 from .core import json_or_msgpack
 from .database import orm
@@ -53,12 +58,6 @@ UNIT_SECOND = timedelta(seconds=1)
 def utcnow():
     "UTC now with second resolution"
     return datetime.utcnow().replace(microsecond=0)
-
-
-class Mode(enum.Enum):
-    password = "password"
-    external = "external"
-
 
 class Token(BaseModel):
     access_token: str
@@ -455,7 +454,8 @@ def build_auth_code_route(authenticator, provider):
         api_access_manager=Depends(get_api_access_manager),
     ):
         request.state.endpoint = "auth"
-        username = await authenticator.authenticate(request)
+        user_session_state = await authenticator.authenticate(request)
+        username = user_session_state.user_name if user_session_state else None
 
         if username and api_access_manager.is_user_known(username):
             scopes = api_access_manager.get_user_scopes(username)
@@ -484,7 +484,8 @@ def build_handle_credentials_route(authenticator, provider):
         api_access_manager=Depends(get_api_access_manager),
     ):
         request.state.endpoint = "auth"
-        username = await authenticator.authenticate(username=form_data.username, password=form_data.password)
+        user_session_state = await authenticator.authenticate(username=form_data.username, password=form_data.password)
+        username = user_session_state.user_name if user_session_state else None
 
         err_msg = None
         if not username:

@@ -15,7 +15,7 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from .authentication import Mode
+from .authentication import ExternalAuthenticator, InternalAuthenticator
 from .console_output import CollectPublishedConsoleOutput, ConsoleOutputStream, SystemInfoStream
 from .core import PatchedStreamingResponse
 from .database.core import purge_expired
@@ -179,12 +179,11 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
-            mode = authenticator.mode
-            if mode == Mode.password:
+            if isinstance(authenticator, InternalAuthenticator):
                 authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
-            elif mode == Mode.external:
+            elif isinstance(authenticator, ExternalAuthenticator):
                 authentication_router.get(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
@@ -192,7 +191,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                     build_auth_code_route(authenticator, provider)
                 )
             else:
-                raise ValueError(f"unknown authentication mode {mode}")
+                raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(custom_router, prefix=f"/provider/{provider}")
 
