@@ -1,6 +1,7 @@
 alembic
 bluesky-queueserver
 bluesky-queueserver-api
+cachetools
 fastapi
 ldap3
 orjson
