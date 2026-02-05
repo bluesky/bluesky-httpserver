@@ -63,15 +63,11 @@ properties:
     description: May be displayed by client after successful login.
 """
 
-    def __init__(
-        self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""
-    ):
+    def __init__(self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""):
         self._users_to_passwords = users_to_passwords
         self.confirmation_message = confirmation_message
 
-    async def authenticate(
-        self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
         true_password = self._users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
@@ -96,16 +92,12 @@ properties:
 
     def __init__(self, service: str = "login", confirmation_message: str = ""):
         if not modules_available("pamela"):
-            raise ModuleNotFoundError(
-                "This PAMAuthenticator requires the module 'pamela' to be installed."
-            )
+            raise ModuleNotFoundError("This PAMAuthenticator requires the module 'pamela' to be installed.")
         self.service = service
         self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
-    async def authenticate(
-        self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
         import pamela
 
         try:
@@ -187,15 +179,11 @@ properties:
 
     @functools.cached_property
     def authorization_endpoint(self) -> httpx.URL:
-        return httpx.URL(
-            cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
-        )
+        return httpx.URL(cast(str, self._config_from_oidc_url.get("authorization_endpoint")))
 
     @functools.cached_property
     def device_authorization_endpoint(self) -> str:
-        return cast(
-            str, self._config_from_oidc_url.get("device_authorization_endpoint")
-        )
+        return cast(str, self._config_from_oidc_url.get("device_authorization_endpoint"))
 
     @functools.cached_property
     def end_session_endpoint(self) -> str:
@@ -217,9 +205,7 @@ properties:
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params.get("code")
         if not code:
-            logger.warning(
-                "Authentication failed: No authorization code parameter provided."
-            )
+            logger.warning("Authentication failed: No authorization code parameter provided.")
             return None
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
@@ -350,9 +336,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
             # The PyPI package name is 'python3-saml'
             # but it imports as 'onelogin'.
             # https://github.com/onelogin/python3-saml
-            raise ModuleNotFoundError(
-                "This SAMLAuthenticator requires 'python3-saml' to be installed."
-            )
+            raise ModuleNotFoundError("This SAMLAuthenticator requires 'python3-saml' to be installed.")
 
         from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
@@ -367,9 +351,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         if not modules_available("onelogin"):
-            raise ModuleNotFoundError(
-                "This SAMLAuthenticator requires the module 'oneline' to be installed."
-            )
+            raise ModuleNotFoundError("This SAMLAuthenticator requires the module 'oneline' to be installed.")
         from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
         req = await prepare_saml_from_fastapi_request(request, True)
@@ -378,8 +360,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
         errors = auth.get_errors()  # This method receives an array with the errors
         if errors:
             raise Exception(
-                "Error when processing SAML Response: %s %s"
-                % (", ".join(errors), auth.get_last_error_reason())
+                "Error when processing SAML Response: %s %s" % (", ".join(errors), auth.get_last_error_reason())
             )
         if auth.is_authenticated():
             # Return a string that the Identity can use as id.
@@ -398,7 +379,7 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
         "server_port": request.url.port,
         "script_name": request.url.path,
         "post_data": {},
-        "get_data": {}
+        "get_data": {},
         # Advanced request options
         # "https": "",
         # "request_uri": "",
@@ -644,9 +625,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         self.escape_userdn = escape_userdn
         self.search_filter = search_filter
         self.attributes = attributes if attributes else []
-        self.auth_state_attributes = (
-            auth_state_attributes if auth_state_attributes else []
-        )
+        self.auth_state_attributes = auth_state_attributes if auth_state_attributes else []
         self.use_lookup_dn_username = use_lookup_dn_username
 
         if isinstance(server_address, str):
@@ -659,14 +638,10 @@ class LDAPAuthenticator(InternalAuthenticator):
                 f"type(server_address)={type(server_address)}"
             )
         if not server_address_list:
-            raise ValueError(
-                "No servers are specified: 'server_address' is an empty list"
-            )
+            raise ValueError("No servers are specified: 'server_address' is an empty list")
 
         self.server_address_list = server_address_list
-        self.server_port = (
-            server_port if server_port is not None else self._server_port_default()
-        )
+        self.server_port = server_port if server_port is not None else self._server_port_default()
         self.confirmation_message = confirmation_message
 
     def _server_port_default(self):
@@ -720,15 +695,8 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         response = conn.response
         if len(response) == 0 or "attributes" not in response[0].keys():
-            msg = (
-                "No entry found for user '{username}' "
-                "when looking up attribute '{attribute}'"
-            )
-            logger.warning(
-                msg.format(
-                    username=username_supplied_by_user, attribute=self.user_attribute
-                )
-            )
+            msg = "No entry found for user '{username}' " "when looking up attribute '{attribute}'"
+            logger.warning(msg.format(username=username_supplied_by_user, attribute=self.user_attribute))
             return (None, None)
 
         user_dn = response[0]["attributes"][self.lookup_dn_user_dn_attribute]
@@ -786,9 +754,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             )
             server_pool.add(server)
 
-        auto_bind_no_ssl = (
-            ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
-        )
+        auto_bind_no_ssl = ldap3.AUTO_BIND_TLS_BEFORE_BIND if self.use_tls else ldap3.AUTO_BIND_NO_TLS
         auto_bind = ldap3.AUTO_BIND_NO_TLS if self.use_ssl else auto_bind_no_ssl
         conn = ldap3.Connection(
             server_pool,
@@ -813,9 +779,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
 
-    async def authenticate(
-        self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
         import ldap3
 
         username_saved = username  # Save the user name passed as a parameter
@@ -841,9 +805,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         # sanity check
         if not self.lookup_dn and not bind_dn_template:
-            logger.warning(
-                "Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'."
-            )
+            logger.warning("Login not allowed, please configure 'lookup_dn' or 'bind_dn_template'.")
             return None
 
         if self.lookup_dn:
@@ -881,9 +843,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 if conn.bound:
                     is_bound = True
                 else:
-                    is_bound = await asyncio.get_running_loop().run_in_executor(
-                        None, conn.bind
-                    )
+                    is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
 
             msg = msg.format(username=username, userdn=userdn, is_bound=is_bound)
             logger.debug(msg)
@@ -896,9 +856,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             return None
 
         if self.search_filter:
-            search_filter = self.search_filter.format(
-                userattr=self.user_attribute, username=username
-            )
+            search_filter = self.search_filter.format(userattr=self.user_attribute, username=username)
 
             search_func = functools.partial(
                 conn.search,
@@ -912,33 +870,18 @@ class LDAPAuthenticator(InternalAuthenticator):
             n_users = len(conn.response)
             if n_users == 0:
                 msg = "User with '{userattr}={username}' not found in directory"
-                logger.warning(
-                    msg.format(userattr=self.user_attribute, username=username)
-                )
+                logger.warning(msg.format(userattr=self.user_attribute, username=username))
                 return None
             if n_users > 1:
-                msg = (
-                    "Duplicate users found! "
-                    "{n_users} users found with '{userattr}={username}'"
-                )
-                logger.warning(
-                    msg.format(
-                        userattr=self.user_attribute, username=username, n_users=n_users
-                    )
-                )
+                msg = "Duplicate users found! " "{n_users} users found with '{userattr}={username}'"
+                logger.warning(msg.format(userattr=self.user_attribute, username=username, n_users=n_users))
                 return None
 
         if self.allowed_groups:
             logger.debug("username:%s Using dn %s", username, userdn)
             found = False
             for group in self.allowed_groups:
-                group_filter = (
-                    "(|"
-                    "(member={userdn})"
-                    "(uniqueMember={userdn})"
-                    "(memberUid={uid})"
-                    ")"
-                )
+                group_filter = "(|" "(member={userdn})" "(uniqueMember={userdn})" "(memberUid={uid})" ")"
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]
 
@@ -949,9 +892,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                     search_filter=group_filter,
                     attributes=group_attributes,
                 )
-                found = await asyncio.get_running_loop().run_in_executor(
-                    None, search_func
-                )
+                found = await asyncio.get_running_loop().run_in_executor(None, search_func)
                 if found:
                     break
 

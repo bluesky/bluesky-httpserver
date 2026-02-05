@@ -21,9 +21,7 @@ class InternalAuthenticator(ABC):
     and password and returns a UserSessionState on success or None on failure.
     """
 
-    async def authenticate(
-        self, username: str, password: str
-    ) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
         raise NotImplementedError
 
 
