@@ -721,8 +721,6 @@ def build_device_code_submit_route(authenticator, provider):
 """
                 return HTMLResponse(content=error_html, status_code=403)
 
-            scopes = api_access_manager.get_user_scopes(username)
-
             # Create the session
             session = await asyncio.get_running_loop().run_in_executor(
                 None, _create_session_orm, settings, provider, username, db

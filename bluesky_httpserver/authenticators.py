@@ -222,7 +222,6 @@ properties:
         if response.is_error:
             logger.error("Authentication error: %r", response_body)
             return None
-        response_body = response.json()
         id_token = response_body["id_token"]
         # NOTE: We decode the id_token, not access_token, because:
         # 1. The id_token is the OIDC identity assertion meant for the client
