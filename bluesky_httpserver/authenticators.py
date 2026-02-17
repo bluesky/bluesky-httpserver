@@ -224,16 +224,37 @@ properties:
             return None
         response_body = response.json()
         id_token = response_body["id_token"]
-        access_token = response_body["access_token"]
+        # NOTE: We decode the id_token, not access_token, because:
+        # 1. The id_token is the OIDC identity assertion meant for the client
+        # 2. Some providers (like Microsoft Entra) return opaque access_tokens
+        #    that cannot be decoded with the JWKS keys when the resource is
+        #    a first-party Microsoft API (e.g., Graph API with User.Read scope)
         try:
-            verified_body = self.decode_token(access_token)
+            verified_body = self.decode_token(id_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
                 jwt.get_unverified_claims(id_token),
             )
             return None
-        return UserSessionState(verified_body["sub"], {})
+        # Use preferred_username as the user identifier, extracting just the username
+        # part if it's in email format (user@domain.com -> user)
+        preferred_username = verified_body.get("preferred_username")
+        if preferred_username and "@" in preferred_username:
+            user_id = preferred_username.split("@")[0]
+        elif preferred_username:
+            user_id = preferred_username
+        else:
+            user_id = verified_body["sub"]
+        logger.info(
+            "OIDC authentication successful. user_id=%r (sub=%r, preferred_username=%r, email=%r, name=%r)",
+            user_id,
+            verified_body.get("sub"),
+            verified_body.get("preferred_username"),
+            verified_body.get("email"),
+            verified_body.get("name"),
+        )
+        return UserSessionState(user_id, {})
 
 
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):

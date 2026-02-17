@@ -195,3 +195,28 @@ def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TES
             return True
 
     return False
+
+
+# ============================================================================
+# OIDC Test Fixtures
+# ============================================================================
+
+@pytest.fixture
+def oidc_base_url() -> str:
+    """Base URL for mock OIDC provider."""
+    return "https://example.com/realms/example/"
+
+
+@pytest.fixture
+def well_known_response(oidc_base_url: str) -> dict:
+    """Mock OIDC well-known configuration response."""
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": oidc_base_url.rstrip("/"),
+        "jwks_uri": f"{oidc_base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{oidc_base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{oidc_base_url}protocol/openid-connect/logout",
+    }
+

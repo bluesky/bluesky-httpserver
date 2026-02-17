@@ -47,14 +47,14 @@ properties:
     properties:
       custom_routers:
         type: array
-        item:
+        items:
           type: string
         description: |
           The list of Python modules with custom routers. Overrides the list of modules set using
           QSERVER_HTTP_CUSTOM_ROUTERS environment variable.
       custom_modules:
         type: array
-        item:
+        items:
           type: string
         description: |
           THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS. Overrides the list of modules
@@ -65,7 +65,7 @@ properties:
     properties:
       providers:
         type: array
-        item:
+        items:
           type: object
           additionalProperties: false
           required:
@@ -83,7 +83,7 @@ properties:
               description: |
                 Type of Authenticator to use.
 
-                These are typically from the tiled.authenticators module,
+                These are typically from the bluesky_httpserver.authenticators module,
                 though user-defined ones may be used as well.
 
                 This is given as an import path. In an import path, packages/modules
@@ -92,21 +92,21 @@ properties:
                 Example:
 
                 ```yaml
-                authenticator: bluesky_httpserver.examples.DummyAuthenticator
+                authenticator: bluesky_httpserver.authenticators:DummyAuthenticator
                 ```
+            args:
+              type: object
+              description: |
+                Named arguments to pass to Authenticator. If there are none,
+                `args` may be omitted or empty.
+
+                Example:
+
+                ```yaml
+                authenticator: bluesky_httpserver.authenticators:PAMAuthenticator
                 args:
-                  type: [object, "null"]
-                  description: |
-                    Named arguments to pass to Authenticator. If there are none,
-                    `args` may be omitted or empty.
-
-                    Example:
-
-                    ```yaml
-                    authenticator: bluesky_httpserver.examples.PAMAuthenticator
-                    args:
-                      service: "custom_service"
-                    ```
+                  service: "custom_service"
+                ```
       # qserver_admins:
       #   type: array
       #   items:
