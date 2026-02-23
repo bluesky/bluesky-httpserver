@@ -201,6 +201,7 @@ def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TES
 # OIDC Test Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def oidc_base_url() -> str:
     """Base URL for mock OIDC provider."""
@@ -219,4 +220,3 @@ def well_known_response(oidc_base_url: str) -> dict:
         "device_authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth/device",
         "end_session_endpoint": f"{oidc_base_url}protocol/openid-connect/logout",
     }
-

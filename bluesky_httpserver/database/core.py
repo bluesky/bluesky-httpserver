@@ -304,7 +304,9 @@ def lookup_valid_pending_session_by_device_code(db, device_code: bytes) -> Optio
     Returns None if the pending session is not found or has expired.
     """
     hashed_device_code = hashlib.sha256(device_code).digest()
-    pending_session = db.query(PendingSession).filter(PendingSession.hashed_device_code == hashed_device_code).first()
+    pending_session = (
+        db.query(PendingSession).filter(PendingSession.hashed_device_code == hashed_device_code).first()
+    )
     if pending_session is None:
         return None
     if pending_session.expiration_time is not None and pending_session.expiration_time < datetime.utcnow():

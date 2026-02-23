@@ -41,9 +41,7 @@ def mock_oidc_server(
     json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
     """Set up mock OIDC server endpoints."""
-    respx_mock.get(oidc_well_known_url).mock(
-        return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
-    )
+    respx_mock.get(oidc_well_known_url).mock(return_value=httpx.Response(httpx.codes.OK, json=well_known_response))
     respx_mock.get(well_known_response["jwks_uri"]).mock(
         return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
     )
@@ -101,10 +99,7 @@ class TestOIDCAuthenticator:
         assert authenticator.issuer == well_known_response["issuer"]
         assert authenticator.jwks_uri == well_known_response["jwks_uri"]
         assert authenticator.token_endpoint == well_known_response["token_endpoint"]
-        assert (
-            authenticator.device_authorization_endpoint
-            == well_known_response["device_authorization_endpoint"]
-        )
+        assert authenticator.device_authorization_endpoint == well_known_response["device_authorization_endpoint"]
         assert authenticator.end_session_endpoint == well_known_response["end_session_endpoint"]
 
         # Should only call well-known endpoint once due to caching
