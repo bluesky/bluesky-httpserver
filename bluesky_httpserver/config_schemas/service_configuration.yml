@@ -47,14 +47,14 @@ properties:
     properties:
       custom_routers:
         type: array
-        items:
+        item:
           type: string
         description: |
           The list of Python modules with custom routers. Overrides the list of modules set using
           QSERVER_HTTP_CUSTOM_ROUTERS environment variable.
       custom_modules:
         type: array
-        items:
+        item:
           type: string
         description: |
           THE FUNCTIONALITY WILL BE DEPRECATED IN FAVOR OF CUSTOM ROUTERS. Overrides the list of modules
@@ -65,7 +65,7 @@ properties:
     properties:
       providers:
         type: array
-        items:
+        item:
           type: object
           additionalProperties: false
           required:
@@ -94,34 +94,19 @@ properties:
                 ```yaml
                 authenticator: bluesky_httpserver.authenticators:DummyAuthenticator
                 ```
-            args:
-              type: object
-              description: |
-                Named arguments to pass to Authenticator. If there are none,
-                `args` may be omitted or empty.
+              args:
+                type: object
+                description: |
+                  Named arguments to pass to Authenticator. If there are none,
+                  `args` may be omitted or empty.
 
-                Example:
+                  Example:
 
-                ```yaml
-                authenticator: bluesky_httpserver.authenticators:PAMAuthenticator
-                args:
-                  service: "custom_service"
-                ```
-      # qserver_admins:
-      #   type: array
-      #   items:
-      #     type: object
-      #     additionalProperties: false
-      #     required:
-      #       - provider
-      #       - id
-      #     properties:
-      #       provider:
-      #         type: string
-      #       id:
-      #         type: string
-      #   description: |
-      #     Give users with these identities 'admin' Role.
+                  ```yaml
+                  authenticator: bluesky_httpserver.authenticators:PAMAuthenticator
+                  args:
+                    service: "custom_service"
+                  ```
       secret_keys:
         type: array
         items:

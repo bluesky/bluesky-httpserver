@@ -597,6 +597,7 @@ def build_device_code_authorize_route(authenticator, provider):
                 "response_type": "code",
                 "scope": "openid profile email",
                 "redirect_uri": f"{get_base_url(request)}/auth/provider/{provider}/device_code",
+                "state": pending_session["user_code"].replace("-", ""),
             }
         )
         return {
@@ -611,14 +612,121 @@ def build_device_code_authorize_route(authenticator, provider):
     return device_code_authorize
 
 
+async def _complete_device_code_authorization(
+    request: Request,
+    authenticator,
+    provider: str,
+    code: str,
+    user_code: str,
+    settings: BaseSettings,
+    api_access_manager,
+):
+    request.state.endpoint = "auth"
+    action = f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
+    normalized_user_code = user_code.upper().replace("-", "").strip()
+
+    with get_sessionmaker(settings.database_settings)() as db:
+        pending_session = lookup_valid_pending_session_by_user_code(db, normalized_user_code)
+        if pending_session is None:
+            error_html = f"""
+<!DOCTYPE html>
+<html>
+<head><title>Error</title>
+<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+</head>
+<body>
+    <h1>Authorization Failed</h1>
+    <div class="error">Invalid user code. It may have been mistyped, or the pending request may have expired.</div>
+    <br/><a href="{action.rsplit('?', 1)[0]}?code={code}">Try again</a>
+</body>
+</html>
+"""
+            return HTMLResponse(content=error_html, status_code=401)
+
+        # Authenticate with the OIDC provider using the authorization code
+        user_session_state = await authenticator.authenticate(request)
+        if not user_session_state:
+            error_html = """
+<!DOCTYPE html>
+<html>
+<head><title>Authentication Failed</title>
+<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+</head>
+<body>
+    <h1>Authentication Failed</h1>
+    <div class="error">User code was correct but authentication with the identity provider failed. Please contact the administrator.</div>
+</body>
+</html>
+"""
+            return HTMLResponse(content=error_html, status_code=401)
+
+        username = user_session_state.user_name
+        if not api_access_manager.is_user_known(username):
+            error_html = f"""
+<!DOCTYPE html>
+<html>
+<head><title>Authorization Failed</title>
+<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+</head>
+<body>
+    <h1>Authorization Failed</h1>
+    <div class="error">User '{username}' is not authorized to access this server.</div>
+</body>
+</html>
+"""
+            return HTMLResponse(content=error_html, status_code=403)
+
+        # Create the session
+        session = await asyncio.get_running_loop().run_in_executor(
+            None, _create_session_orm, settings, provider, username, db
+        )
+
+        # Link the pending session to the real session
+        pending_session.session_id = session.id
+        db.add(pending_session)
+        db.commit()
+
+    success_html = f"""
+<!DOCTYPE html>
+<html>
+<head><title>Success</title>
+<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.success {{ background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; color: #155724; }}</style>
+</head>
+<body>
+    <h1>Success!</h1>
+    <div class="success">You have been authenticated. Return to your terminal application - within {DEVICE_CODE_POLLING_INTERVAL} seconds it should be successfully logged in.</div>
+</body>
+</html>
+"""
+    return HTMLResponse(content=success_html)
+
+
 def build_device_code_form_route(authenticator, provider):
     """Build a GET route that shows the user code entry form."""
 
     async def device_code_form(
         request: Request,
         code: str,
+        state: Optional[str] = Query(None),
+        settings: BaseSettings = Depends(get_settings),
+        api_access_manager=Depends(get_api_access_manager),
     ):
         """Show form for user to enter user code after browser auth."""
+        if state:
+            return await _complete_device_code_authorization(
+                request=request,
+                authenticator=authenticator,
+                provider=provider,
+                code=code,
+                user_code=state,
+                settings=settings,
+                api_access_manager=api_access_manager,
+            )
+
         action = f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         html_content = f"""
 <!DOCTYPE html>
@@ -663,88 +771,15 @@ def build_device_code_submit_route(authenticator, provider):
         api_access_manager=Depends(get_api_access_manager),
     ):
         """Handle user code submission and link to authenticated session."""
-        request.state.endpoint = "auth"
-        action = f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
-        normalized_user_code = user_code.upper().replace("-", "").strip()
-
-        with get_sessionmaker(settings.database_settings)() as db:
-            pending_session = lookup_valid_pending_session_by_user_code(db, normalized_user_code)
-            if pending_session is None:
-                error_html = f"""
-<!DOCTYPE html>
-<html>
-<head><title>Error</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
-</head>
-<body>
-    <h1>Authorization Failed</h1>
-    <div class="error">Invalid user code. It may have been mistyped, or the pending request may have expired.</div>
-    <br/><a href="{action.rsplit('?', 1)[0]}?code={code}">Try again</a>
-</body>
-</html>
-"""
-                return HTMLResponse(content=error_html, status_code=401)
-
-            # Authenticate with the OIDC provider using the authorization code
-            user_session_state = await authenticator.authenticate(request)
-            if not user_session_state:
-                error_html = """
-<!DOCTYPE html>
-<html>
-<head><title>Authentication Failed</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
-</head>
-<body>
-    <h1>Authentication Failed</h1>
-    <div class="error">User code was correct but authentication with the identity provider failed. Please contact the administrator.</div>
-</body>
-</html>
-"""
-                return HTMLResponse(content=error_html, status_code=401)
-
-            username = user_session_state.user_name
-            if not api_access_manager.is_user_known(username):
-                error_html = f"""
-<!DOCTYPE html>
-<html>
-<head><title>Authorization Failed</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
-</head>
-<body>
-    <h1>Authorization Failed</h1>
-    <div class="error">User '{username}' is not authorized to access this server.</div>
-</body>
-</html>
-"""
-                return HTMLResponse(content=error_html, status_code=403)
-
-            # Create the session
-            session = await asyncio.get_running_loop().run_in_executor(
-                None, _create_session_orm, settings, provider, username, db
-            )
-
-            # Link the pending session to the real session
-            pending_session.session_id = session.id
-            db.add(pending_session)
-            db.commit()
-
-        success_html = f"""
-<!DOCTYPE html>
-<html>
-<head><title>Success</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.success {{ background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; color: #155724; }}</style>
-</head>
-<body>
-    <h1>Success!</h1>
-    <div class="success">You have been authenticated. Return to your terminal application - within {DEVICE_CODE_POLLING_INTERVAL} seconds it should be successfully logged in.</div>
-</body>
-</html>
-"""
-        return HTMLResponse(content=success_html)
+        return await _complete_device_code_authorization(
+            request=request,
+            authenticator=authenticator,
+            provider=provider,
+            code=code,
+            user_code=user_code,
+            settings=settings,
+            api_access_manager=api_access_manager,
+        )
 
     return device_code_submit
 
