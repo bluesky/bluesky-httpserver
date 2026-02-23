@@ -154,6 +154,49 @@ Then users ``bob``, ``alice`` and ``tom`` can log into the server as ::
 
 If authentication is successful, then the server returns access and refresh tokens.
 
+Logging in with OIDC Providers (Google, Entra, ORCID, ...)
+-----------------------------------------------------------
+
+For providers configured with ``OIDCAuthenticator``, use provider-specific endpoints
+under ``/api/auth/provider/<provider-name>/...``.
+
+Browser-first flow
+++++++++++++++++++
+
+If you are already in a browser context, open:
+
+``<hostname>/api/auth/provider/<provider-name>/authorize``
+
+This redirects to the OIDC provider login page and then back to the server callback.
+
+CLI/device flow
++++++++++++++++
+
+For terminal clients, start with ``POST /api/auth/provider/<provider-name>/authorize``.
+The response includes:
+
+- ``authorization_uri``: open this URL in a browser
+- ``verification_uri``: polling endpoint for the terminal client
+- ``device_code`` and ``interval``: values for polling
+
+Example using ``httpie`` (provider ``entra``)::
+
+  http POST http://localhost:60610/api/auth/provider/entra/authorize
+
+After opening ``authorization_uri`` in a browser and completing provider login,
+poll ``verification_uri`` using ``device_code`` until tokens are issued::
+
+  http POST http://localhost:60610/api/auth/provider/entra/token \
+    device_code='<device_code_from_authorize_response>'
+
+When authorization is still pending, the endpoint returns ``authorization_pending``.
+When complete, it returns access and refresh tokens.
+
+.. note::
+
+    In common same-device flows the callback can complete automatically without manually
+    typing the user code. Manual code entry remains available as a fallback path.
+
 Generating API Keys
 -------------------
 
