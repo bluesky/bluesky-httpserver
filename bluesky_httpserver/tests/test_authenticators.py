@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
-from starlette.datastructures import QueryParams, URL
+from starlette.datastructures import URL, QueryParams
 
 # fmt: off
 from ..authenticators import LDAPAuthenticator, OIDCAuthenticator, ProxiedOIDCAuthenticator, UserSessionState
@@ -161,7 +161,7 @@ def test_oidc_decoding(
 
 @pytest.mark.asyncio
 async def test_proxied_oidc_token_retrieval(oidc_well_known_url: str, mock_oidc_server: MockRouter):
-    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", oidc_well_known_url, 
+    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", oidc_well_known_url,
                                              device_flow_client_id="tiled-cli")
     test_request = httpx.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
 
