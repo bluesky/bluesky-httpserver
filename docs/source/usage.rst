@@ -161,7 +161,7 @@ For providers configured with ``OIDCAuthenticator``, use provider-specific endpo
 under ``/api/auth/provider/<provider-name>/...``.
 
 Browser-first flow
-++++++++++++++++++
+~~~~~~~~~~~~~~~~~
 
 If you are already in a browser context, open:
 
@@ -170,7 +170,7 @@ If you are already in a browser context, open:
 This redirects to the OIDC provider login page and then back to the server callback.
 
 CLI/device flow
-+++++++++++++++
+~~~~~~~~~~~~~~~
 
 For terminal clients, start with ``POST /api/auth/provider/<provider-name>/authorize``.
 The response includes:

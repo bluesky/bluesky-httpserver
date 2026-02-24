@@ -18,6 +18,22 @@ API_KEY_FOR_TESTS = "APIKEYFORTESTS"
 _user_group = "primary"
 
 
+def _wait_for_http_server_ready(*, timeout=10, request_prefix="/api"):
+    """Wait until HTTP server accepts connections and responds to /status."""
+    t_stop = ttime.time() + timeout
+    url = f"http://{SERVER_ADDRESS}:{SERVER_PORT}{request_prefix}/status"
+    while ttime.time() < t_stop:
+        try:
+            response = requests.get(url, timeout=0.5)
+            # Any HTTP response means the server is up (auth may still reject request).
+            if response.status_code:
+                return
+        except requests.RequestException:
+            pass
+        ttime.sleep(0.1)
+    raise TimeoutError(f"HTTP server is not ready after {timeout} s: {url}")
+
+
 @pytest.fixture(scope="module")
 def fastapi_server(xprocess):
     class Starter(ProcessStarter):
@@ -29,6 +45,7 @@ def fastapi_server(xprocess):
         # args = f"start-bluesky-httpserver --host={SERVER_ADDRESS} --port {SERVER_PORT}".split()
 
     xprocess.ensure("fastapi_server", Starter)
+    _wait_for_http_server_ready()
 
     yield
 
@@ -55,7 +72,7 @@ def fastapi_server_fs(xprocess):
             args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
         xprocess.ensure("fastapi_server", Starter)
-        ttime.sleep(1)
+        _wait_for_http_server_ready()
 
     yield start
 

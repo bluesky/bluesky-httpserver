@@ -632,12 +632,22 @@ async def _complete_device_code_authorization(
 <!DOCTYPE html>
 <html>
 <head><title>Error</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+<style>
+body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 15px;
+    border-radius: 5px;
+    color: #721c24;
+}}
+</style>
 </head>
 <body>
     <h1>Authorization Failed</h1>
-    <div class="error">Invalid user code. It may have been mistyped, or the pending request may have expired.</div>
+    <div class="error">
+      Invalid user code. It may have been mistyped, or the pending request may have expired.
+    </div>
     <br/><a href="{action.rsplit('?', 1)[0]}?code={code}">Try again</a>
 </body>
 </html>
@@ -651,12 +661,23 @@ async def _complete_device_code_authorization(
 <!DOCTYPE html>
 <html>
 <head><title>Authentication Failed</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+<style>
+body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 15px;
+    border-radius: 5px;
+    color: #721c24;
+}}
+</style>
 </head>
 <body>
     <h1>Authentication Failed</h1>
-    <div class="error">User code was correct but authentication with the identity provider failed. Please contact the administrator.</div>
+    <div class="error">
+      User code was correct but authentication with the identity provider failed.
+      Please contact the administrator.
+    </div>
 </body>
 </html>
 """
@@ -668,8 +689,16 @@ async def _complete_device_code_authorization(
 <!DOCTYPE html>
 <html>
 <head><title>Authorization Failed</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.error {{ background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; color: #721c24; }}</style>
+<style>
+body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.error {{
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 15px;
+    border-radius: 5px;
+    color: #721c24;
+}}
+</style>
 </head>
 <body>
     <h1>Authorization Failed</h1>
@@ -693,12 +722,23 @@ async def _complete_device_code_authorization(
 <!DOCTYPE html>
 <html>
 <head><title>Success</title>
-<style>body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-.success {{ background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; color: #155724; }}</style>
+<style>
+body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+.success {{
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    padding: 15px;
+    border-radius: 5px;
+    color: #155724;
+}}
+</style>
 </head>
 <body>
     <h1>Success!</h1>
-    <div class="success">You have been authenticated. Return to your terminal application - within {DEVICE_CODE_POLLING_INTERVAL} seconds it should be successfully logged in.</div>
+    <div class="success">
+      You have been authenticated. Return to your terminal application -
+      within {DEVICE_CODE_POLLING_INTERVAL} seconds it should be successfully logged in.
+    </div>
 </body>
 </html>
 """
@@ -738,8 +778,21 @@ def build_device_code_form_route(authenticator, provider):
         h1 {{ color: #333; }}
         form {{ margin-top: 20px; }}
         label {{ display: block; margin-bottom: 10px; }}
-        input[type="text"] {{ padding: 10px; font-size: 16px; width: 200px; text-transform: uppercase; }}
-        input[type="submit"] {{ padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; cursor: pointer; margin-top: 10px; }}
+        input[type="text"] {{
+            padding: 10px;
+            font-size: 16px;
+            width: 200px;
+            text-transform: uppercase;
+        }}
+        input[type="submit"] {{
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }}
         input[type="submit"]:hover {{ background-color: #0056b3; }}
     </style>
 </head>
