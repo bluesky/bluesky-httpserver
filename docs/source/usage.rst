@@ -161,7 +161,7 @@ For providers configured with ``OIDCAuthenticator``, use provider-specific endpo
 under ``/api/auth/provider/<provider-name>/...``.
 
 Browser-first flow
-~~~~~~~~~~~~~~~~~
+******************
 
 If you are already in a browser context, open:
 
@@ -169,10 +169,22 @@ If you are already in a browser context, open:
 
 This redirects to the OIDC provider login page and then back to the server callback.
 
-CLI/device flow
-~~~~~~~~~~~~~~~
+This can similarly be acheived using ``httpie`` by opening the URL in a browser after getting 
+the authorization URI from the server::
 
-For terminal clients, start with ``POST /api/auth/provider/<provider-name>/authorize``.
+  http POST http://localhost:60610/api/auth/provider/entra/authorize
+
+Which will return a token back to the bluesky http server after the user logs in to the provider
+in their browser (or automatically if already logged in). The user then gets a token
+for the bluesky HTTP server to use for subsequent API requests. This flow can be used
+even when using the bluesky queueserver api in a terminal so long as that session can
+spawn a browser for the user to log in to the provider.
+
+CLI/device flow
+***************
+
+For terminal clients (i.e. no browser possible), start with 
+``POST /api/auth/provider/<provider-name>/authorize``.
 The response includes:
 
 - ``authorization_uri``: open this URL in a browser
