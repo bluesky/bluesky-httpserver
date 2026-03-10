@@ -699,6 +699,18 @@ async def re_runs_closed_handler(principal=Security(get_current_principal, scope
     return msg
 
 
+@router.get("/re/metadata")
+async def re_metadata(payload: dict = {}, principal=Security(get_current_principal, scopes=["read:monitor"])):
+    """
+    Run Engine: download the metadata of the currently running plan.
+    """
+    try:
+        msg = await SR.RM.re_metadata(**payload)
+    except Exception:
+        process_exception()
+    return msg
+
+
 @router.get("/plans/allowed")
 async def plans_allowed_handler(
     payload: dict = {},
