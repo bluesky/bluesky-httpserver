@@ -160,6 +160,11 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     from .authentication import (
         base_authentication_router,
         build_auth_code_route,
+        build_authorize_route,
+        build_device_code_authorize_route,
+        build_device_code_form_route,
+        build_device_code_submit_route,
+        build_device_code_token_route,
         build_handle_credentials_route,
         oauth2_scheme,
     )
@@ -184,11 +189,33 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                     build_handle_credentials_route(authenticator, provider)
                 )
             elif isinstance(authenticator, ExternalAuthenticator):
+                # Standard OAuth callback route (authorization code flow)
                 authentication_router.get(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
                 authentication_router.post(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
+                )
+                # Device code flow routes for CLI/headless clients
+                # GET /authorize - redirects browser to OIDC provider
+                authentication_router.get(f"/provider/{provider}/authorize")(
+                    build_authorize_route(authenticator, provider)
+                )
+                # POST /authorize - initiates device code flow (returns device_code, user_code, etc.)
+                authentication_router.post(f"/provider/{provider}/authorize")(
+                    build_device_code_authorize_route(authenticator, provider)
+                )
+                # GET /device_code - shows user code entry form
+                authentication_router.get(f"/provider/{provider}/device_code")(
+                    build_device_code_form_route(authenticator, provider)
+                )
+                # POST /device_code - handles user code submission after browser auth
+                authentication_router.post(f"/provider/{provider}/device_code")(
+                    build_device_code_submit_route(authenticator, provider)
+                )
+                # POST /token - CLI client polls this for tokens
+                authentication_router.post(f"/provider/{provider}/token")(
+                    build_device_code_token_route(authenticator, provider)
                 )
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
