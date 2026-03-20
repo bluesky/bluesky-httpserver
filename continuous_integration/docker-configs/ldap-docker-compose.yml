@@ -1,14 +1,13 @@
 services:
   openldap:
-    image: osixia/openldap:latest
+    image: osixia/openldap:1.5.0
     ports:
-      - '1389:1389'
-      - '1636:1636'
+      - '1389:389'
+      - '1636:636'
     environment:
-      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ORGANISATION=Example Inc.
+      - LDAP_DOMAIN=example.org
       - LDAP_ADMIN_PASSWORD=adminpassword
-      - LDAP_USERS=user01,user02
-      - LDAP_PASSWORDS=password1,password2
     volumes:
       - 'openldap_data:/var/lib/ldap'
 

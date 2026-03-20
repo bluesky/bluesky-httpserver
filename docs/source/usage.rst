@@ -169,7 +169,7 @@ If you are already in a browser context, open:
 
 This redirects to the OIDC provider login page and then back to the server callback.
 
-This can similarly be acheived using ``httpie`` by opening the URL in a browser after getting 
+This can similarly be acheived using ``httpie`` by opening the URL in a browser after getting
 the authorization URI from the server::
 
   http POST http://localhost:60610/api/auth/provider/entra/authorize
@@ -183,7 +183,7 @@ spawn a browser for the user to log in to the provider.
 CLI/device flow
 ***************
 
-For terminal clients (i.e. no browser possible), start with 
+For terminal clients (i.e. no browser possible), start with
 ``POST /api/auth/provider/<provider-name>/authorize``.
 The response includes:
 

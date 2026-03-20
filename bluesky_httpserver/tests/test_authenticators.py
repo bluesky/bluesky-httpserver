@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from typing import Any, Tuple
 
@@ -10,20 +11,28 @@ from jose.backends import RSAKey
 from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 
-# fmt: off
 from ..authenticators import LDAPAuthenticator, OIDCAuthenticator, ProxiedOIDCAuthenticator, UserSessionState
+
+LDAP_TEST_HOST = os.environ.get("QSERVER_TEST_LDAP_HOST", "localhost")
+LDAP_TEST_PORT = int(os.environ.get("QSERVER_TEST_LDAP_PORT", "1389"))
+LDAP_TEST_ALT_HOST = os.environ.get("QSERVER_TEST_LDAP_ALT_HOST")
+if not LDAP_TEST_ALT_HOST:
+    LDAP_TEST_ALT_HOST = "127.0.0.1" if LDAP_TEST_HOST == "localhost" else LDAP_TEST_HOST
+
+
+# fmt: off
 
 
 @pytest.mark.parametrize("ldap_server_address, ldap_server_port", [
-    ("localhost", 1389),
-    ("localhost:1389", 904),  # Random port, ignored
-    ("localhost:1389", None),
-    ("127.0.0.1", 1389),
-    ("127.0.0.1:1389", 904),
-    (["localhost"], 1389),
-    (["localhost", "127.0.0.1"], 1389),
-    (["localhost", "127.0.0.1:1389"], 1389),
-    (["localhost:1389", "127.0.0.1:1389"], None),
+    (LDAP_TEST_HOST, LDAP_TEST_PORT),
+    (f"{LDAP_TEST_HOST}:{LDAP_TEST_PORT}", 904),  # Random port, ignored
+    (f"{LDAP_TEST_HOST}:{LDAP_TEST_PORT}", None),
+    (LDAP_TEST_ALT_HOST, LDAP_TEST_PORT),
+    (f"{LDAP_TEST_ALT_HOST}:{LDAP_TEST_PORT}", 904),
+    ([LDAP_TEST_HOST], LDAP_TEST_PORT),
+    ([LDAP_TEST_HOST, LDAP_TEST_ALT_HOST], LDAP_TEST_PORT),
+    ([LDAP_TEST_HOST, f"{LDAP_TEST_ALT_HOST}:{LDAP_TEST_PORT}"], LDAP_TEST_PORT),
+    ([f"{LDAP_TEST_HOST}:{LDAP_TEST_PORT}", f"{LDAP_TEST_ALT_HOST}:{LDAP_TEST_PORT}"], None),
 ])
 # fmt: on
 @pytest.mark.parametrize("use_tls,use_ssl", [(False, False)])

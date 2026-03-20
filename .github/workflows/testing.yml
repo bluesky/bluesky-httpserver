@@ -26,7 +26,7 @@ jobs:
     - name: Fetch tags
       run: git fetch --tags --prune --unshallow
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - uses: shogo82148/actions-setup-redis@v1
@@ -36,14 +36,8 @@ jobs:
       run: |
         # sudo apt install redis
 
-        pushd ..
-        git clone https://github.com/bitnami/containers.git
-        cd containers/bitnami/openldap/2.6/debian-12
-        docker build -t bitnami/openldap:latest .
-        popd
-
         # Start LDAP
-        source continuous_integration/scripts/start_LDAP.sh
+        bash continuous_integration/scripts/start_LDAP.sh
 
         # These packages are installed in the base environment but may be older
         # versions. Explicitly upgrade them because they often create
@@ -70,6 +64,19 @@ jobs:
 
         pip list
     - name: Test with pytest
+      env:
+        PYTEST_ADDOPTS: "--durations=20"
       run: |
         coverage run -m pytest -vv
         coverage report -m
+    - name: Dump LDAP diagnostics on failure
+      if: failure()
+      run: |
+        docker ps
+        docker compose -f continuous_integration/docker-configs/ldap-docker-compose.yml ps
+        LDAP_CONTAINER_ID=$(docker compose -f continuous_integration/docker-configs/ldap-docker-compose.yml ps -q openldap | tr -d '[:space:]')
+        if [ -n "$LDAP_CONTAINER_ID" ]; then
+          docker logs --tail 200 "$LDAP_CONTAINER_ID"
+        else
+          docker compose -f continuous_integration/docker-configs/ldap-docker-compose.yml logs --tail 200 openldap
+        fi

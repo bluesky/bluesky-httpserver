@@ -4,6 +4,7 @@ import time as ttime
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
+from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa: F401
 from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
 from xprocess import ProcessStarter
 
@@ -60,7 +61,11 @@ def fastapi_server_fs(xprocess):
     to perform additional steps (such as setting environmental variables) before the server is started.
     """
 
-    def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT, api_key=API_KEY_FOR_TESTS):
+    def start(
+        http_server_host=SERVER_ADDRESS,
+        http_server_port=SERVER_PORT,
+        api_key=API_KEY_FOR_TESTS,
+    ):
         class Starter(ProcessStarter):
             max_read_lines = 53
 
@@ -112,7 +117,12 @@ def add_plans_to_queue():
 
     user_group = _user_group
     user = "HTTP unit test setup"
-    plan1 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 10, "delay": 1}, "item_type": "plan"}
+    plan1 = {
+        "name": "count",
+        "args": [["det1", "det2"]],
+        "kwargs": {"num": 10, "delay": 1},
+        "item_type": "plan",
+    }
     plan2 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
     for plan in (plan1, plan2, plan2):
         resp2, _ = zmq_single_request("queue_item_add", {"item": plan, "user": user, "user_group": user_group})
@@ -120,7 +130,14 @@ def add_plans_to_queue():
 
 
 def request_to_json(
-    request_type, path, *, request_prefix="/api", api_key=API_KEY_FOR_TESTS, token=None, login=None, **kwargs
+    request_type,
+    path,
+    *,
+    request_prefix="/api",
+    api_key=API_KEY_FOR_TESTS,
+    token=None,
+    login=None,
+    **kwargs,
 ):
     if login:
         auth = None

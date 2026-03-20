@@ -8,8 +8,10 @@ CHUNK_COUNT=""
 PYTHON_VERSIONS="latest"
 PYTEST_EXTRA_ARGS=""
 ARTIFACTS_DIR="$ROOT_DIR/.docker-test-artifacts"
-DOCKER_NETWORK_NAME="bhs-ci-net"
-LDAP_CONTAINER_NAME="bhs-ci-ldap"
+LDAP_COMPOSE_FILE="$ROOT_DIR/continuous_integration/docker-configs/ldap-docker-compose.yml"
+LDAP_COMPOSE_PROJECT="bhs-ci-ldap-parallel-$$"
+LDAP_SERVICE_NAME="openldap"
+DOCKER_NETWORK_NAME="${LDAP_COMPOSE_PROJECT}_default"
 
 SUMMARY_TSV=""
 SUMMARY_FAIL_LOGS=""
@@ -154,46 +156,16 @@ normalize_python_versions() {
     echo "${normalized[@]}"
 }
 
-ensure_ldap_image() {
-    local image_ref="bitnami/openldap:latest"
-    if docker image inspect "$image_ref" >/dev/null 2>&1; then
-        return
-    fi
-
-    echo "LDAP image $image_ref not found locally; trying docker pull..."
-    if docker pull "$image_ref"; then
-        return
-    fi
-
-    echo "docker pull failed; building bitnami/openldap:latest from source (CI fallback)."
-    local workdir="$ROOT_DIR/.docker-test-artifacts/bitnami-containers"
-    rm -rf "$workdir"
-    git clone --depth 1 https://github.com/bitnami/containers.git "$workdir"
-    (cd "$workdir/bitnami/openldap/2.6/debian-12" && docker build -t "$image_ref" .)
-}
-
 start_services() {
-    ensure_ldap_image
-
-    docker network rm "$DOCKER_NETWORK_NAME" >/dev/null 2>&1 || true
-    docker network create "$DOCKER_NETWORK_NAME" >/dev/null
-
-    docker rm -f "$LDAP_CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker run -d --rm \
-        --name "$LDAP_CONTAINER_NAME" \
-        --network "$DOCKER_NETWORK_NAME" \
-        -e LDAP_ADMIN_USERNAME=admin \
-        -e LDAP_ADMIN_PASSWORD=adminpassword \
-        -e LDAP_USERS=user01,user02 \
-        -e LDAP_PASSWORDS=password1,password2 \
-        bitnami/openldap:latest >/dev/null
-
-    sleep 2
+    LDAP_COMPOSE_FILE="$LDAP_COMPOSE_FILE" \
+    LDAP_COMPOSE_PROJECT="$LDAP_COMPOSE_PROJECT" \
+    LDAP_HOST="127.0.0.1" \
+    LDAP_PORT="1389" \
+    bash "$ROOT_DIR/continuous_integration/scripts/start_LDAP.sh" >/dev/null
 }
 
 stop_services() {
-    docker rm -f "$LDAP_CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker network rm "$DOCKER_NETWORK_NAME" >/dev/null 2>&1 || true
+    docker compose -p "$LDAP_COMPOSE_PROJECT" -f "$LDAP_COMPOSE_FILE" down -v >/dev/null 2>&1 || true
 }
 
 cleanup() {
@@ -385,8 +357,8 @@ run_chunk() {
         -e SHARD_COUNT="$CHUNK_COUNT" \
         -e ARTIFACTS_DIR="/artifacts" \
         -e PYTEST_EXTRA_ARGS="$PYTEST_EXTRA_ARGS" \
-        -e QSERVER_TEST_LDAP_HOST="$LDAP_CONTAINER_NAME" \
-        -e QSERVER_TEST_LDAP_PORT="1389" \
+        -e QSERVER_TEST_LDAP_HOST="$LDAP_SERVICE_NAME" \
+        -e QSERVER_TEST_LDAP_PORT="389" \
         -e QSERVER_TEST_REDIS_ADDR="localhost" \
         -e QSERVER_HTTP_TEST_BIND_HOST="127.0.0.1" \
         -e QSERVER_HTTP_TEST_HOST="127.0.0.1" \
@@ -400,7 +372,7 @@ run_chunk() {
 }
 
 export -f run_chunk
-export CHUNK_COUNT PYTEST_EXTRA_ARGS DOCKER_NETWORK_NAME LDAP_CONTAINER_NAME
+export CHUNK_COUNT PYTEST_EXTRA_ARGS DOCKER_NETWORK_NAME LDAP_SERVICE_NAME
 
 for PYTHON_VERSION in "${SELECTED_PYTHON_VERSIONS[@]}"; do
     CURRENT_IMAGE_TAG="${IMAGE_TAG_BASE}-py${PYTHON_VERSION}"
@@ -410,7 +382,7 @@ for PYTHON_VERSION in "${SELECTED_PYTHON_VERSIONS[@]}"; do
     echo "==> Building test image: $CURRENT_IMAGE_TAG (Python $PYTHON_VERSION)"
     docker build \
         --build-arg PYTHON_VERSION="$PYTHON_VERSION" \
-        -f "$ROOT_DIR/docker/test.Dockerfile" \
+        -f "$ROOT_DIR/continuous_integration/dockerfiles/test.Dockerfile" \
         -t "$CURRENT_IMAGE_TAG" \
         "$ROOT_DIR"
 
