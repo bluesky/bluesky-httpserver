@@ -14,6 +14,7 @@ from bluesky_httpserver.authorization import (
     DefaultResourceAccessControl,
     DictionaryAPIAccessControl,
     ServerBasedAPIAccessControl,
+    SingleGroupResourceAccessControl,
 )
 from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_RESOURCE_ACCESS_GROUP,
@@ -546,7 +547,27 @@ def test_DefaultResourceAccessControl_01(params, group, success):
     """
     if success:
         manager = DefaultResourceAccessControl(**params)
-        assert manager.get_resource_group("arbitrary_user_name") == group
+        assert manager.get_resource_group("arbitrary_user_name", group) == group
     else:
         with pytest.raises(ConfigError):
             DefaultResourceAccessControl(**params)
+
+
+# fmt: off
+@pytest.mark.parametrize("params, role, group, success", [
+    ({"default_group": "expert"}, [_DEFAULT_ROLE_PUBLIC], "expert", True),
+    ({"default_group": "user"}, _DEFAULT_ROLE_SINGLE_USER, "user", True),
+    ({"default_group": "user"}, _DEFAULT_ROLE_SINGLE_USER, _DEFAULT_ROLE_SINGLE_USER, False),
+    ({"default_group": "user"}, ["expert"], "expert", True),
+    ({"default_group": "user"}, "advanced", "advanced", True),
+    ({"default_group": "user"}, "advanced", "user", False),
+])
+# fmt: on
+def test_SingleGroupResourceAccessControl_01(params, role, group, success):
+    """
+    SingleGroupResourceAccessControl: basic tests.
+    """
+    manager = SingleGroupResourceAccessControl(**params)
+    result = manager.get_resource_group("arbitrary_user_name", role) == group
+    print(manager.get_resource_group("arbitrary_user_name", role))
+    assert result == success

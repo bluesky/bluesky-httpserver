@@ -4,4 +4,4 @@ from .api_access import (  # noqa: F401
     DictionaryAPIAccessControl,
     ServerBasedAPIAccessControl,
 )
-from .resource_access import DefaultResourceAccessControl  # noqa: F401
+from .resource_access import DefaultResourceAccessControl, SingleGroupResourceAccessControl  # noqa: F401
