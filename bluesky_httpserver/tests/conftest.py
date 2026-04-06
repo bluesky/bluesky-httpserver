@@ -4,6 +4,7 @@ import time as ttime
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
+from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa: F401
 from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
 from xprocess import ProcessStarter
 
@@ -18,6 +19,22 @@ API_KEY_FOR_TESTS = "APIKEYFORTESTS"
 _user_group = "primary"
 
 
+def _wait_for_http_server_ready(*, timeout=10, request_prefix="/api"):
+    """Wait until HTTP server accepts connections and responds to /status."""
+    t_stop = ttime.time() + timeout
+    url = f"http://{SERVER_ADDRESS}:{SERVER_PORT}{request_prefix}/status"
+    while ttime.time() < t_stop:
+        try:
+            response = requests.get(url, timeout=0.5)
+            # Any HTTP response means the server is up (auth may still reject request).
+            if response.status_code:
+                return
+        except requests.RequestException:
+            pass
+        ttime.sleep(0.1)
+    raise TimeoutError(f"HTTP server is not ready after {timeout} s: {url}")
+
+
 @pytest.fixture(scope="module")
 def fastapi_server(xprocess):
     class Starter(ProcessStarter):
@@ -29,6 +46,7 @@ def fastapi_server(xprocess):
         # args = f"start-bluesky-httpserver --host={SERVER_ADDRESS} --port {SERVER_PORT}".split()
 
     xprocess.ensure("fastapi_server", Starter)
+    _wait_for_http_server_ready()
 
     yield
 
@@ -43,7 +61,11 @@ def fastapi_server_fs(xprocess):
     to perform additional steps (such as setting environmental variables) before the server is started.
     """
 
-    def start(http_server_host=SERVER_ADDRESS, http_server_port=SERVER_PORT, api_key=API_KEY_FOR_TESTS):
+    def start(
+        http_server_host=SERVER_ADDRESS,
+        http_server_port=SERVER_PORT,
+        api_key=API_KEY_FOR_TESTS,
+    ):
         class Starter(ProcessStarter):
             max_read_lines = 53
 
@@ -55,7 +77,7 @@ def fastapi_server_fs(xprocess):
             args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
         xprocess.ensure("fastapi_server", Starter)
-        ttime.sleep(1)
+        _wait_for_http_server_ready()
 
     yield start
 
@@ -95,7 +117,12 @@ def add_plans_to_queue():
 
     user_group = _user_group
     user = "HTTP unit test setup"
-    plan1 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 10, "delay": 1}, "item_type": "plan"}
+    plan1 = {
+        "name": "count",
+        "args": [["det1", "det2"]],
+        "kwargs": {"num": 10, "delay": 1},
+        "item_type": "plan",
+    }
     plan2 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
     for plan in (plan1, plan2, plan2):
         resp2, _ = zmq_single_request("queue_item_add", {"item": plan, "user": user, "user_group": user_group})
@@ -103,7 +130,14 @@ def add_plans_to_queue():
 
 
 def request_to_json(
-    request_type, path, *, request_prefix="/api", api_key=API_KEY_FOR_TESTS, token=None, login=None, **kwargs
+    request_type,
+    path,
+    *,
+    request_prefix="/api",
+    api_key=API_KEY_FOR_TESTS,
+    token=None,
+    login=None,
+    **kwargs,
 ):
     if login:
         auth = None
@@ -195,3 +229,28 @@ def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TES
             return True
 
     return False
+
+
+# ============================================================================
+# OIDC Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def oidc_base_url() -> str:
+    """Base URL for mock OIDC provider."""
+    return "https://example.com/realms/example/"
+
+
+@pytest.fixture
+def well_known_response(oidc_base_url: str) -> dict:
+    """Mock OIDC well-known configuration response."""
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": oidc_base_url.rstrip("/"),
+        "jwks_uri": f"{oidc_base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{oidc_base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{oidc_base_url}protocol/openid-connect/logout",
+    }

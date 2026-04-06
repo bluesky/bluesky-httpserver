@@ -15,7 +15,7 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from .authentication import Mode
+from .authentication import ExternalAuthenticator, InternalAuthenticator
 from .console_output import CollectPublishedConsoleOutput, ConsoleOutputStream, SystemInfoStream
 from .core import PatchedStreamingResponse
 from .database.core import purge_expired
@@ -160,6 +160,11 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     from .authentication import (
         base_authentication_router,
         build_auth_code_route,
+        build_authorize_route,
+        build_device_code_authorize_route,
+        build_device_code_form_route,
+        build_device_code_submit_route,
+        build_device_code_token_route,
         build_handle_credentials_route,
         oauth2_scheme,
     )
@@ -179,20 +184,41 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
-            mode = authenticator.mode
-            if mode == Mode.password:
+            if isinstance(authenticator, InternalAuthenticator):
                 authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
-            elif mode == Mode.external:
+            elif isinstance(authenticator, ExternalAuthenticator):
+                # Standard OAuth callback route (authorization code flow)
                 authentication_router.get(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
                 authentication_router.post(f"/provider/{provider}/code")(
                     build_auth_code_route(authenticator, provider)
                 )
+                # Device code flow routes for CLI/headless clients
+                # GET /authorize - redirects browser to OIDC provider
+                authentication_router.get(f"/provider/{provider}/authorize")(
+                    build_authorize_route(authenticator, provider)
+                )
+                # POST /authorize - initiates device code flow (returns device_code, user_code, etc.)
+                authentication_router.post(f"/provider/{provider}/authorize")(
+                    build_device_code_authorize_route(authenticator, provider)
+                )
+                # GET /device_code - shows user code entry form
+                authentication_router.get(f"/provider/{provider}/device_code")(
+                    build_device_code_form_route(authenticator, provider)
+                )
+                # POST /device_code - handles user code submission after browser auth
+                authentication_router.post(f"/provider/{provider}/device_code")(
+                    build_device_code_submit_route(authenticator, provider)
+                )
+                # POST /token - CLI client polls this for tokens
+                authentication_router.post(f"/provider/{provider}/token")(
+                    build_device_code_token_route(authenticator, provider)
+                )
             else:
-                raise ValueError(f"unknown authentication mode {mode}")
+                raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(custom_router, prefix=f"/provider/{provider}")
 

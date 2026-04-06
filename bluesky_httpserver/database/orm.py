@@ -181,3 +181,24 @@ class Session(Timestamped, Base):
     revoked = Column(Boolean, default=False, nullable=False)
 
     principal = relationship("Principal", back_populates="sessions")
+    pending_sessions = relationship("PendingSession", back_populates="session")
+
+
+class PendingSession(Timestamped, Base):
+    """
+    This is used only in Device Code Flow for OIDC authentication.
+
+    When a CLI client initiates the device code flow, a pending session is created
+    with a device_code (for the client to poll) and a user_code (for the user to
+    enter in the browser). Once the user authenticates, the pending session is
+    linked to a real session, which the polling client then receives.
+    """
+
+    __tablename__ = "pending_sessions"
+
+    hashed_device_code = Column(LargeBinary(32), primary_key=True, index=True, nullable=False)
+    user_code = Column(Unicode(8), index=True, nullable=False)
+    expiration_time = Column(DateTime(timezone=False), nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+
+    session = relationship("Session", back_populates="pending_sessions")

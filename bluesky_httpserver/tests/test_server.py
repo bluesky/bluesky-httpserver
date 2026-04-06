@@ -27,8 +27,17 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
-_plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}
-_plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
+_plan2 = {
+    "name": "scan",
+    "args": [["det1", "det2"], "motor", -1, 1, 10],
+    "item_type": "plan",
+}
+_plan3 = {
+    "name": "count",
+    "args": [["det1", "det2"]],
+    "kwargs": {"num": 5, "delay": 1},
+    "item_type": "plan",
+}
 
 
 _config_public_key = """
@@ -122,7 +131,7 @@ qserver_zmq_configuration:
 @pytest.mark.parametrize("option", ["ev", "cfg_file", "both"])
 # fmt: on
 def test_http_server_set_zmq_address_1(
-    monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, option  # noqa: F811
+    monkeypatch, tmpdir, re_manager_cmd, fastapi_server_fs, free_tcp_port_factory, option  # noqa: F811
 ):
     """
     Test if ZMQ address of RE Manager is passed to the HTTP server using 'QSERVER_ZMQ_ADDRESS_CONTROL'
@@ -130,11 +139,12 @@ def test_http_server_set_zmq_address_1(
     channel different from default address, add and execute a plan.
     """
 
-    # Change ZMQ address to use port 60616 instead of the default port 60615.
-    zmq_control_address_server = "tcp://*:60616"
-    zmq_info_address_server = "tcp://*:60617"
-    zmq_control_address = "tcp://localhost:60616"
-    zmq_info_address = "tcp://localhost:60617"
+    zmq_control_port = free_tcp_port_factory()
+    zmq_info_port = free_tcp_port_factory()
+    zmq_control_address_server = f"tcp://*:{zmq_control_port}"
+    zmq_info_address_server = f"tcp://*:{zmq_info_port}"
+    zmq_control_address = f"tcp://localhost:{zmq_control_port}"
+    zmq_info_address = f"tcp://localhost:{zmq_info_port}"
     if option == "ev":
         monkeypatch.setenv("QSERVER_ZMQ_CONTROL_ADDRESS", zmq_control_address)
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", zmq_info_address)

@@ -30,8 +30,17 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
-_plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}
-_plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
+_plan2 = {
+    "name": "scan",
+    "args": [["det1", "det2"], "motor", -1, 1, 10],
+    "item_type": "plan",
+}
+_plan3 = {
+    "name": "count",
+    "args": [["det1", "det2"]],
+    "kwargs": {"num": 5, "delay": 1},
+    "item_type": "plan",
+}
 _instruction_stop = {"name": "queue_stop", "item_type": "instruction"}
 
 
@@ -515,8 +524,10 @@ def test_http_server_queue_item_update_2_fail(re_manager, fastapi_server, replac
 
     resp2 = request_to_json("post", "/queue/item/update", json=params)
     assert resp2["success"] is False
-    assert resp2["msg"] == "Failed to add an item: Failed to replace item: " \
-                           "Item with UID 'incorrect_uid' is not in the queue"
+    assert (
+        resp2["msg"] == "Failed to add an item: Failed to replace item: "
+        "Item with UID 'incorrect_uid' is not in the queue"
+    )
 
     resp3 = request_to_json("get", "/queue/get")
     assert resp3["items"] != []
@@ -1286,16 +1297,33 @@ def test_http_server_history_clear(re_manager, fastapi_server, clear_params, exp
 
 
 def test_http_server_manager_kill(re_manager, fastapi_server):  # noqa F811
+    timeout_variants = (
+        "Request timeout: ZMQ communication error: timeout occurred",
+        "Request timeout: ZMQ communication error: Resource temporarily unavailable",
+    )
+
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
     resp = request_to_json("post", "/test/manager/kill")
     assert "success" not in resp
-    assert "Request timeout: ZMQ communication error: timeout occurred" in resp["detail"]
+    assert any(_ in resp["detail"] for _ in timeout_variants)
 
-    ttime.sleep(10)
+    deadline = ttime.time() + 20
+    last_status = None
+    while ttime.time() < deadline:
+        ttime.sleep(0.2)
+        last_status = request_to_json("get", "/status")
+        if (
+            isinstance(last_status, dict)
+            and last_status.get("manager_state") == "idle"
+            and last_status.get("worker_environment_exists") is True
+        ):
+            break
+    else:
+        assert False, f"Timeout while waiting for manager recovery after kill. Last status: {last_status!r}"
 
-    resp = request_to_json("get", "/status")
+    resp = last_status
     assert resp["msg"].startswith("RE Manager")
     assert resp["manager_state"] == "idle"
     assert resp["items_in_queue"] == 0
