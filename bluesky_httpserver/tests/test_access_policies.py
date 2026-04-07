@@ -6,7 +6,7 @@ import time as ttime
 
 import pytest
 import requests
-from bluesky_queueserver.manager.tests.common import re_manager  # noqa F401
+from bluesky_queueserver.manager.tests.common import re_manager, re_manager_factory  # noqa F401
 from xprocess import ProcessStarter
 
 from bluesky_httpserver.authorization import (
