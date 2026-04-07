@@ -4,7 +4,7 @@ import threading
 import time as ttime
 
 import pytest
-from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd  # noqa F401
+from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd, re_manager_factory  # noqa F401
 from websockets.sync.client import connect
 
 from .conftest import fastapi_server_fs  # noqa: F401
