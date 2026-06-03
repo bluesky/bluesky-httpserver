@@ -2,6 +2,7 @@ alembic
 bluesky-queueserver
 bluesky-queueserver-api
 fastapi
+httpx2
 ldap3
 orjson
 pamela

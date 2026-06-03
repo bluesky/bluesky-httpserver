@@ -221,11 +221,11 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
         token_url ([type]): [description]
         auth_code ([type]): [description]
     """
-    if not modules_available("httpx"):
-        raise ModuleNotFoundError("This authenticator requires 'httpx'. (pip install httpx)")
-    import httpx
+    if not modules_available("httpx2"):
+        raise ModuleNotFoundError("This authenticator requires 'httpx2'. (pip install httpx2)")
+    import httpx2
 
-    response = httpx.post(
+    response = httpx2.post(
         url=token_uri,
         data={
             "grant_type": "authorization_code",
