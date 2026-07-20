@@ -15,10 +15,15 @@ from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from .authentication import ExternalAuthenticator, InternalAuthenticator
-from .console_output import CollectPublishedConsoleOutput, ConsoleOutputStream, SystemInfoStream
+from .authenticators import ProxiedOIDCAuthenticator
+from .console_output import (
+    CollectPublishedConsoleOutput,
+    ConsoleOutputStream,
+    SystemInfoStream,
+)
 from .core import PatchedStreamingResponse
 from .database.core import purge_expired
+from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .resources import SERVER_RESOURCES as SR
 from .routers import core_api
 from .settings import get_settings
@@ -158,14 +163,9 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
         logger.info("All custom routers are included successfully.")
 
     from .authentication import (
+        add_external_routes,
+        add_internal_routes,
         base_authentication_router,
-        build_auth_code_route,
-        build_authorize_route,
-        build_device_code_authorize_route,
-        build_device_code_form_route,
-        build_device_code_submit_route,
-        build_device_code_token_route,
-        build_handle_credentials_route,
         oauth2_scheme,
     )
 
@@ -185,38 +185,11 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             provider = spec["provider"]
             authenticator = spec["authenticator"]
             if isinstance(authenticator, InternalAuthenticator):
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_handle_credentials_route(authenticator, provider)
-                )
+                add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
-                # Standard OAuth callback route (authorization code flow)
-                authentication_router.get(f"/provider/{provider}/code")(
-                    build_auth_code_route(authenticator, provider)
-                )
-                authentication_router.post(f"/provider/{provider}/code")(
-                    build_auth_code_route(authenticator, provider)
-                )
-                # Device code flow routes for CLI/headless clients
-                # GET /authorize - redirects browser to OIDC provider
-                authentication_router.get(f"/provider/{provider}/authorize")(
-                    build_authorize_route(authenticator, provider)
-                )
-                # POST /authorize - initiates device code flow (returns device_code, user_code, etc.)
-                authentication_router.post(f"/provider/{provider}/authorize")(
-                    build_device_code_authorize_route(authenticator, provider)
-                )
-                # GET /device_code - shows user code entry form
-                authentication_router.get(f"/provider/{provider}/device_code")(
-                    build_device_code_form_route(authenticator, provider)
-                )
-                # POST /device_code - handles user code submission after browser auth
-                authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_submit_route(authenticator, provider)
-                )
-                # POST /token - CLI client polls this for tokens
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_device_code_token_route(authenticator, provider)
-                )
+                add_external_routes(authentication_router, provider, authenticator)
+                if isinstance(authenticator, ProxiedOIDCAuthenticator):
+                    app.state.provider = provider
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
@@ -262,9 +235,11 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             from .database import orm
             from .database.core import (  # make_admin_by_identity,
                 REQUIRED_REVISION,
+                DatabaseUpgradeNeeded,
                 UninitializedDatabase,
                 check_database,
                 initialize_database,
+                upgrade,
             )
 
             connect_args = {}
@@ -282,6 +257,10 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
                 )
                 initialize_database(engine)
                 logger.info("Database initialized.")
+            except DatabaseUpgradeNeeded:
+                logger.info(f"Database at {redacted_url} is out of date. Upgrading to {REQUIRED_REVISION}...")
+                upgrade(engine, REQUIRED_REVISION)
+                logger.info("Database upgraded.")
             else:
                 logger.info(f"Connected to existing database at {redacted_url}.")
             # SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -416,10 +395,30 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        await SR.RM.close()
-        await SR.console_output_loader.stop()
-        await SR.console_output_stream.stop()
-        await SR.system_info_stream.stop()
+        """Safely shutdown and perform the cleanup robustly
+
+        This change ensures that the application shuts down and cleans up resources even if there is
+        a problem, without silencing the errors.
+        """
+        for task in getattr(app.state, "tasks", []):
+            task.cancel()
+        for closer_name in (
+            "console_output_loader",
+            "console_output_stream",
+            "system_info_stream",
+        ):
+            closer = getattr(SR, closer_name, None)
+            if closer is not None:
+                try:
+                    await closer.stop()
+                except Exception:
+                    logger.exception("Error stopping %s", closer_name)
+        rm = getattr(SR, "RM", None)
+        if rm is not None:
+            try:
+                await rm.close()
+            except Exception:
+                logger.exception("Error closing REManagerAPI connection")
 
     @lru_cache(1)
     def override_get_authenticators():

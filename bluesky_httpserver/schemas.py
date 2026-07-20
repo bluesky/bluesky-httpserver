@@ -271,6 +271,7 @@ class Session(pydantic.BaseModel, **orm):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
+    state: Dict = {}
 
 
 class Principal(pydantic.BaseModel, **orm):
@@ -289,6 +290,7 @@ class Principal(pydantic.BaseModel, **orm):
     roles: Optional[List[str]] = []
     scopes: Optional[List[str]] = []
     api_key_scopes: Optional[Union[List[str], None]] = None
+    access_token: Optional[str] = None
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):

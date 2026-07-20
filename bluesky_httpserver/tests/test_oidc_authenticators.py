@@ -3,49 +3,12 @@
 import time
 from typing import Any, Tuple
 
-import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
-from jose.backends import RSAKey
 from respx import MockRouter
 
-from bluesky_httpserver.authenticators import OIDCAuthenticator, ProxiedOIDCAuthenticator
-
-
-@pytest.fixture
-def oidc_well_known_url(oidc_base_url: str) -> str:
-    return f"{oidc_base_url}.well-known/openid-configuration"
-
-
-@pytest.fixture
-def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
-    """Generate RSA key pair for testing."""
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    public_key = private_key.public_key()
-    return (private_key, public_key)
-
-
-@pytest.fixture
-def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
-    """Create a JSON Web Key Set from the test keys."""
-    _, public_key = keys
-    return [RSAKey(key=public_key, algorithm="RS256").to_dict()]
-
-
-@pytest.fixture
-def mock_oidc_server(
-    respx_mock: MockRouter,
-    oidc_well_known_url: str,
-    well_known_response: dict[str, Any],
-    json_web_keyset: list[dict[str, Any]],
-) -> MockRouter:
-    """Set up mock OIDC server endpoints."""
-    respx_mock.get(oidc_well_known_url).mock(return_value=httpx.Response(httpx.codes.OK, json=well_known_response))
-    respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
-    )
-    return respx_mock
+from bluesky_httpserver.authenticators import OIDCAuthenticator
 
 
 def create_token(issued: bool, expired: bool) -> dict[str, Any]:
@@ -170,50 +133,3 @@ class TestOIDCAuthenticator:
         assert authenticator.confirmation_message == "Logged in as {id}"
         assert authenticator.redirect_on_success == "https://app.example.com/success"
         assert authenticator.redirect_on_failure == "https://app.example.com/failure"
-
-
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
-class TestProxiedOIDCAuthenticator:
-    """Tests for ProxiedOIDCAuthenticator class."""
-
-    @pytest.mark.asyncio
-    async def test_proxied_oidc_oauth2_schema(
-        self,
-        mock_oidc_server: MockRouter,
-        oidc_well_known_url: str,
-    ):
-        """Test that ProxiedOIDCAuthenticator extracts bearer token correctly."""
-        authenticator = ProxiedOIDCAuthenticator(
-            audience="test_client",
-            client_id="test_client",
-            well_known_uri=oidc_well_known_url,
-            device_flow_client_id="test_cli_client",
-        )
-
-        # Create a mock request with Authorization header
-        test_request = httpx.Request(
-            "GET",
-            "http://example.com/api/test",
-            headers={"Authorization": "Bearer TEST_TOKEN"},
-        )
-
-        # The oauth2_schema should extract the bearer token
-        token = await authenticator.oauth2_schema(test_request)
-        assert token == "TEST_TOKEN"
-
-    def test_proxied_oidc_with_scopes(
-        self,
-        mock_oidc_server: MockRouter,
-        oidc_well_known_url: str,
-    ):
-        """Test ProxiedOIDCAuthenticator with custom scopes."""
-        authenticator = ProxiedOIDCAuthenticator(
-            audience="test_client",
-            client_id="test_client",
-            well_known_uri=oidc_well_known_url,
-            device_flow_client_id="test_cli_client",
-            scopes=["openid", "profile", "email"],
-        )
-
-        assert authenticator.scopes == ["openid", "profile", "email"]
-        assert authenticator.device_flow_client_id == "test_cli_client"

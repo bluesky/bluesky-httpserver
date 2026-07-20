@@ -1,7 +1,7 @@
 import json
 import uuid as uuid_module
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -179,6 +179,11 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
+    # Free-form state supplied by the authenticator via UserSessionState.state
+    # (e.g. an upstream OIDC access_token/refresh_token for OBO exchange).
+    # Persisted so it survives across refresh_session calls; the values are
+    # available to downstream services through access tokens.
+    state = Column(JSON, nullable=False, default=dict, server_default="{}")
 
     principal = relationship("Principal", back_populates="sessions")
     pending_sessions = relationship("PendingSession", back_populates="session")

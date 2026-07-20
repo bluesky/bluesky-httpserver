@@ -4,9 +4,10 @@ import functools
 import logging
 import re
 import secrets
+import uuid
 from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, List, Mapping, Optional, cast
+from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
 from cachetools import TTLCache, cached
@@ -16,7 +17,7 @@ from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
-from .authentication import (
+from .protocols import (
     ExternalAuthenticator,
     InternalAuthenticator,
     UserSessionState,
@@ -24,6 +25,10 @@ from .authentication import (
 from .utils import get_root_url, modules_available
 
 logger = logging.getLogger(__name__)
+
+
+class AuthCodeExchangeException(Exception):
+    pass
 
 
 class DummyAuthenticator(InternalAuthenticator):
@@ -71,7 +76,7 @@ properties:
         true_password = self._users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
-            return None
+            return
         if secrets.compare_digest(true_password, password):
             return UserSessionState(username, {})
 
@@ -105,7 +110,7 @@ properties:
             return UserSessionState(username, {})
         except pamela.PAMError:
             # Authentication failed.
-            return None
+            return
 
 
 class OIDCAuthenticator(ExternalAuthenticator):
@@ -189,17 +194,18 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).total_seconds()))
+    @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
-    def decode_token(self, token: str) -> dict[str, Any]:
+    def decode_token(self, id_token: str, access_token: Optional[str] = None) -> dict[str, Any]:
         return jwt.decode(
-            token,
+            id_token,
             key=self.keys(),
             algorithms=self.id_token_signing_alg_values_supported,
             audience=self._audience,
             issuer=self.issuer,
+            access_token=access_token,
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
@@ -223,37 +229,16 @@ properties:
             logger.error("Authentication error: %r", response_body)
             return None
         id_token = response_body["id_token"]
-        # NOTE: We decode the id_token, not access_token, because:
-        # 1. The id_token is the OIDC identity assertion meant for the client
-        # 2. Some providers (like Microsoft Entra) return opaque access_tokens
-        #    that cannot be decoded with the JWKS keys when the resource is
-        #    a first-party Microsoft API (e.g., Graph API with User.Read scope)
+        access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_token(id_token)
+            verified_body = self.decode_token(id_token, access_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
                 jwt.get_unverified_claims(id_token),
             )
             return None
-        # Use preferred_username as the user identifier, extracting just the username
-        # part if it's in email format (user@domain.com -> user)
-        preferred_username = verified_body.get("preferred_username")
-        if preferred_username and "@" in preferred_username:
-            user_id = preferred_username.split("@")[0]
-        elif preferred_username:
-            user_id = preferred_username
-        else:
-            user_id = verified_body["sub"]
-        logger.info(
-            "OIDC authentication successful. user_id=%r (sub=%r, preferred_username=%r, email=%r, name=%r)",
-            user_id,
-            verified_body.get("sub"),
-            verified_body.get("preferred_username"),
-            verified_body.get("email"),
-            verified_body.get("name"),
-        )
-        return UserSessionState(user_id, {})
+        return UserSessionState(verified_body["sub"], {})
 
 
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):
@@ -310,18 +295,302 @@ properties:
         return self._oidc_bearer
 
 
+class EntraAuthenticator(ProxiedOIDCAuthenticator):
+    def __init__(
+        self,
+        audience: str,
+        client_id: str,
+        well_known_uri: str,
+        device_flow_client_id: str,
+        extra_scopes: Optional[List[str]] = None,
+        confirmation_message: str = "",
+        scopes_map: Optional[Dict[str, list[str]]] = None,
+        client_secret: str = "",
+        redirect_on_success: Optional[str] = None,
+        graph_username_attribute: Optional[str] = None,
+    ):
+        """A MS Entra specific version of the OIDC authenticator
+
+        It attempts to extract a username from the standard list of claims returned
+        from the token Entra provides. Alternatively if a graph_username_attribute
+        is used then a call is made to MSGraphAPI to get the provided user attribute
+        and use it as the username instead.
+
+        The graph API call is the recommended way to authenticate with MS products, as all
+        claims in the token are inconsistent and not guaranteed.
+
+        """
+        self.scopes_map = scopes_map if scopes_map is not None else {}
+        self.extra_scopes = extra_scopes or []
+        super().__init__(
+            audience,
+            client_id,
+            well_known_uri,
+            device_flow_client_id,
+            scopes=None,  # not used by Entra; enforcement is via scopes_map
+            confirmation_message=confirmation_message,
+        )
+        # Override the empty secret from ProxiedOIDCAuthenticator if provided.
+        if client_secret:
+            self._client_secret = Secret(client_secret)
+        self.redirect_on_success = redirect_on_success
+        self.graph_username_attribute = graph_username_attribute
+
+    @property
+    def scopes(self):
+        mapped = set()
+        for tiled_scopes in self.scopes_map.values():
+            mapped.update(tiled_scopes)
+        return list(mapped)
+
+    @scopes.setter
+    def scopes(self, value):
+        pass  # ignored; scopes are derived from scopes_map
+
+    def decode_token(self, id_token: str, access_token: Optional[str] = None) -> dict[str, Any]:
+        claims = super().decode_token(id_token, access_token)
+
+        user_claims_list = [f"{key}:{value}" for key, value in claims.items()]
+        logger.debug("Claims:\n%s", "\n".join(user_claims_list))
+        # sub generated by Entra is an opaque string; generate a stable UUID
+        # for Tiled based on "iss|sub" for uniqueness across tenants.
+        # Preserve the original Entra sub separately so it can be used as a
+        # fallback display name — it is more human-readable than the UUID5 hex.
+        original_sub = claims.get("sub")
+        issuer = claims.get("iss", "")
+        claims["sub"] = uuid.uuid5(uuid.NAMESPACE_URL, f"{issuer}|{original_sub}").hex
+        claims["entra_sub"] = original_sub
+
+        # Derive a human-readable username from the token claims.
+        # Priority: nameID (explicit app config) → preferred_username (v2 tokens)
+        # → upn (v1 tokens) → email → original Entra sub (opaque but stable and
+        # meaningful, unlike the UUID5 hex stored in claims["sub"]).
+        #
+        # Note: preferred_username / upn are often absent from *access* tokens
+        # unless explicitly added as optional claims in the Entra app registration.
+        # They are typically present in id_tokens.  If none are found, the
+        # original_sub is used and a warning is emitted so operators know to add
+        # the optional claim.
+        claims["entra_username"] = (
+            claims.get("nameID") or claims.get("preferred_username") or claims.get("upn") or claims.get("email")
+        )
+
+        if user := claims.get("entra_username"):
+            user = user.strip()
+            if "\\" in user:
+                user = user.rsplit("\\", 1)[-1]
+            elif "@" in user:
+                user = user.split("@", 1)[0]
+        else:
+            # No human-readable claim was found.  Fall back to the original
+            # Entra sub (opaque but at least stable and not a UUID5 hex).
+            # This produces a workable identity but authz policies that match
+            # on username will need to use the Entra sub value.
+            user = original_sub
+            logger.warning(
+                "EntraAuthenticator: no human-readable username claim found in token "
+                "(checked nameID, preferred_username, upn, email). "
+                "Falling back to Entra sub=%r. "
+                "To fix: add 'preferred_username' as an optional claim in the "
+                "Entra app registration → Token configuration → Optional claims → Access token.",
+                original_sub,
+            )
+        claims["user"] = user
+
+        # Translate Entra scopes to tiled scopes.
+        # The "scp" claim is present in access tokens but may be absent from
+        # id_tokens (e.g. during the authorization code flow).  When absent,
+        # assume all mapped scopes were granted (Entra would not have issued
+        # the tokens if the user lacked the requested scopes).
+        scp_raw = claims.get("scp", "")
+        tiled_scope_set = set()
+        if scp_raw:
+            for scope in scp_raw.split(" "):
+                mapped_scopes = self.scopes_map.get(scope)
+                if mapped_scopes is None:
+                    logger.warning("Unmapped Entra scope in 'scp': %s", scope)
+                    continue
+                tiled_scope_set.update(mapped_scopes)
+        else:
+            # No scp claim — grant all tiled scopes from the map.
+            for mapped_scopes in self.scopes_map.values():
+                tiled_scope_set.update(mapped_scopes)
+        claims["scope"] = " ".join(tiled_scope_set)
+
+        return claims
+
+    async def graph_lookup(self, access_token, user_param):
+        """Uses the access token provided in the auth flow to lookup a user parameter"""
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://graph.microsoft.com/v1.0/me",
+                params={"$select": user_param},
+                headers=headers,
+            )
+
+            response.raise_for_status()
+
+            return response.json()
+
+    def log_token_claims(self, verified_body):
+        """log token claims
+        Includes logging of the token claims so misconfigurations are easier
+        to diagnose. Keep at debug level to avoid leaking PII in production logs
+        by default
+        """
+        logger.debug(
+            "EntraAuthenticator.authenticate: id_token claims present: %s",
+            sorted(verified_body.keys()),
+        )
+        logger.debug(
+            "EntraAuthenticator.authenticate: entra_username=%r user=%r entra_sub=%r preferred_username=%r",
+            verified_body.get("entra_username"),
+            verified_body.get("user"),
+            verified_body.get("entra_sub"),
+            verified_body.get("preferred_username"),
+        )
+
+    async def get_username_from_graph(self, access_token):
+        """Attempts to get the username from either claims or MSGraphAPI call
+
+        If no username is found, there are errors in looking up the graphAPI
+        username, or whatever it returns None
+        """
+        try:
+            profile = await self.graph_lookup(access_token, self.graph_username_attribute)
+            logger.debug("Graph Profile: %r", profile)
+        except (httpx.HTTPStatusError, httpx.RequestError, ValueError):
+            logger.warning("Graph lookup failed")
+        username = None
+        if profile:
+            username = profile.get(self.graph_username_attribute)
+            if not username:
+                logger.warning(
+                    "Graph lookup succeeded but %s was empty",
+                    self.graph_username_attribute,
+                )
+        return username
+
+    def create_usersession(self, access_token, refresh_token, username):
+        """Create usersession from tokens and final username
+
+        Store the Entra access and refresh tokens so that downstream
+        services that rely on Tiled authentication can perform an OBO exchange
+        to obtain per-user tokens for other services.  The refresh token
+        allows silent renewal without requiring the user to re-authenticate.
+        """
+        state: dict = {}
+        if access_token:
+            state["entra_access_token"] = access_token
+        if refresh_token:
+            state["entra_refresh_token"] = refresh_token
+        return UserSessionState(username, state)
+
+    async def auth_code_exchange(self, request: Request):
+        """Perform the authorization code exchange"""
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning("Authentication failed: No authorization code parameter provided.")
+            raise AuthCodeExchangeException
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        response = await exchange_code(
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
+            extra_scopes=self.extra_scopes,
+        )
+        response_body = response.json()
+        if response.is_error:
+            logger.error("Authentication error: %r", response_body)
+            raise AuthCodeExchangeException
+        logger.debug("Response: %s", response_body)
+        return response_body
+
+    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        """Complete the Entra OIDC authorization-code flow and return a session.
+
+        After a successful code exchange the Entra ``access_token`` and
+        ``refresh_token`` are stored in ``UserSessionState.state`` under the
+        keys ``entra_access_token`` and ``entra_refresh_token`` respectively.
+        Tiled persists this state in the session DB and embeds it verbatim in
+        every Tiled HMAC access token, making the tokens available to downstream
+        services that rely on Tiled authentication via ``get_session_state()``.
+
+        Security note: the Entra access token is therefore visible inside the
+        Tiled JWT (base64-encoded, not encrypted).  The Tiled access token is
+        short-lived (default 15 min) and only transmitted over HTTPS, which
+        limits the exposure window.
+
+        The ``refresh_token`` enables silent renewal: when the Entra access
+        token expires (~1 h), a downstream service can call the Entra token
+        endpoint with ``grant_type=refresh_token`` to obtain a fresh pair and
+        write it back to the session DB so subsequent Tiled ``slide_session``
+        calls propagate the update automatically.
+
+        When an error occurs, the authenticate function will return None
+        instead of a UserSessionState
+        """
+        try:
+            response_body = await self.auth_code_exchange(request)
+        except AuthCodeExchangeException:
+            return None
+        id_token = response_body["id_token"]
+        access_token = response_body.get("access_token")
+        refresh_token = response_body.get("refresh_token")
+
+        try:
+            verified_body = self.decode_token(id_token, access_token)
+        except JWTError:
+            logger.exception(
+                "Authentication error. Unverified token: %r",
+                jwt.get_unverified_claims(id_token),
+            )
+            return None
+        self.log_token_claims(verified_body)
+
+        if self.graph_username_attribute is not None:
+            username = await self.get_username_from_graph(access_token)
+        else:
+            username = verified_body.get("user") or verified_body["sub"]
+
+        if username is not None:
+            return self.create_usersession(access_token, refresh_token, username)
+        else:
+            return None
+
+
 async def exchange_code(
     token_uri: str,
     auth_code: str,
     client_id: str,
     client_secret: str,
     redirect_uri: str,
+    extra_scopes: Optional[List[str]] = None,
 ) -> httpx.Response:
-    """Method that talks to an IdP to exchange a code for an access_token and/or id_token
-    Args:
-        token_url ([type]): [description]
-        auth_code ([type]): [description]
+    """Exchange an authorization code for tokens at the IdP token endpoint.
+
+    Explicitly requests ``openid offline_access`` scopes in the token POST body
+    so that the IdP returns a ``refresh_token`` unconditionally.  This is safe
+    even when ``offline_access`` was already included in the authorization URL
+    scope — the IdP simply ignores duplicates.  Including it here makes the
+    refresh token reliable regardless of how the authorization URL was
+    constructed, which is important for downstream OBO refresh flows.
+
+    ``extra_scopes`` (e.g. ``["api://<client-id>/access_as_user"]``) are
+    appended to the scope string.  Entra only issues an ``access_token`` whose
+    ``aud`` matches the requested resource scope, so any scope that a downstream
+    OBO exchange will use as the ``assertion`` audience **must** be included
+    here — requesting it only on the authorization URL redirect is not
+    sufficient, because Entra does not carry scopes from the redirect into the
+    token POST implicitly.
     """
+    scopes = {"openid", "offline_access"}
+    if extra_scopes:
+        scopes.update(extra_scopes)
     auth_value = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     response = httpx.post(
         url=token_uri,
@@ -331,6 +600,7 @@ async def exchange_code(
             "redirect_uri": redirect_uri,
             "code": auth_code,
             "client_secret": client_secret,
+            "scope": " ".join(sorted(scopes)),
         },
         headers={"Authorization": f"Basic {auth_value}"},
     )
@@ -338,7 +608,6 @@ async def exchange_code(
 
 
 class SAMLAuthenticator(ExternalAuthenticator):
-
     def __init__(
         self,
         saml_settings,  # See EXAMPLE_SAML_SETTINGS below.
@@ -420,7 +689,6 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
 
 class LDAPAuthenticator(InternalAuthenticator):
     """
-    LDAP authenticator.
     The authenticator code is based on https://github.com/jupyterhub/ldapauthenticator
     The parameter ``use_tls`` was added for convenience of testing.
 
@@ -682,7 +950,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         is_bound = await asyncio.get_running_loop().run_in_executor(None, conn.bind)
         if not is_bound:
             msg = "Failed to connect to LDAP server with search user '{search_dn}'"
-            self.log.warning(msg.format(search_dn=search_dn))
+            logger.warning(msg.format(search_dn=search_dn))
             return (None, None)
 
         search_filter = self.lookup_dn_search_filter.format(

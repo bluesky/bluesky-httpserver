@@ -14,7 +14,11 @@ if version.parse(pydantic.__version__) < version.parse("2.0.0"):
 else:
     from pydantic_settings import BaseSettings
 
-from ..authentication import get_current_principal, get_current_principal_websocket
+from ..authentication import (
+    authenticate_websocket_first_message,
+    get_current_principal,
+    get_current_principal_websocket,
+)
 from ..console_output import ConsoleOutputEventStream, StreamingResponseFromClass
 from ..resources import SERVER_RESOURCES as SR
 from ..settings import get_settings
@@ -1150,14 +1154,71 @@ class WebSocketMonitor:
         return self._is_alive
 
 
+# WebSocket close codes.  4001 = invalid token, 4401 = auth required
+# (RFC 6455 leaves 4000-4999 for application use).
+_WS_CLOSE_INVALID_TOKEN = 4001
+_WS_CLOSE_AUTH_REQUIRED = 4401
+
+
+async def _authenticate_websocket(websocket, scopes):
+    """Resolve a Principal for a WebSocket connection.
+
+    Tries in order:
+
+    1. ``Authorization: Bearer|ApiKey ...`` header (populated by curl/CLI).
+    2. ``?access_token=...`` or ``?api_key=...`` query parameter (populated
+       by browsers, which cannot set request headers on a WebSocket
+       handshake).
+    3. First-message handshake: accepts the socket, then reads one JSON
+       message of the form
+       ``{"type": "auth", "api_key": "..."}`` or
+       ``{"type": "auth", "access_token": "..."}``.
+       On success the socket stays open; on failure the socket is closed
+       with code 4001 and ``None`` is returned.
+
+    Returns ``(principal, accepted)`` where ``accepted`` indicates whether
+    the socket has already been ``.accept()``-ed by this helper (True only
+    when the first-message path was used).  Callers that receive ``None``
+    for the principal have already had the socket closed and should return
+    immediately.
+    """
+    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    if principal is not None:
+        return principal, False
+
+    # Fall back to the first-message handshake.  Accept the socket so that we
+    # can receive the auth payload; the client is expected to send it as the
+    # very first frame.
+    await websocket.accept()
+    try:
+        message = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+    except asyncio.TimeoutError:
+        await websocket.close(code=_WS_CLOSE_AUTH_REQUIRED, reason="Auth required")
+        return None, True
+    except WebSocketDisconnect:
+        # Client already gone — no close frame needed.
+        return None, True
+    except Exception:
+        logger.exception("Unexpected error receiving WebSocket auth frame")
+        await websocket.close(code=_WS_CLOSE_AUTH_REQUIRED, reason="Auth required")
+        return None, True
+
+    principal = authenticate_websocket_first_message(websocket, message)
+    if principal is None:
+        await websocket.close(code=_WS_CLOSE_INVALID_TOKEN, reason="Invalid token")
+        return None, True
+
+    return principal, True
+
+
 @router.websocket("/console_output/ws")
 async def console_output_ws(websocket: WebSocket, scopes=["read:console"]):
-    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    principal, accepted = await _authenticate_websocket(websocket, scopes)
     if not principal:
-        await websocket.close(code=4001, reason="Invalid token")
         return
 
-    await websocket.accept()
+    if not accepted:
+        await websocket.accept()
     q = SR.console_output_stream.add_queue(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()
@@ -1178,12 +1239,12 @@ async def console_output_ws(websocket: WebSocket, scopes=["read:console"]):
 
 @router.websocket("/status/ws")
 async def status_ws(websocket: WebSocket, scopes=["read:monitor"]):
-    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    principal, accepted = await _authenticate_websocket(websocket, scopes)
     if not principal:
-        await websocket.close(code=4001, reason="Invalid token")
         return
 
-    await websocket.accept()
+    if not accepted:
+        await websocket.accept()
     q = SR.system_info_stream.add_queue_status(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()
@@ -1205,12 +1266,12 @@ async def status_ws(websocket: WebSocket, scopes=["read:monitor"]):
 
 @router.websocket("/info/ws")
 async def info_ws(websocket: WebSocket, scopes=["read:monitor"]):
-    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    principal, accepted = await _authenticate_websocket(websocket, scopes)
     if not principal:
-        await websocket.close(code=4001, reason="Invalid token")
         return
 
-    await websocket.accept()
+    if not accepted:
+        await websocket.accept()
     q = SR.system_info_stream.add_queue_info(websocket)
     wsmon = WebSocketMonitor(websocket)
     wsmon.start()

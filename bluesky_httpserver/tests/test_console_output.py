@@ -1,13 +1,14 @@
 import json
 import pprint
 import re
+import socket
 import threading
 import time as ttime
 from typing import Any
 
 import pytest
 import requests
-from bluesky_queueserver.manager.tests.common import re_manager_cmd, re_manager_factory  # noqa F401
+from bluesky_queueserver.manager.tests.common import re_manager_factory  # noqa F401
 from websockets.sync.client import connect
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
@@ -20,6 +21,12 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     wait_for_environment_to_be_created,
     wait_for_manager_state_idle,
 )
+
+
+def get_free_tcp_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 class _ReceiveStreamedConsoleOutput(threading.Thread):
@@ -84,17 +91,18 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
         self.stop()
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_stream_console_output_1(
     monkeypatch,
     re_manager_cmd,
     fastapi_server_fs,
-    zmq_port,  # noqa F811
+    use_custom_port,
 ):
     """
     Test for ``stream_console_output`` API
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
@@ -167,18 +175,19 @@ lines
 
 
 @pytest.mark.parametrize("zmq_encoding", (None, "json", "msgpack"))
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_1(
     monkeypatch,
     re_manager_cmd,
     fastapi_server_fs,
-    zmq_port,
     zmq_encoding,  # noqa F811
+    use_custom_port,
 ):
     """
     Test for ``console_output`` API (not a streaming version).
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     if zmq_encoding is not None:
@@ -249,17 +258,18 @@ def test_http_server_console_output_1(
     assert re.search(expected_output, console_output)
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_update_1(
     monkeypatch,
     re_manager_cmd,
     fastapi_server_fs,
-    zmq_port,  # noqa F811
+    use_custom_port,
 ):
     """
     Test for ``console_output`` API (not a streaming version).
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
@@ -393,17 +403,18 @@ class _ReceiveConsoleOutputSocket(threading.Thread):
         self.stop()
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_socket_1(
     monkeypatch,
     re_manager_cmd,
     fastapi_server_fs,
-    zmq_port,  # noqa F811
+    use_custom_port,
 ):
     """
     Test for ``/console_output/ws`` websocket
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()

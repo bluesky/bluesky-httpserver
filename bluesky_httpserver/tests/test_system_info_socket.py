@@ -1,5 +1,6 @@
 import json
 import pprint
+import socket
 import threading
 import time as ttime
 
@@ -18,6 +19,12 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
     wait_for_environment_to_be_created,
     wait_for_manager_state_idle,
 )
+
+
+def get_free_tcp_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 class _ReceiveSystemInfoSocket(threading.Thread):
@@ -62,15 +69,16 @@ class _ReceiveSystemInfoSocket(threading.Thread):
         self.stop()
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 @pytest.mark.parametrize("endpoint", ["/info/ws", "/status/ws"])
 def test_http_server_system_info_socket_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port, endpoint  # noqa F811
+    monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port, endpoint  # noqa F811
 ):
     """
     Test for ``/info/ws`` and ``/status/ws`` websockets
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()

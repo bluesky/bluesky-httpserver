@@ -2,10 +2,16 @@ import json
 import pprint
 import threading
 import time as ttime
+from unittest.mock import MagicMock
 
 import pytest
 from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd, re_manager_factory  # noqa F401
+from sqlalchemy.orm import sessionmaker
 from websockets.sync.client import connect
+
+from bluesky_httpserver import authentication as _auth
+from bluesky_httpserver.database import orm as db_orm
+from bluesky_httpserver.database.core import create_user
 
 from .conftest import fastapi_server_fs  # noqa: F401
 from .conftest import (
@@ -173,3 +179,143 @@ def test_websocket_auth_01(
             assert isinstance(msg["msg"], dict)
     else:
         assert False, f"Unknown authentication type: {ws_auth_type!r}"
+
+
+def _fake_ws_with_deps(
+    *,
+    api_access_manager=None,
+    authenticators=None,
+    settings=None,
+):
+    """Build a minimal fake WebSocket whose ``app.dependency_overrides``
+    look like what build_app() installs at runtime, so
+    ``authenticate_websocket_first_message`` can retrieve them."""
+
+    from bluesky_httpserver.settings import get_settings
+    from bluesky_httpserver.utils import (
+        get_api_access_manager,
+        get_authenticators,
+    )
+
+    class _App:
+        state = MagicMock()
+        dependency_overrides = {
+            get_settings: lambda: settings,
+            get_authenticators: lambda: authenticators or {},
+            get_api_access_manager: lambda: api_access_manager,
+        }
+
+    class _WS:
+        app = _App()
+        headers = {"host": "localhost:8000"}
+        scope = {"scheme": "http", "root_path": ""}
+        query_params: dict = {}
+        cookies: dict = {}
+
+        def __init__(self):
+            # get_current_principal reads request.state.cookies_to_set for a
+            # side-effect on the HTTP path.  Provide a stub so that path does
+            # not attribute-error on the websocket route.
+            self.state = MagicMock()
+            self.state.cookies_to_set = []
+
+    return _WS()
+
+
+def test_authenticate_websocket_first_message_rejects_non_auth_frames():
+    ws = _fake_ws_with_deps(settings=MagicMock())
+    assert _auth.authenticate_websocket_first_message(ws, {"type": "ping"}) is None
+    assert _auth.authenticate_websocket_first_message(ws, "not-a-dict") is None
+    assert _auth.authenticate_websocket_first_message(ws, {"type": "auth"}) is None
+
+
+def test_authenticate_websocket_first_message_accepts_valid_api_key(sqlite_session):
+    """Feed a valid API key through the first-message handshake."""
+    from bluesky_httpserver.settings import DatabaseSettings
+
+    db = sqlite_session
+    principal = create_user(db, "internal", "alice")
+    # Generate an API key with the same machinery routes use.
+    import hashlib
+    import secrets as py_secrets
+
+    secret = py_secrets.token_bytes(4 + 32)
+    hashed = hashlib.sha256(secret).digest()
+    apikey_orm = db_orm.APIKey(
+        principal_id=principal.id,
+        first_eight=secret.hex()[:8],
+        hashed_secret=hashed,
+        scopes=["read:status"],
+    )
+    db.add(apikey_orm)
+    db.commit()
+
+    # Route the sessionmaker used by get_current_principal through our
+    # in-memory sqlite engine.
+    engine = db.get_bind()
+
+    def _fake_sessionmaker(_db_settings):
+        return sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    settings = MagicMock()
+    settings.database_settings = DatabaseSettings(uri="sqlite://", pool_size=None, pool_pre_ping=None)
+    settings.authentication_provider_names = ["internal"]
+    settings.secret_keys = ["hmac"]
+
+    api_access_manager = MagicMock()
+    api_access_manager.is_user_known.return_value = True
+    api_access_manager.get_user_scopes.return_value = {"read:status"}
+    api_access_manager.get_user_roles.return_value = {"user"}
+
+    authenticators = {"internal": MagicMock()}  # truthy => multi-user mode
+    ws = _fake_ws_with_deps(
+        api_access_manager=api_access_manager,
+        authenticators=authenticators,
+        settings=settings,
+    )
+
+    import bluesky_httpserver.authentication as auth_mod
+
+    saved = auth_mod.get_sessionmaker
+    auth_mod.get_sessionmaker = _fake_sessionmaker
+    try:
+        result = _auth.authenticate_websocket_first_message(ws, {"type": "auth", "api_key": secret.hex()})
+    finally:
+        auth_mod.get_sessionmaker = saved
+
+    assert result is not None
+    assert result.uuid == principal.uuid
+
+
+def test_authenticate_websocket_first_message_rejects_bad_api_key(sqlite_session):
+    """A malformed (non-hex) API key must be rejected without leaking DB
+    state.  Uses the same monkey-patched sessionmaker plumbing as the
+    happy-path test so we do not accidentally exercise the real
+    get_sessionmaker(pool_size=None) code path in unit tests."""
+    from bluesky_httpserver.settings import DatabaseSettings
+
+    engine = sqlite_session.get_bind()
+
+    def _fake_sessionmaker(_db_settings):
+        return sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    settings = MagicMock()
+    settings.database_settings = DatabaseSettings(uri="sqlite://", pool_size=5, pool_pre_ping=False)
+    settings.authentication_provider_names = ["internal"]
+    settings.secret_keys = ["hmac"]
+
+    ws = _fake_ws_with_deps(
+        api_access_manager=MagicMock(),
+        authenticators={"internal": MagicMock()},
+        settings=settings,
+    )
+
+    import bluesky_httpserver.authentication as auth_mod
+
+    saved = auth_mod.get_sessionmaker
+    auth_mod.get_sessionmaker = _fake_sessionmaker
+    try:
+        # 'not-hex' fails bytes.fromhex → HTTPException 401 inside get_current_principal.
+        assert _auth.authenticate_websocket_first_message(ws, {"type": "auth", "api_key": "not-hex"}) is None
+    finally:
+        auth_mod.get_sessionmaker = saved

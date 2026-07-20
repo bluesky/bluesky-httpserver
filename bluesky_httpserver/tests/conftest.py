@@ -1,14 +1,22 @@
 import os
 import time as ttime
+from typing import Any, Tuple
 
+import httpx
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
 from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa: F401
 from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jose.backends import RSAKey
+from respx import MockRouter
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from xprocess import ProcessStarter
 
 import bluesky_httpserver.server as bqss
+from bluesky_httpserver.database.base import Base
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = "60610"
@@ -229,6 +237,56 @@ def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TES
             return True
 
     return False
+
+
+# ============================================================================
+# AUTH Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def oidc_well_known_url(oidc_base_url: str) -> str:
+    return f"{oidc_base_url}.well-known/openid-configuration"
+
+
+@pytest.fixture
+def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    return (private_key, public_key)
+
+
+@pytest.fixture
+def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+    _, public_key = keys
+    return [RSAKey(key=public_key, algorithm="RS256").to_dict()]
+
+
+@pytest.fixture
+def mock_oidc_server(
+    respx_mock: MockRouter,
+    oidc_well_known_url: str,
+    well_known_response: dict[str, Any],
+    json_web_keyset: list[dict[str, Any]],
+) -> MockRouter:
+    respx_mock.get(oidc_well_known_url).mock(return_value=httpx.Response(httpx.codes.OK, json=well_known_response))
+    respx_mock.get(well_known_response["jwks_uri"]).mock(
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
+    )
+    return respx_mock
+
+
+@pytest.fixture
+def sqlite_session():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        engine.dispose()
 
 
 # ============================================================================
