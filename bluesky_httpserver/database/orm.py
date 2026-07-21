@@ -2,13 +2,16 @@ import json
 import uuid as uuid_module
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
-from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
 from ..schemas import PrincipalType
 from .base import Base
 
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 class JSONList(TypeDecorator):
     """Represents an immutable structure as a JSON-encoded list.
@@ -179,14 +182,11 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-    # Free-form state supplied by the authenticator via UserSessionState.state
-    # (e.g. an upstream OIDC access_token/refresh_token for OBO exchange).
-    # Persisted so it survives across refresh_session calls; the values are
-    # available to downstream services through access tokens.
-    state = Column(JSON, nullable=False, default=dict, server_default="{}")
-
-    principal = relationship("Principal", back_populates="sessions")
-    pending_sessions = relationship("PendingSession", back_populates="session")
+    # State allows for custom  authenticator information to be stored in the session.
+    state = Column(JSONVariant, nullable=False)
+    principal: Mapped[Principal] = relationship(
+        back_populates="sessions", lazy="joined"
+    )
 
 
 class PendingSession(Timestamped, Base):
@@ -205,5 +205,4 @@ class PendingSession(Timestamped, Base):
     user_code = Column(Unicode(8), index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
-
-    session = relationship("Session", back_populates="pending_sessions")
+    session: Mapped[Session] = relationship(lazy="joined")
