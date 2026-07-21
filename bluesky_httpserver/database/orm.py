@@ -13,6 +13,7 @@ from .base import Base
 # Use JSON with SQLite and JSONB with PostgreSQL.
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
+
 class JSONList(TypeDecorator):
     """Represents an immutable structure as a JSON-encoded list.
 
@@ -184,9 +185,7 @@ class Session(Timestamped, Base):
     revoked = Column(Boolean, default=False, nullable=False)
     # State allows for custom  authenticator information to be stored in the session.
     state = Column(JSONVariant, nullable=False)
-    principal: Mapped[Principal] = relationship(
-        back_populates="sessions", lazy="joined"
-    )
+    principal: Mapped[Principal] = relationship(back_populates="sessions", lazy="joined")
 
 
 class PendingSession(Timestamped, Base):

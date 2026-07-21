@@ -54,7 +54,7 @@ def upgrade():
             nullable=True,
         ),
     )
-    
+
     with op.batch_alter_table("sessions") as batch_op:
         batch_op.add_column(
             sa.Column(
