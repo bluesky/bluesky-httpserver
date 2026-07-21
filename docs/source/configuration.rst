@@ -348,7 +348,7 @@ See the documentation on ``OIDCAuthenticator`` for parameter details.
     authenticators.OIDCAuthenticator
 
 ENTRA Authenticator
-++++++++++++++++++
++++++++++++++++++++
 
 ``EntraAuthenticator`` inherits from the ``ProxiedOIDCAuthenticator`` and provides
 additional ENTRA/MS specific ways to determine the actual username, while still
