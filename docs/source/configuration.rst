@@ -320,26 +320,6 @@ Typical ``well_known_uri`` values:
 - Microsoft Entra ID: ``https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration``
 - ORCID: ``https://orcid.org/.well-known/openid-configuration``
 
-Example configuration (Microsoft Entra ID)::
-
-    authentication:
-      providers:
-        - provider: entra
-          authenticator: bluesky_httpserver.authenticators:OIDCAuthenticator
-          args:
-            audience: 00000000-0000-0000-0000-000000000000
-            client_id: 00000000-0000-0000-0000-000000000000
-            client_secret: ${BSKY_ENTRA_SECRET}
-            well_known_uri: https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
-            confirmation_message: "You have logged in successfully."
-    api_access:
-      policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
-      args:
-        users:
-          <login-name>:
-            roles:
-              - admin
-              - expert
 
 Example configuration (Google)::
 
@@ -352,12 +332,6 @@ Example configuration (Google)::
             client_id: <google-client-id>
             client_secret: ${BSKY_GOOGLE_SECRET}
             well_known_uri: https://accounts.google.com/.well-known/openid-configuration
-    api_access:
-      policy: bluesky_httpserver.authorization:DictionaryAPIAccessControl
-      args:
-        users:
-          <login-name>:
-            roles: user
 
 .. note::
 
@@ -373,6 +347,39 @@ See the documentation on ``OIDCAuthenticator`` for parameter details.
 
     authenticators.OIDCAuthenticator
 
+ENTRA Authenticator
+++++++++++++++++++
+
+``EntraAuthenticator`` inherits from the ``ProxiedOIDCAuthenticator`` and provides
+additional ENTRA/MS specific ways to determine the actual username, while still
+using the OIDC workflow. It will by default attempt to extract a human-readable
+username from the claims in the OIDC token. Alternatively a graph parameter
+can be specified, at which point after ENTRA returns a valid login and identity
+a GraphAPI call is made to request the provided parameter, which is then used
+in place of any claim as the username. This later method is the method recommended
+by MS.
+
+
+Example configuration (Microsoft Entra ID)::
+
+    authentication:
+      providers:
+        - provider: entra
+          authenticator: bluesky_httpserver.authenticators:OIDCAuthenticator
+          args:
+            audience: 00000000-0000-0000-0000-000000000000
+            client_id: 00000000-0000-0000-0000-000000000000
+            client_secret: ${BSKY_ENTRA_SECRET}
+            well_known_uri: https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
+            confirmation_message: "You have logged in successfully."
+            extra_scopes: 'User.Read'
+            graph_username_attribute: "some_graph_param"
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+
+    authenticators.EntraAuthenticator
 
 Expiration Time for Tokens and Sessions
 +++++++++++++++++++++++++++++++++++++++
