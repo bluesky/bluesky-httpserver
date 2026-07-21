@@ -1,11 +1,14 @@
-"""Add PendingSession table for device code flow.
+"""Add PendingSession table and session state column.
 
 Revision ID: a1b2c3d4e5f6
 Revises: 722ff4e4fcc7
 Create Date: 2026-02-13 12:00:00.000000
 
+Adds pending_sessions table for device code flow authentication and
+session state column for carrying session metadata (e.g., OIDC tokens).
 """
 
+import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, Unicode
 from sqlalchemy.sql import func
@@ -19,7 +22,8 @@ depends_on = None
 
 def upgrade():
     """
-    Add pending_sessions table for device code flow authentication.
+    Add pending_sessions table for device code flow authentication
+    and session state column for carrying session metadata.
     """
     op.create_table(
         "pending_sessions",
@@ -50,10 +54,22 @@ def upgrade():
             nullable=True,
         ),
     )
+    
+    with op.batch_alter_table("sessions") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "state",
+                sa.JSON(),
+                nullable=False,
+                server_default="{}",
+            )
+        )
 
 
 def downgrade():
     """
-    Remove pending_sessions table.
+    Remove session state column and pending_sessions table.
     """
+    with op.batch_alter_table("sessions") as batch_op:
+        batch_op.drop_column("state")
     op.drop_table("pending_sessions")
