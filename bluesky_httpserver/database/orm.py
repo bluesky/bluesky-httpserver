@@ -183,8 +183,7 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-    # State allows for custom  authenticator information to be stored in the session.
-    state = Column(JSONVariant, nullable=False)
+    state = Column(JSONVariant, default=dict, nullable=False)
     principal: Mapped[Principal] = relationship(back_populates="sessions", lazy="joined")
 
 

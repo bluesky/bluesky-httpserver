@@ -62,13 +62,7 @@ def test_session_state_defaults_to_empty_dict(sqlite_session):
     db.refresh(session)
     # Server default is '{}' so a session created without an explicit state
     # must not present as None to the ORM.
-    assert reloaded_state(session) == {}
-
-
-def reloaded_state(session):
-    # SQLite may return None if the server_default has not been re-selected;
-    # normalize.
-    return session.state if session.state is not None else {}
+    assert session.state == {}
 
 
 def test_get_or_create_principal_creates_when_missing(sqlite_session):
