@@ -182,7 +182,9 @@ def __getattr__(name):
     """
     if name == "app":
         try:
-            return app_factory()
+            _app = app_factory()
+            globals()["app"] = _app  # cache in module dict — prevents second call
+            return _app
         except Exception as err:
             raise Exception("Failed to create app.") from err
     raise AttributeError(name)
