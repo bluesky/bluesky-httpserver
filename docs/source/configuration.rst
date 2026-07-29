@@ -365,7 +365,7 @@ Example configuration (Microsoft Entra ID)::
     authentication:
       providers:
         - provider: entra
-          authenticator: bluesky_httpserver.authenticators:OIDCAuthenticator
+          authenticator: bluesky_httpserver.authenticators:EntraAuthenticator
           args:
             audience: 00000000-0000-0000-0000-000000000000
             client_id: 00000000-0000-0000-0000-000000000000
