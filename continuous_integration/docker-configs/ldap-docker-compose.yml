@@ -16,4 +16,4 @@ volumes:
   openldap_data:
     driver: local
   openldap_config:
-    driver: local    
+    driver: local
