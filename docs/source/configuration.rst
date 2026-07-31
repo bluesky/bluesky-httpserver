@@ -369,7 +369,7 @@ Example configuration (Microsoft Entra ID)::
           args:
             audience: 00000000-0000-0000-0000-000000000000
             client_id: 00000000-0000-0000-0000-000000000000
-            device_flow_client_id: 00000000-0000-0000-0000-000000000000       
+            device_flow_client_id: 00000000-0000-0000-0000-000000000000
             client_secret: ${BSKY_ENTRA_SECRET}
             well_known_uri: https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
             confirmation_message: "You have logged in successfully."
