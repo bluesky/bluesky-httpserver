@@ -84,3 +84,8 @@ target/
 
 # Testing
 .docker-test-artifacts/
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+pixi.lock
