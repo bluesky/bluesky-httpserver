@@ -1,7 +1,7 @@
 """Tests for OIDC Authenticator functionality."""
 
 import time
-from typing import Any, Tuple
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -88,7 +88,7 @@ class TestOIDCAuthenticator:
         oidc_well_known_url: str,
         issued: bool,
         expired: bool,
-        keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+        keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
     ):
         """Test token decoding with various validity scenarios."""
         private_key, _ = keys

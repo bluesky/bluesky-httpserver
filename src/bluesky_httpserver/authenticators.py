@@ -5,9 +5,9 @@ import logging
 import re
 import secrets
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
-from typing import Any, Dict, List, Mapping, Optional, cast
+from typing import Any, cast
 
 import httpx
 from cachetools import TTLCache, cached
@@ -68,7 +68,7 @@ properties:
         self._users_to_passwords = users_to_passwords
         self.confirmation_message = confirmation_message
 
-    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> UserSessionState | None:
         true_password = self._users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
@@ -98,7 +98,7 @@ properties:
         self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
-    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> UserSessionState | None:
         import pamela
 
         try:
@@ -138,8 +138,8 @@ properties:
         client_secret: str,
         well_known_uri: str,
         confirmation_message: str = "",
-        redirect_on_success: Optional[str] = None,
-        redirect_on_failure: Optional[str] = None,
+        redirect_on_success: str | None = None,
+        redirect_on_failure: str | None = None,
     ):
         self._audience = audience
         self._client_id = client_id
@@ -191,10 +191,10 @@ properties:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
     @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
-    def decode_token(self, id_token: str, access_token: Optional[str] = None) -> dict[str, Any]:
+    def decode_token(self, id_token: str, access_token: str | None = None) -> dict[str, Any]:
         return jwt.decode(
             id_token,
             key=self.keys(),
@@ -204,7 +204,7 @@ properties:
             access_token=access_token,
         )
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         code = request.query_params.get("code")
         if not code:
             logger.warning("Authentication failed: No authorization code parameter provided.")
@@ -269,7 +269,7 @@ properties:
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
-        scopes: Optional[List[str]] = None,
+        scopes: list[str] | None = None,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -298,12 +298,12 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
-        extra_scopes: Optional[List[str]] = None,
+        extra_scopes: list[str] | None = None,
         confirmation_message: str = "",
-        scopes_map: Optional[Dict[str, list[str]]] = None,
+        scopes_map: dict[str, list[str]] | None = None,
         client_secret: str = "",
-        redirect_on_success: Optional[str] = None,
-        graph_username_attribute: Optional[str] = None,
+        redirect_on_success: str | None = None,
+        graph_username_attribute: str | None = None,
     ):
         """A MS Entra specific version of the OIDC authenticator
 
@@ -343,7 +343,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
     def scopes(self, value):
         pass  # ignored; scopes are derived from scopes_map
 
-    def decode_token(self, id_token: str, access_token: Optional[str] = None) -> dict[str, Any]:
+    def decode_token(self, id_token: str, access_token: str | None = None) -> dict[str, Any]:
         claims = super().decode_token(id_token, access_token)
 
         user_claims_list = [f"{key}:{value}" for key, value in claims.items()]
@@ -506,7 +506,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         logger.debug("Response: %s", response_body)
         return response_body
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         """Complete the Entra OIDC authorization-code flow and return a session.
 
         After a successful code exchange the Entra ``access_token`` and
@@ -565,7 +565,7 @@ async def exchange_code(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
-    extra_scopes: Optional[List[str]] = None,
+    extra_scopes: list[str] | None = None,
 ) -> httpx.Response:
     """Exchange an authorization code for tokens at the IdP token endpoint.
 
@@ -634,7 +634,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
 
         self.include_routers = [router]
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         if not modules_available("onelogin"):
             raise ModuleNotFoundError("This SAMLAuthenticator requires the module 'oneline' to be installed.")
         from onelogin.saml2.auth import OneLogin_Saml2_Auth
@@ -645,7 +645,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
         errors = auth.get_errors()  # This method receives an array with the errors
         if errors:
             raise Exception(
-                "Error when processing SAML Response: %s %s" % (", ".join(errors), auth.get_last_error_reason())
+                f"Error when processing SAML Response: {', '.join(errors)} {auth.get_last_error_reason()}"
             )
         if auth.is_authenticated():
             # Return a string that the Identity can use as id.
@@ -979,7 +979,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         response = conn.response
         if len(response) == 0 or "attributes" not in response[0].keys():
-            msg = "No entry found for user '{username}' " "when looking up attribute '{attribute}'"
+            msg = "No entry found for user '{username}' when looking up attribute '{attribute}'"
             logger.warning(msg.format(username=username_supplied_by_user, attribute=self.user_attribute))
             return (None, None)
 
@@ -1063,7 +1063,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 attrs = conn.entries[0].entry_attributes_as_dict
         return attrs
 
-    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> UserSessionState | None:
         import ldap3
 
         username_saved = username  # Save the user name passed as a parameter
@@ -1157,7 +1157,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 logger.warning(msg.format(userattr=self.user_attribute, username=username))
                 return None
             if n_users > 1:
-                msg = "Duplicate users found! " "{n_users} users found with '{userattr}={username}'"
+                msg = "Duplicate users found! {n_users} users found with '{userattr}={username}'"
                 logger.warning(msg.format(userattr=self.user_attribute, username=username, n_users=n_users))
                 return None
 
@@ -1165,7 +1165,7 @@ class LDAPAuthenticator(InternalAuthenticator):
             logger.debug("username:%s Using dn %s", username, userdn)
             found = False
             for group in self.allowed_groups:
-                group_filter = "(|" "(member={userdn})" "(uniqueMember={userdn})" "(memberUid={uid})" ")"
+                group_filter = "(|(member={userdn})(uniqueMember={userdn})(memberUid={uid}))"
                 group_filter = group_filter.format(userdn=userdn, uid=username)
                 group_attributes = ["member", "uniqueMember", "memberUid"]
 

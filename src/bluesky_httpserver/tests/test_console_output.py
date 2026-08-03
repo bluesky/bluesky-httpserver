@@ -147,9 +147,9 @@ def test_http_server_stream_console_output_1(monkeypatch, re_manager_cmd, fastap
             if emsg in msg["msg"]:
                 expected_messages.remove(emsg)
 
-    assert (
-        not expected_messages
-    ), f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
+    assert not expected_messages, (
+        f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
+    )
 
 
 _script1 = r"""
@@ -173,7 +173,11 @@ lines
 @pytest.mark.parametrize("zmq_encoding", (None, "json", "msgpack"))
 @pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_encoding, use_custom_port  # noqa F811
+    monkeypatch,
+    re_manager_cmd,
+    fastapi_server_fs,
+    zmq_encoding,
+    use_custom_port,  # noqa F811
 ):
     """
     Test for ``console_output`` API (not a streaming version).
@@ -451,6 +455,6 @@ def test_http_server_console_output_socket_1(
             if emsg in msg["msg"]:
                 expected_messages.remove(emsg)
 
-    assert (
-        not expected_messages
-    ), f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
+    assert not expected_messages, (
+        f"Messages {expected_messages} were not found in captured output: {pprint.pformat(buffer)}"
+    )

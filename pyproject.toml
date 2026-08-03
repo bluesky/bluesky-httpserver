@@ -134,6 +134,10 @@ ignore = [
     "B905",   # adding strict=False to every zip call is just noise
     "C408",   # errors due to using dict()
     "B011",   # do not use 'assert False' error
+    "B008",   # do not perform function call ... in argument defaults
+    "B006",   # do not use mutable data structures for argument defaults
+    "B024",   # abstract base class has no abstract methods or properties  
+    "B026",   # star-arg unpacking after a keyword argument is strongly discouraged      
 ]
 isort.required-imports = [
 ]

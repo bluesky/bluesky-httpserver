@@ -1,6 +1,5 @@
 from abc import ABC
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Request
 
@@ -21,7 +20,7 @@ class InternalAuthenticator(ABC):
     and password and returns a UserSessionState on success or None on failure.
     """
 
-    async def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+    async def authenticate(self, username: str, password: str) -> UserSessionState | None:
         raise NotImplementedError
 
 
@@ -33,5 +32,5 @@ class ExternalAuthenticator(ABC):
     Request object and returns a UserSessionState on success or None on failure.
     """
 
-    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         raise NotImplementedError

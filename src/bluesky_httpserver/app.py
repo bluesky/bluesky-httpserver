@@ -323,7 +323,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             try:
                 validate_zmq_key(zmq_public_key)
             except Exception as ex:
-                raise ValueError(f"ZMQ public key is improperly formatted: {ex}")
+                raise ValueError(f"ZMQ public key is improperly formatted: {ex}") from ex
 
         logger.info(
             f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"
@@ -431,7 +431,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
     @lru_cache(1)
     def override_get_settings():
         settings = get_settings()
-        setattr(settings, "authentication_provider_names", [_["provider"] for _ in authentication_providers])
+        settings.authentication_provider_names = [_["provider"] for _ in authentication_providers]
         for item in [
             "allow_anonymous_access",
             "secret_keys",
@@ -443,7 +443,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
         if authentication.get("single_user_api_key") is not None:
-            setattr(settings, "single_user_api_key_generated", False)
+            settings.single_user_api_key_generated = False
         for item in ["allow_origins", "response_bytesize_limit"]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
@@ -456,7 +456,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             settings.database_pool_pre_ping = database["pool_pre_ping"]
         object_cache_available_bytes = server_settings.get("object_cache", {}).get("available_bytes")
         if object_cache_available_bytes is not None:
-            setattr(settings, "object_cache_available_bytes", object_cache_available_bytes)
+            settings.object_cache_available_bytes = object_cache_available_bytes
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in the current working directory.

@@ -19,8 +19,11 @@ from bluesky_httpserver.authorization._defaults import (
     _DEFAULT_SCOPES_SINGLE_USER,
 )
 
-from .conftest import fastapi_server_fs  # noqa: F401
-from .conftest import request_to_json, setup_server_with_config_file
+from .conftest import (
+    fastapi_server_fs,  # noqa: F401
+    request_to_json,
+    setup_server_with_config_file,
+)
 
 config_noauth_with_anonymous_access = """
 authentication:
@@ -450,7 +453,7 @@ def test_authentication_and_authorization_05(
         if not params:
             roles = [_DEFAULT_ROLE_SINGLE_USER]
             scopes_to_add = {"admin:apikeys", "admin:read:principals", "admin:metrics"}
-            scopes_to_remove = set(["read:monitor"])
+            scopes_to_remove = {"read:monitor"}
             scopes = (set(_DEFAULT_SCOPES_SINGLE_USER) | scopes_to_add) - scopes_to_remove
         else:
             roles = [_DEFAULT_ROLE_PUBLIC]
@@ -619,11 +622,11 @@ def test_authentication_and_authorization_07(
 
         # Compute modified scopes for roles
         modified_roles = copy.deepcopy(_DEFAULT_ROLES)
-        modified_roles[_DEFAULT_ROLE_ADMIN] |= set(["read:queue"])
-        modified_roles[_DEFAULT_ROLE_ADMIN] -= set(["admin:metrics"])
-        modified_roles[_DEFAULT_ROLE_EXPERT] = set(["read:queue", "write:queue"])
-        modified_roles[_DEFAULT_ROLE_USER] -= set(["read:console", "read:testing"])
-        modified_roles[_DEFAULT_ROLE_OBSERVER] |= set(["write:queue"])
+        modified_roles[_DEFAULT_ROLE_ADMIN] |= {"read:queue"}
+        modified_roles[_DEFAULT_ROLE_ADMIN] -= {"admin:metrics"}
+        modified_roles[_DEFAULT_ROLE_EXPERT] = {"read:queue", "write:queue"}
+        modified_roles[_DEFAULT_ROLE_USER] -= {"read:console", "read:testing"}
+        modified_roles[_DEFAULT_ROLE_OBSERVER] |= {"write:queue"}
 
         roles_all = {"bob": ["admin", "expert"], "alice": ["user"], "cara": ["observer"]}
         roles_user = roles_all[username]

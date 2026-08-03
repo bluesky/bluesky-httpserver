@@ -252,9 +252,9 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_s
     os.makedirs(dir_mod_root, exist_ok=True)
     os.makedirs(dir_submod, exist_ok=True)
 
-    with open(os.path.join(dir_mod_root, "mod1.py"), "wt") as f:
+    with open(os.path.join(dir_mod_root, "mod1.py"), "w") as f:
         f.writelines(_mod1)
-    with open(os.path.join(dir_submod, "mod2.py"), "wt") as f:
+    with open(os.path.join(dir_submod, "mod2.py"), "w") as f:
         f.writelines(_mod2)
 
     mod1_name, mod2_name = "mod1", "submod_dir.mod2"

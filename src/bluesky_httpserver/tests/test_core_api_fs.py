@@ -47,7 +47,7 @@ def _create_test_excel_file1(tmp_path, *, plan_params, col_names):
             {
                 "name": p[0],
                 "args": [["det1", "det2"]],
-                "kwargs": {k: v for k, v in zip(col_names[1:], p[1:])},
+                "kwargs": dict(zip(col_names[1:], p[1:])),
                 "item_type": "plan",
             }
         )
@@ -109,8 +109,8 @@ def test_http_server_queue_upload_spreasheet_1(
             assert v == p[k]
 
     assert len(results1) == len(plans_expected), str(results1)
-    assert all([_["success"] is True for _ in results1]), str(results1)
-    assert all([_["msg"] == "" for _ in results1]), str(results1)
+    assert all(_["success"] is True for _ in results1), str(results1)
+    assert all(_["msg"] == "" for _ in results1), str(results1)
 
     # Verify that the queue contains correct plans
     resp2 = request_to_json("get", "/queue/get")

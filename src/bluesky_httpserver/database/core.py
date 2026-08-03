@@ -1,7 +1,6 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime
-from typing import Optional
 
 from alembic import command
 from alembic.config import Config
@@ -316,12 +315,12 @@ def latest_principal_activity(db, principal):
         latest_api_key_activity,
         latest_session_activity,
     ]
-    if all([t is None for t in all_activity]):
+    if all(t is None for t in all_activity):
         return None
     return max(t for t in all_activity if t is not None)
 
 
-def lookup_valid_pending_session_by_device_code(db, device_code: bytes) -> Optional[PendingSession]:
+def lookup_valid_pending_session_by_device_code(db, device_code: bytes) -> PendingSession | None:
     """
     Look up a pending session by its device code.
 
@@ -340,7 +339,7 @@ def lookup_valid_pending_session_by_device_code(db, device_code: bytes) -> Optio
     return pending_session
 
 
-def lookup_valid_pending_session_by_user_code(db, user_code: str) -> Optional[PendingSession]:
+def lookup_valid_pending_session_by_user_code(db, user_code: str) -> PendingSession | None:
     """
     Look up a pending session by its user code.
 

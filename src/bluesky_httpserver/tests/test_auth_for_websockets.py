@@ -13,10 +13,10 @@ from bluesky_httpserver import authentication as _auth
 from bluesky_httpserver.database import orm as db_orm
 from bluesky_httpserver.database.core import create_user
 
-from .conftest import fastapi_server_fs  # noqa: F401
 from .conftest import (
     SERVER_ADDRESS,
     SERVER_PORT,
+    fastapi_server_fs,  # noqa: F401
     request_to_json,
     setup_server_with_config_file,
     wait_for_environment_to_be_closed,

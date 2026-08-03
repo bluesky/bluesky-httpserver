@@ -91,13 +91,13 @@ def test_BasicAPIAccessControl_02(name, role, scopes):
     ac_manager = BasicAPIAccessControl()
 
     assert ac_manager.is_user_known(name) is True
-    assert ac_manager.get_user_roles(name) == set([role])
+    assert ac_manager.get_user_roles(name) == {role}
     assert ac_manager.get_displayed_user_name(name) == name
     assert ac_manager.get_user_scopes(name) == set(scopes)
 
     expected_user_info = {
         "displayed_name": name,
-        "roles": set([role]),
+        "roles": {role},
         "scopes": set(scopes),
     }
     assert ac_manager.get_user_info(name) == expected_user_info

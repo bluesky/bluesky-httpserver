@@ -20,9 +20,9 @@ def process_exception():
     try:
         raise
     except REManagerAPI.RequestTimeoutError as ex:
-        raise HTTPException(status_code=408, detail=str(ex))
+        raise HTTPException(status_code=408, detail=str(ex)) from ex
     except Exception as ex:
-        raise HTTPException(status_code=400, detail=str(ex))
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
 
 
 # The default user name and user group should never be sent to the manager unless there is a bug.
@@ -159,7 +159,7 @@ def prepend_to_sys_path(*paths):
     try:
         yield
     finally:
-        for item in paths:
+        for _ in paths:
             sys.path.pop(0)
 
 
@@ -289,7 +289,7 @@ def get_current_username(*, principal, settings, api_access_manager):
     list(str)
         List of user names from all valid providers.
     """
-    pnames = set(settings.authentication_provider_names) | set([_DEFAULT_ANONYMOUS_PROVIDER_NAME])
+    pnames = set(settings.authentication_provider_names) | {_DEFAULT_ANONYMOUS_PROVIDER_NAME}
     ids = {_.id for _ in principal.identities if (_.provider in pnames) and api_access_manager.is_user_known(_.id)}
     ids = list(ids)
     if not ids:

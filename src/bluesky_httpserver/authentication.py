@@ -5,7 +5,7 @@ import secrets
 import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
-from typing import Any, List, Optional
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -89,7 +89,7 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str | None = None
 
 
 class APIKeyAuthorizationHeader(APIKeyBase):
@@ -105,13 +105,13 @@ class APIKeyAuthorizationHeader(APIKeyBase):
         self,
         *,
         name: str,
-        scheme_name: Optional[str] = None,
-        description: Optional[str] = None,
+        scheme_name: str | None = None,
+        description: str | None = None,
     ):
         self.model: APIKey = APIKey(**{"in": APIKeyIn.header}, name=name, description=description)
         self.scheme_name = scheme_name or self.__class__.__name__
 
-    async def __call__(self, request: Request) -> Optional[str]:
+    async def __call__(self, request: Request) -> str | None:
         authorization: str = request.headers.get("Authorization")
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() == "bearer":
@@ -158,7 +158,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 
 
 def decode_token(
-    token: str, secret_keys: List[str], proxied_authenticator: Optional[ProxiedOIDCAuthenticator] = None
+    token: str, secret_keys: list[str], proxied_authenticator: ProxiedOIDCAuthenticator | None = None
 ) -> dict[str, Any]:
     credentials_exception = HTTPException(
         status_code=401,
@@ -235,16 +235,16 @@ async def get_decoded_access_token(
         return None
     try:
         payload = decode_token(access_token, settings.secret_keys, settings.authenticator)
-    except ExpiredSignatureError:
+    except ExpiredSignatureError as ex:
         raise HTTPException(
             status_code=401,
             detail="Access token has expired. Refresh token.",
             headers=headers_for_401(request, security_scopes),
-        )
+        ) from ex
     return payload
 
 
-def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+def move_api_key(request: Request, api_key: str | None = Depends(get_api_key)):
     """
     Move API key from query parameter to cookie.
 
@@ -396,7 +396,6 @@ def get_current_principal_from_token(
         roles_sets = [api_access_manager.get_user_roles(_) for _ in ids]
         roles = set.union(*roles_sets) if roles_sets else set()
     else:
-
         identity_id = decoded_access_token.get("user") or decoded_access_token.get("sub")
         provider = request.app.state.provider
 
@@ -764,7 +763,7 @@ def build_authorize_route(authenticator, provider):
 
     async def authorize_redirect(
         request: Request,
-        state: Optional[str] = Query(None),
+        state: str | None = Query(None),
     ):
         """Redirect browser to OAuth provider for authentication."""
         redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
@@ -974,7 +973,7 @@ def build_device_code_form_route(authenticator, provider):
     async def device_code_form(
         request: Request,
         code: str,
-        state: Optional[str] = Query(None),
+        state: str | None = Query(None),
         settings: BaseSettings = Depends(get_settings),
         api_access_manager=Depends(get_api_access_manager),
     ):
@@ -1114,9 +1113,9 @@ def build_device_code_token_route(authenticator, provider):
         device_code_hex = body.device_code
         try:
             device_code = bytes.fromhex(device_code_hex)
-        except Exception:
+        except Exception as ex:
             # Not valid hex, therefore not a valid device_code
-            raise HTTPException(status_code=401, detail="Invalid device code")
+            raise HTTPException(status_code=401, detail="Invalid device code") from ex
 
         with get_sessionmaker(settings.database_settings)() as db:
             pending_session = lookup_valid_pending_session_by_device_code(db, device_code)
@@ -1345,8 +1344,8 @@ def revoke_session(
 def slide_session(refresh_token, settings, db, api_access_manager):
     try:
         payload = decode_token(refresh_token, settings.secret_keys)
-    except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Session has expired. Please re-authenticate.")
+    except ExpiredSignatureError as ex:
+        raise HTTPException(status_code=401, detail="Session has expired. Please re-authenticate.") from ex
     # Find this session in the database.
     session = lookup_valid_session(db, payload["sid"])
     now = utcnow()
@@ -1449,9 +1448,9 @@ def current_apikey_info(
         raise HTTPException(status_code=401, detail="No API key was provided with this request.")
     try:
         secret = bytes.fromhex(api_key)
-    except Exception:
+    except Exception as ex:
         # Not valid hex, therefore not a valid API key
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise HTTPException(status_code=401, detail="Invalid API key") from ex
     with get_sessionmaker(settings.database_settings)() as db:
         api_key_orm = lookup_valid_api_key(db, secret)
         if api_key_orm is None:

@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Dict, Generic, List, Optional, TypeVar, Union
+from typing import Generic, TypeVar
 
 import pydantic
 import pydantic.dataclasses
@@ -28,10 +28,10 @@ class Error(pydantic.BaseModel):
 
 
 class Response(generic_model, Generic[DataT, LinksT, MetaT]):
-    data: Optional[DataT] = None
-    error: Optional[Error] = None
-    links: Optional[LinksT] = None
-    meta: Optional[MetaT] = None
+    data: DataT | None = None
+    error: Error | None = None
+    links: LinksT | None = None
+    meta: MetaT | None = None
 
     @pydantic.validator("error", always=True)
     def check_consistency(cls, v, values):
@@ -62,8 +62,8 @@ class EntryFields(str, enum.Enum):
 
 
 class Structure(pydantic.BaseModel):
-    micro: Optional[dict] = None
-    macro: Optional[dict] = None
+    micro: dict | None = None
+    macro: dict | None = None
 
 
 class SortingDirection(int, enum.Enum):
@@ -145,10 +145,10 @@ class NodeMeta(pydantic.BaseModel):
 class Resource(generic_model, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
 
-    id: Union[str, uuid.UUID]
+    id: str | uuid.UUID
     attributes: AttributesT
-    links: Optional[ResourceLinksT] = None
-    meta: Optional[ResourceMetaT] = None
+    links: ResourceLinksT | None = None
+    meta: ResourceMetaT | None = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -188,8 +188,8 @@ class AuthenticationMode(str, enum.Enum):
 class AboutAuthenticationProvider(pydantic.BaseModel):
     provider: str
     mode: AuthenticationMode
-    links: Dict[str, str]
-    confirmation_message: Optional[str] = None
+    links: dict[str, str]
+    confirmation_message: str | None = None
 
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
@@ -202,18 +202,18 @@ class AboutAuthenticationLinks(pydantic.BaseModel):
 
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
-    providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks] = None
+    providers: list[AboutAuthenticationProvider]
+    links: AboutAuthenticationLinks | None = None
 
 
 class About(pydantic.BaseModel):
     api_version: int
     library_version: str
-    formats: Dict[str, List[str]]
-    aliases: Dict[str, Dict[str, List[str]]]
-    queries: List[str]
+    formats: dict[str, list[str]]
+    aliases: dict[str, dict[str, list[str]]]
+    queries: list[str]
     authentication: AboutAuthentication
-    links: Dict[str, str]
+    links: dict[str, str]
     meta: dict
 
 
@@ -225,21 +225,21 @@ class PrincipalType(str, enum.Enum):
 class Identity(pydantic.BaseModel, **orm):
     id: pydantic.constr(max_length=255)
     provider: pydantic.constr(max_length=255)
-    latest_login: Optional[datetime] = None
+    latest_login: datetime | None = None
 
 
 class Role(pydantic.BaseModel, **orm):
     name: str
-    scopes: List[str]
+    scopes: list[str]
     # principals
 
 
 class APIKey(pydantic.BaseModel, **orm):
     first_eight: pydantic.constr(min_length=8, max_length=8)
-    expiration_time: Optional[datetime] = None
-    note: Optional[pydantic.constr(max_length=255)] = None
-    scopes: List[str]
-    latest_activity: Optional[datetime] = None
+    expiration_time: datetime | None = None
+    note: pydantic.constr(max_length=255) | None = None
+    scopes: list[str]
+    latest_activity: datetime | None = None
 
 
 class APIKeyWithSecret(APIKey):
@@ -271,7 +271,7 @@ class Session(pydantic.BaseModel, **orm):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
-    state: Dict = {}
+    state: dict = {}
 
 
 class Principal(pydantic.BaseModel, **orm):
@@ -281,16 +281,16 @@ class Principal(pydantic.BaseModel, **orm):
     # It is left as an internal database concern.
     uuid: uuid.UUID
     type: PrincipalType
-    identities: List[Identity] = []
+    identities: list[Identity] = []
     # roles: List[Role] = []
-    api_keys: List[APIKey] = []
-    sessions: List[Session] = []
-    latest_activity: Optional[datetime] = None
+    api_keys: list[APIKey] = []
+    sessions: list[Session] = []
+    latest_activity: datetime | None = None
     # Optional parameters reflecting current permissions for the authenticated user
-    roles: Optional[List[str]] = []
-    scopes: Optional[List[str]] = []
-    api_key_scopes: Optional[Union[List[str], None]] = None
-    access_token: Optional[str] = None
+    roles: list[str] | None = []
+    scopes: list[str] | None = []
+    api_key_scopes: list[str] | None = None
+    access_token: str | None = None
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):
@@ -302,15 +302,15 @@ class Principal(pydantic.BaseModel, **orm):
 class AllowedScopes(pydantic.BaseModel, **orm):
     "Returns roles and current allowed scopes for a user authenticated with API key or token"
 
-    roles: List[str] = []
-    scopes: List[str] = []
+    roles: list[str] = []
+    scopes: list[str] = []
 
 
 class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
+    expires_in: int | None = pydantic.Field(..., example=600)  # seconds
     # scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
-    scopes: Optional[List[str]] = pydantic.Field(default=["inherit"], example=["inherit"])
-    note: Optional[str] = None
+    scopes: list[str] | None = pydantic.Field(default=["inherit"], example=["inherit"])
+    note: str | None = None

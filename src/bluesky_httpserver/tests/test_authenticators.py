@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from datetime import timedelta
-from typing import Any, Tuple
+from typing import Any
 from unittest.mock import MagicMock
 
 import httpx
@@ -135,7 +135,7 @@ def test_oidc_decoding(
     oidc_well_known_url: str,
     issued: bool,
     expired: bool,
-    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
+    keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey],
 ):
     private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=oidc_well_known_url)

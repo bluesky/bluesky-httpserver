@@ -2,7 +2,6 @@ import asyncio
 import io
 import logging
 import pprint
-from typing import Optional
 
 import pydantic
 from bluesky_queueserver.manager.conversions import simplify_plan_descriptions, spreadsheet_to_plan_list
@@ -278,7 +277,7 @@ async def queue_item_add_batch_handler(
 @router.post("/queue/upload/spreadsheet")
 async def queue_upload_spreadsheet(
     spreadsheet: UploadFile = File(...),
-    data_type: Optional[str] = Form(None),
+    data_type: str | None = Form(None),
     principal=Security(get_current_principal, scopes=["write:queue:edit"]),
     settings: BaseSettings = Depends(get_settings),
     api_access_manager=Depends(get_api_access_manager),

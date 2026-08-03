@@ -43,7 +43,7 @@ def construct_build_app_kwargs(
         providers = list(auth_spec.get("providers", []))
         provider_names = [p["provider"] for p in providers]
         if len(set(provider_names)) != len(provider_names):
-            raise ValueError("The names given for 'provider' must be unique. " f"Found duplicates in {providers}")
+            raise ValueError(f"The names given for 'provider' must be unique. Found duplicates in {providers}")
         for i, authenticator in enumerate(providers):
             import_path = auth_aliases.get(authenticator["authenticator"], authenticator["authenticator"])
             authenticator_class = import_object(import_path, accept_live_object=True)
@@ -84,8 +84,7 @@ def construct_build_app_kwargs(
                 )
             elif not os.access(prometheus_multiproc_dir, os.W_OK):
                 raise ValueError(
-                    "prometheus enabled but PROMETHEUS_MULTIPROC_DIR "
-                    f"({prometheus_multiproc_dir}) is not writable"
+                    f"prometheus enabled but PROMETHEUS_MULTIPROC_DIR ({prometheus_multiproc_dir}) is not writable"
                 )
         server_settings["metrics"] = metrics
         server_settings["qserver_zmq_configuration"] = config.get("qserver_zmq_configuration", {})

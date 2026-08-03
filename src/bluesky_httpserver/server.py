@@ -29,7 +29,7 @@ def start_server():
         return argparse.RawDescriptionHelpFormatter(prog, max_help_position=20, width=90)
 
     parser = argparse.ArgumentParser(
-        description="Start Bluesky HTTP Server.\n" f"bluesky-httpserver version {qserver_version}.\n",
+        description=f"Start Bluesky HTTP Server.\nbluesky-httpserver version {qserver_version}.\n",
         formatter_class=formatter,
     )
 
@@ -38,7 +38,7 @@ def start_server():
         dest="http_server_host",
         action="store",
         default=None,
-        help="HTTP server host name, e.g. '127.0.0.1' or 'localhost' " f"(default: {default_http_server_host!r}).",
+        help=f"HTTP server host name, e.g. '127.0.0.1' or 'localhost' (default: {default_http_server_host!r}).",
     )
 
     parser.add_argument(
@@ -46,7 +46,7 @@ def start_server():
         dest="http_server_port",
         action="store",
         default=None,
-        help="HTTP server port, e.g. '127.0.0.1' or 'localhost' " f"(default: {default_http_server_port!r}).",
+        help=f"HTTP server port, e.g. '127.0.0.1' or 'localhost' (default: {default_http_server_port!r}).",
     )
 
     parser.add_argument(

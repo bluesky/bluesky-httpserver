@@ -72,7 +72,11 @@ class _ReceiveSystemInfoSocket(threading.Thread):
 @pytest.mark.parametrize("use_custom_port", (False, True))
 @pytest.mark.parametrize("endpoint", ["/info/ws", "/status/ws"])
 def test_http_server_system_info_socket_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port, endpoint  # noqa F811
+    monkeypatch,
+    re_manager_cmd,  # noqa F811
+    fastapi_server_fs,  # noqa F811
+    use_custom_port,
+    endpoint,  # noqa F811
 ):
     """
     Test for ``/info/ws`` and ``/status/ws`` websockets

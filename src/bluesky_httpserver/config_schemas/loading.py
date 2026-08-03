@@ -12,5 +12,5 @@ def load_schema_from_yml(file_name):
 
     here = Path(__file__).parent.absolute()
     schema_path = os.path.join(here, file_name)
-    with open(schema_path, "r") as file:
+    with open(schema_path) as file:
         return yaml.safe_load(file)

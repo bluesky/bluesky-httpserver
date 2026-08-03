@@ -1,13 +1,15 @@
 import os
 import time as ttime
-from typing import Any, Tuple
+from typing import Any
 
 import httpx
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
-from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa: F401
-from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
+from bluesky_queueserver.manager.tests.common import (
+    re_manager_cmd,  # noqa: F401
+    set_qserver_zmq_encoding,  # noqa: F401
+)
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose.backends import RSAKey
 from respx import MockRouter
@@ -98,7 +100,7 @@ def setup_server_with_config_file(*, config_file_str, tmpdir, monkeypatch):
     config_dir = os.path.join(tmpdir, "config")
     config_path = os.path.join(config_dir, config_fln)
     os.makedirs(config_dir)
-    with open(config_path, "wt") as f:
+    with open(config_path, "w") as f:
         f.writelines(config_file_str)
 
     sqlite_path = os.path.join(tmpdir, "bluesky_httpserver.sqlite")
@@ -234,14 +236,14 @@ def oidc_well_known_url(oidc_base_url: str) -> str:
 
 
 @pytest.fixture
-def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+def keys() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()
     return (private_key, public_key)
 
 
 @pytest.fixture
-def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+def json_web_keyset(keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
     _, public_key = keys
     return [RSAKey(key=public_key, algorithm="RS256").to_dict()]
 
