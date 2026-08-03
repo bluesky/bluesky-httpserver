@@ -42,7 +42,7 @@ jobs:
       env:
         PYTEST_ADDOPTS: "--durations=20"
       run: |
-        pixi run --environment=${{ matrix.python-env }} coverage run -m pytest -vv --splits 3 --group ${{ matrix.group }}
+        pixi run --environment=${{ matrix.python-env }} coverage run -m pytest -vv
         pixi run --environment=${{ matrix.python-env }} coverage report -m
 
     - name: Dump LDAP diagnostics on failure
