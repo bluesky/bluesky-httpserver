@@ -13,13 +13,13 @@ repos:
       - id: ruff
         name: lint with ruff
         language: system
-        entry: ruff check --force-exclude --fix
+        entry: ruff check --force-exclude --fix --diff
         types: [python]
         require_serial: true
 
       - id: ruff-format
         name: format with ruff
         language: system
-        entry: ruff format --force-exclude
+        entry: ruff format --force-exclude --diff
         types: [python]
         require_serial: true
