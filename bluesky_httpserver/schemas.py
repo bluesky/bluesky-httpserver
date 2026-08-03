@@ -163,6 +163,23 @@ class RefreshToken(pydantic.BaseModel):
     refresh_token: str
 
 
+class DeviceCode(pydantic.BaseModel):
+    """Schema for device code token polling request."""
+
+    device_code: str
+
+
+class DeviceCodeResponse(pydantic.BaseModel):
+    """Schema for device code flow initiation response."""
+
+    authorization_uri: str
+    verification_uri: str
+    device_code: str
+    user_code: str
+    expires_in: int
+    interval: int
+
+
 class AuthenticationMode(str, enum.Enum):
     password = "password"
     external = "external"
@@ -254,6 +271,7 @@ class Session(pydantic.BaseModel, **orm):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
+    state: Dict = {}
 
 
 class Principal(pydantic.BaseModel, **orm):
@@ -272,6 +290,7 @@ class Principal(pydantic.BaseModel, **orm):
     roles: Optional[List[str]] = []
     scopes: Optional[List[str]] = []
     api_key_scopes: Optional[Union[List[str], None]] = None
+    access_token: Optional[str] = None
 
     @classmethod
     def from_orm(cls, orm, latest_activity=None):

@@ -1,13 +1,17 @@
 import json
 import uuid as uuid_module
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, Unicode  # Table,
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
 from ..schemas import PrincipalType
 from .base import Base
+
+# Use JSON with SQLite and JSONB with PostgreSQL.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
 class JSONList(TypeDecorator):
@@ -179,5 +183,24 @@ class Session(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
+    state = Column(JSONVariant, default=dict, nullable=False)
+    principal: Mapped[Principal] = relationship(back_populates="sessions", lazy="joined")
 
-    principal = relationship("Principal", back_populates="sessions")
+
+class PendingSession(Timestamped, Base):
+    """
+    This is used only in Device Code Flow for OIDC authentication.
+
+    When a CLI client initiates the device code flow, a pending session is created
+    with a device_code (for the client to poll) and a user_code (for the user to
+    enter in the browser). Once the user authenticates, the pending session is
+    linked to a real session, which the polling client then receives.
+    """
+
+    __tablename__ = "pending_sessions"
+
+    hashed_device_code = Column(LargeBinary(32), primary_key=True, index=True, nullable=False)
+    user_code = Column(Unicode(8), index=True, nullable=False)
+    expiration_time = Column(DateTime(timezone=False), nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    session: Mapped[Session] = relationship(lazy="joined")

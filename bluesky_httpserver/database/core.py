@@ -1,6 +1,7 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime
+from typing import Optional
 
 from alembic import command
 from alembic.config import Config
@@ -10,13 +11,13 @@ from sqlalchemy.sql import func
 
 from .alembic_utils import temp_alembic_ini
 from .base import Base
-from .orm import APIKey, Identity, Principal, Session  # , Role
+from .orm import APIKey, Identity, PendingSession, Principal, Session  # , Role
 
 # This is the alembic revision ID of the database revision
 # required by this version of Tiled.
-REQUIRED_REVISION = "722ff4e4fcc7"
+REQUIRED_REVISION = "a1b2c3d4e5f6"
 # This is list of all valid revisions (from current to oldest).
-ALL_REVISIONS = ["722ff4e4fcc7", "481830dd6c11"]
+ALL_REVISIONS = ["a1b2c3d4e5f6", "722ff4e4fcc7", "481830dd6c11"]
 
 
 # def create_default_roles(engine):
@@ -208,6 +209,28 @@ def create_user(db, identity_provider, id):
     return principal
 
 
+def get_or_create_principal(db, identity_provider, id):
+    """Return a Principal for (identity_provider, id), creating it if needed.
+
+    Mirrors tiled's ``authn_database.core.get_or_create_principal``.  Unlike
+    :func:`create_session`, this helper only touches the Principal/Identity
+    tables — it never creates a Session row.  It is intended for principals
+    that authenticate with a token minted by an external OIDC provider (i.e.
+    :class:`bluesky_httpserver.authenticators.ProxiedOIDCAuthenticator`
+    subclasses) where the JWT itself is authoritative and no bluesky-httpserver
+    session lifetime is required.
+
+    On successful lookup the matching ``Identity.latest_login`` is updated to
+    now.
+    """
+    identity = db.query(Identity).filter(Identity.id == id).filter(Identity.provider == identity_provider).first()
+    if identity is not None:
+        identity.latest_login = datetime.utcnow()
+        db.commit()
+        return identity.principal
+    return create_user(db, identity_provider, id)
+
+
 def lookup_valid_session(db, session_id):
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
@@ -215,6 +238,8 @@ def lookup_valid_session(db, session_id):
         return None
 
     session = db.query(Session).filter(Session.uuid == uuid_module.UUID(hex=session_id)).first()
+    if session is None:
+        return None
     if session.expiration_time is not None and session.expiration_time < datetime.utcnow():
         db.delete(session)
         db.commit()
@@ -294,3 +319,38 @@ def latest_principal_activity(db, principal):
     if all([t is None for t in all_activity]):
         return None
     return max(t for t in all_activity if t is not None)
+
+
+def lookup_valid_pending_session_by_device_code(db, device_code: bytes) -> Optional[PendingSession]:
+    """
+    Look up a pending session by its device code.
+
+    Returns None if the pending session is not found or has expired.
+    """
+    hashed_device_code = hashlib.sha256(device_code).digest()
+    pending_session = (
+        db.query(PendingSession).filter(PendingSession.hashed_device_code == hashed_device_code).first()
+    )
+    if pending_session is None:
+        return None
+    if pending_session.expiration_time is not None and pending_session.expiration_time < datetime.utcnow():
+        db.delete(pending_session)
+        db.commit()
+        return None
+    return pending_session
+
+
+def lookup_valid_pending_session_by_user_code(db, user_code: str) -> Optional[PendingSession]:
+    """
+    Look up a pending session by its user code.
+
+    Returns None if the pending session is not found or has expired.
+    """
+    pending_session = db.query(PendingSession).filter(PendingSession.user_code == user_code).first()
+    if pending_session is None:
+        return None
+    if pending_session.expiration_time is not None and pending_session.expiration_time < datetime.utcnow():
+        db.delete(pending_session)
+        db.commit()
+        return None
+    return pending_session

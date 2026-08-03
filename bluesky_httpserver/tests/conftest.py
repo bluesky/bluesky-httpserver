@@ -1,13 +1,22 @@
 import os
 import time as ttime
+from typing import Any, Tuple
 
+import httpx
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
+from bluesky_queueserver.manager.tests.common import re_manager_cmd  # noqa: F401
 from bluesky_queueserver.manager.tests.common import set_qserver_zmq_encoding  # noqa: F401
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jose.backends import RSAKey
+from respx import MockRouter
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from xprocess import ProcessStarter
 
 import bluesky_httpserver.server as bqss
+from bluesky_httpserver.database.base import Base
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = "60610"
@@ -16,6 +25,22 @@ SERVER_PORT = "60610"
 API_KEY_FOR_TESTS = "APIKEYFORTESTS"
 
 _user_group = "primary"
+
+
+def _wait_for_http_server_ready(*, timeout=10, request_prefix="/api"):
+    """Wait until HTTP server accepts connections and responds to /status."""
+    t_stop = ttime.time() + timeout
+    url = f"http://{SERVER_ADDRESS}:{SERVER_PORT}{request_prefix}/status"
+    while ttime.time() < t_stop:
+        try:
+            response = requests.get(url, timeout=0.5)
+            # Any HTTP response means the server is up (auth may still reject request).
+            if response.status_code:
+                return
+        except requests.RequestException:
+            pass
+        ttime.sleep(0.1)
+    raise TimeoutError(f"HTTP server is not ready after {timeout} s: {url}")
 
 
 @pytest.fixture(scope="module")
@@ -29,6 +54,7 @@ def fastapi_server(xprocess):
         # args = f"start-bluesky-httpserver --host={SERVER_ADDRESS} --port {SERVER_PORT}".split()
 
     xprocess.ensure("fastapi_server", Starter)
+    _wait_for_http_server_ready()
 
     yield
 
@@ -55,7 +81,7 @@ def fastapi_server_fs(xprocess):
             args = f"uvicorn --host={http_server_host} --port {http_server_port} {bqss.__name__}:app".split()
 
         xprocess.ensure("fastapi_server", Starter)
-        ttime.sleep(1)
+        _wait_for_http_server_ready()
 
     yield start
 
@@ -195,3 +221,78 @@ def wait_for_ip_kernel_idle(timeout, polling_period=0.2, api_key=API_KEY_FOR_TES
             return True
 
     return False
+
+
+# ============================================================================
+# AUTH Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def oidc_well_known_url(oidc_base_url: str) -> str:
+    return f"{oidc_base_url}.well-known/openid-configuration"
+
+
+@pytest.fixture
+def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    return (private_key, public_key)
+
+
+@pytest.fixture
+def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+    _, public_key = keys
+    return [RSAKey(key=public_key, algorithm="RS256").to_dict()]
+
+
+@pytest.fixture
+def mock_oidc_server(
+    respx_mock: MockRouter,
+    oidc_well_known_url: str,
+    well_known_response: dict[str, Any],
+    json_web_keyset: list[dict[str, Any]],
+) -> MockRouter:
+    respx_mock.get(oidc_well_known_url).mock(return_value=httpx.Response(httpx.codes.OK, json=well_known_response))
+    respx_mock.get(well_known_response["jwks_uri"]).mock(
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
+    )
+    return respx_mock
+
+
+@pytest.fixture
+def sqlite_session():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        engine.dispose()
+
+
+# ============================================================================
+# OIDC Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def oidc_base_url() -> str:
+    """Base URL for mock OIDC provider."""
+    return "https://example.com/realms/example/"
+
+
+@pytest.fixture
+def well_known_response(oidc_base_url: str) -> dict:
+    """Mock OIDC well-known configuration response."""
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": oidc_base_url.rstrip("/"),
+        "jwks_uri": f"{oidc_base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{oidc_base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{oidc_base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{oidc_base_url}protocol/openid-connect/logout",
+    }

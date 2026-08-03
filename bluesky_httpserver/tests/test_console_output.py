@@ -1,25 +1,32 @@
 import json
 import pprint
 import re
+import socket
 import threading
 import time as ttime
+from typing import Any
 
 import pytest
 import requests
-from bluesky_queueserver.manager.tests.common import re_manager_cmd, re_manager_factory  # noqa F401
+from bluesky_queueserver.manager.tests.common import re_manager_factory  # noqa F401
 from websockets.sync.client import connect
 
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     API_KEY_FOR_TESTS,
     SERVER_ADDRESS,
     SERVER_PORT,
-    fastapi_server_fs,
     request_to_json,
     set_qserver_zmq_encoding,
     wait_for_environment_to_be_closed,
     wait_for_environment_to_be_created,
     wait_for_manager_state_idle,
 )
+
+
+def get_free_tcp_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 class _ReceiveStreamedConsoleOutput(threading.Thread):
@@ -36,37 +43,43 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
         self._api_key = api_key
 
     def run(self):
-        kwargs = {"stream": True}
+        kwargs: dict[str, Any] = {"stream": True}
         if self._api_key:
-            auth = None
             headers = {"Authorization": f"ApiKey {self._api_key}"}
-            kwargs.update({"auth": auth, "headers": headers})
+            kwargs.update({"headers": headers})
 
-        with requests.get(f"http://{SERVER_ADDRESS}:{SERVER_PORT}/api/stream_console_output", **kwargs) as r:
-            r.encoding = "utf-8"
+        kwargs["timeout"] = (5, 1)
 
-            characters = []
-            n_brackets = 0
+        while not self._exit:
+            try:
+                with requests.get(
+                    f"http://{SERVER_ADDRESS}:{SERVER_PORT}/api/stream_console_output",
+                    **kwargs,
+                ) as r:
+                    r.encoding = "utf-8"
 
-            for ch in r.iter_content(decode_unicode=True):
-                # Note, that some output must be received from the server before the loop exits
-                if self._exit:
-                    break
-
-                characters.append(ch)
-                if ch == "{":
-                    n_brackets += 1
-                elif ch == "}":
-                    n_brackets -= 1
-
-                # If the received buffer ('characters') is not empty and the message contains
-                #   equal number of opening and closing brackets then consider the message complete.
-                if characters and not n_brackets:
-                    line = "".join(characters)
                     characters = []
+                    n_brackets = 0
 
-                    print(f"{line}")
-                    self.received_data_buffer.append(json.loads(line))
+                    for ch in r.iter_content(decode_unicode=True):
+                        # Note, that some output must be received from the server before the loop exits
+                        if self._exit:
+                            return
+
+                        characters.append(ch)
+                        if ch == "{":
+                            n_brackets += 1
+                        elif ch == "}":
+                            n_brackets -= 1
+
+                        if characters and not n_brackets:
+                            line = "".join(characters)
+                            characters = []
+
+                            print(f"{line}")
+                            self.received_data_buffer.append(json.loads(line))
+            except requests.exceptions.ReadTimeout:
+                continue
 
     def stop(self):
         """
@@ -79,14 +92,13 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
         self.stop()
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
-def test_http_server_stream_console_output_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
-):
+@pytest.mark.parametrize("use_custom_port", (False, True))
+def test_http_server_stream_console_output_1(monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port):
     """
     Test for ``stream_console_output`` API
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
@@ -122,7 +134,8 @@ def test_http_server_stream_console_output_1(
     assert resp2["items"][0] == resp1["item"]
     assert resp2["running_item"] == {}
 
-    rsc.join()
+    rsc.join(timeout=10)
+    assert not rsc.is_alive(), "Timed out waiting for stream_console_output thread to terminate"
 
     assert len(rsc.received_data_buffer) >= 2, pprint.pformat(rsc.received_data_buffer)
 
@@ -158,14 +171,15 @@ lines
 
 
 @pytest.mark.parametrize("zmq_encoding", (None, "json", "msgpack"))
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port, zmq_encoding  # noqa F811
+    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_encoding, use_custom_port  # noqa F811
 ):
     """
     Test for ``console_output`` API (not a streaming version).
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     if zmq_encoding is not None:
@@ -236,14 +250,13 @@ def test_http_server_console_output_1(
     assert re.search(expected_output, console_output)
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
-def test_http_server_console_output_update_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
-):
+@pytest.mark.parametrize("use_custom_port", (False, True))
+def test_http_server_console_output_update_1(monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port):
     """
     Test for ``console_output`` API (not a streaming version).
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
@@ -377,14 +390,18 @@ class _ReceiveConsoleOutputSocket(threading.Thread):
         self.stop()
 
 
-@pytest.mark.parametrize("zmq_port", (None, 60619))
+@pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_socket_1(
-    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_port  # noqa F811
+    monkeypatch,
+    re_manager_cmd,
+    fastapi_server_fs,
+    use_custom_port,
 ):
     """
     Test for ``/console_output/ws`` websocket
     """
     # Start HTTP Server
+    zmq_port = get_free_tcp_port() if use_custom_port else None
     if zmq_port is not None:
         monkeypatch.setenv("QSERVER_ZMQ_INFO_ADDRESS", f"tcp://localhost:{zmq_port}")
     fastapi_server_fs()
@@ -421,7 +438,8 @@ def test_http_server_console_output_socket_1(
     assert resp2["items"][0] == resp1["item"]
     assert resp2["running_item"] == {}
 
-    rsc.join()
+    rsc.join(timeout=10)
+    assert not rsc.is_alive(), "Timed out waiting for console_output websocket thread to terminate"
 
     assert len(rsc.received_data_buffer) >= 2, pprint.pformat(rsc.received_data_buffer)
 
