@@ -31,8 +31,8 @@ jobs:
         run: |
           set -vxeuo pipefail
           pixi install --environment=${{ env.python_env }}
-          pixi run --environment=${{ matrix.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver.git@main"
-          pixi run --environment=${{ matrix.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver-api.git@main"
+          pixi run --environment=${{ env.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver.git@main"
+          pixi run --environment=${{ env.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver-api.git@main"
 
           pixi list --environment=${{ env.python_env }}
           pixi run --environment=${{ env.python_env }} pip list
