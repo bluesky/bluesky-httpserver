@@ -112,7 +112,7 @@ line-length = 115
 exclude = [
     "docs/source/conf.py",
     "docs/source/examples",
-    "src/bluesky_httpserver/_version.py,
+    "src/bluesky_httpserver/_version.py",
 ]
 
 [tool.ruff.lint]
