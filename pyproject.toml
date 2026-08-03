@@ -28,7 +28,7 @@ dependencies = [
     "python-jose",
     "pyzmq",
     "sqlalchemy",
-    "starlette".
+    "starlette",
     "uvicorn",
 ]
 dynamic = ["version"]
@@ -38,7 +38,6 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = [
-black
     "codecov",
     "coverage",
     "ruff",
