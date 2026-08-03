@@ -1,0 +1,35 @@
+[workspace]
+authors = ["Dmitri Gavrilov <gavrilov.dvs@gmail.com>"]
+channels = ["conda-forge"]
+name = "bluesky-httpserver"
+platforms = ["linux-64"]
+version = "0.0.14"
+
+[tasks]
+
+[dependencies]
+python = "*"
+pip = "*"
+
+[pypi-dependencies]
+bluesky-httpserver = { path = ".", editable = true, extras = ["dev"] }
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+
+[environments]
+py311 = { features = ["py311"] }
+py312 = { features = ["py312"] }
+py313 = { features = ["py313"] }
+py314 = { features = ["py314"] }
+
