@@ -16,11 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from .authenticators import ProxiedOIDCAuthenticator
-from .console_output import (
-    CollectPublishedConsoleOutput,
-    ConsoleOutputStream,
-    SystemInfoStream,
-)
+from .console_output import CollectPublishedConsoleOutput, ConsoleOutputStream, SystemInfoStream
 from .core import PatchedStreamingResponse
 from .database.core import purge_expired
 from .protocols import ExternalAuthenticator, InternalAuthenticator

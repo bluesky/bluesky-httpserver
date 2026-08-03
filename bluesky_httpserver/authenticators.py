@@ -17,11 +17,7 @@ from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
-from .protocols import (
-    ExternalAuthenticator,
-    InternalAuthenticator,
-    UserSessionState,
-)
+from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .utils import get_root_url, modules_available
 
 logger = logging.getLogger(__name__)

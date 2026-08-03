@@ -181,12 +181,7 @@ def test_websocket_auth_01(
         assert False, f"Unknown authentication type: {ws_auth_type!r}"
 
 
-def _fake_ws_with_deps(
-    *,
-    api_access_manager=None,
-    authenticators=None,
-    settings=None,
-):
+def _fake_ws_with_deps(*, api_access_manager=None, authenticators=None, settings=None):
     """Build a minimal fake WebSocket whose ``app.dependency_overrides``
     look like what build_app() installs at runtime, so
     ``authenticate_websocket_first_message`` can retrieve them."""
@@ -269,9 +264,7 @@ def test_authenticate_websocket_first_message_accepts_valid_api_key(sqlite_sessi
 
     authenticators = {"internal": MagicMock()}  # truthy => multi-user mode
     ws = _fake_ws_with_deps(
-        api_access_manager=api_access_manager,
-        authenticators=authenticators,
-        settings=settings,
+        api_access_manager=api_access_manager, authenticators=authenticators, settings=settings
     )
 
     import bluesky_httpserver.authentication as auth_mod

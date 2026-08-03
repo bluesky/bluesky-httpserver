@@ -20,11 +20,7 @@ from fastapi import (
 )
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.security import (
-    OAuth2PasswordBearer,
-    OAuth2PasswordRequestForm,
-    SecurityScopes,
-)
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
 from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from sqlalchemy.exc import IntegrityError

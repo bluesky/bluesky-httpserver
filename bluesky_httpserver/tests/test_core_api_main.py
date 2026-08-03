@@ -31,17 +31,8 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
-_plan2 = {
-    "name": "scan",
-    "args": [["det1", "det2"], "motor", -1, 1, 10],
-    "item_type": "plan",
-}
-_plan3 = {
-    "name": "count",
-    "args": [["det1", "det2"]],
-    "kwargs": {"num": 5, "delay": 1},
-    "item_type": "plan",
-}
+_plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}
+_plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 _instruction_stop = {"name": "queue_stop", "item_type": "instruction"}
 
 
@@ -525,9 +516,8 @@ def test_http_server_queue_item_update_2_fail(re_manager, fastapi_server, replac
 
     resp2 = request_to_json("post", "/queue/item/update", json=params)
     assert resp2["success"] is False
-    assert (
-        resp2["msg"] == "Failed to add an item: Failed to replace item: "
-        "Item with UID 'incorrect_uid' is not in the queue"
+    assert resp2["msg"] == (
+        "Failed to add an item: Failed to replace item: Item with UID 'incorrect_uid' is not in the queue"
     )
 
     resp3 = request_to_json("get", "/queue/get")

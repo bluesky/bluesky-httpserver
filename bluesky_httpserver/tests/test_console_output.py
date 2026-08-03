@@ -62,6 +62,7 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
                     n_brackets = 0
 
                     for ch in r.iter_content(decode_unicode=True):
+                        # Note, that some output must be received from the server before the loop exits
                         if self._exit:
                             return
 
@@ -92,12 +93,7 @@ class _ReceiveStreamedConsoleOutput(threading.Thread):
 
 
 @pytest.mark.parametrize("use_custom_port", (False, True))
-def test_http_server_stream_console_output_1(
-    monkeypatch,
-    re_manager_cmd,
-    fastapi_server_fs,
-    use_custom_port,
-):
+def test_http_server_stream_console_output_1(monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port):
     """
     Test for ``stream_console_output`` API
     """
@@ -177,11 +173,7 @@ lines
 @pytest.mark.parametrize("zmq_encoding", (None, "json", "msgpack"))
 @pytest.mark.parametrize("use_custom_port", (False, True))
 def test_http_server_console_output_1(
-    monkeypatch,
-    re_manager_cmd,
-    fastapi_server_fs,
-    zmq_encoding,  # noqa F811
-    use_custom_port,
+    monkeypatch, re_manager_cmd, fastapi_server_fs, zmq_encoding, use_custom_port  # noqa F811
 ):
     """
     Test for ``console_output`` API (not a streaming version).
@@ -259,12 +251,7 @@ def test_http_server_console_output_1(
 
 
 @pytest.mark.parametrize("use_custom_port", (False, True))
-def test_http_server_console_output_update_1(
-    monkeypatch,
-    re_manager_cmd,
-    fastapi_server_fs,
-    use_custom_port,
-):
+def test_http_server_console_output_update_1(monkeypatch, re_manager_cmd, fastapi_server_fs, use_custom_port):
     """
     Test for ``console_output`` API (not a streaming version).
     """

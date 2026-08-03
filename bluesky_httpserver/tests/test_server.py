@@ -28,17 +28,8 @@ from bluesky_httpserver.tests.conftest import (  # noqa F401
 
 # Plans used in most of the tests: '_plan1' and '_plan2' are quickly executed '_plan3' runs for 5 seconds.
 _plan1 = {"name": "count", "args": [["det1", "det2"]], "item_type": "plan"}
-_plan2 = {
-    "name": "scan",
-    "args": [["det1", "det2"], "motor", -1, 1, 10],
-    "item_type": "plan",
-}
-_plan3 = {
-    "name": "count",
-    "args": [["det1", "det2"]],
-    "kwargs": {"num": 5, "delay": 1},
-    "item_type": "plan",
-}
+_plan2 = {"name": "scan", "args": [["det1", "det2"], "motor", -1, 1, 10], "item_type": "plan"}
+_plan3 = {"name": "count", "args": [["det1", "det2"]], "kwargs": {"num": 5, "delay": 1}, "item_type": "plan"}
 
 
 _config_public_key = """
