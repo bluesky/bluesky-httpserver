@@ -1,4 +1,4 @@
-name: Publish Docs
+name: Documentation
 
 on:
   push:
@@ -8,57 +8,53 @@ on:
 jobs:
   build:
     if: github.repository_owner == 'bluesky'
+
+    name: Build and publish docs
+
     runs-on: ubuntu-latest
+
+    env:
+      python_env: py313
+
     strategy:
-      matrix:
-        python-version: [3.12]
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 1000  # should be enough to reach the most recent tag
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - uses: shogo82148/actions-setup-redis@v1
-      with:
-        redis-version: "7.x"
-    - name: Install dependencies
-      run: |
-        sudo apt install redis
+      - uses: actions/checkout@v4
+        with:
+          # Need this to get version number from last tag
+          fetch-depth: 0
 
-        # Versioneer uses the most recent git tag to generate __version__, which appears
-        # in the published documentation.
-        git fetch --tags
+      - uses: shogo82148/actions-setup-redis@v1
+        with:
+          redis-version: "7.x"
 
-        # These packages are installed in the base environment but may be older
-        # versions. Explicitly upgrade them because they often create
-        # installation problems if out of date.
-        python -m pip install --upgrade pip setuptools numpy
+      - uses: prefix-dev/setup-pixi@v0.10.0
 
-        pushd ..
-        git clone https://github.com/bluesky/bluesky-queueserver.git
-        cd bluesky-queueserver
-        pip install .
-        popd
+      - name: Install dev dependencies
+        run: |
+          set -vxeuo pipefail
+          pixi install --environment=${{ env.python_env }}
+          pixi run pip install --environment=${{ matrix.python-env }} "git+https://github.com/bluesky/bluesky-queueserver.git@main"
+          pixi run pip install --environment=${{ matrix.python-env }} "git+https://github.com/bluesky/bluesky-queueserver-api.git@main"
 
-        pip install .
-        pip install -r requirements-dev.txt
-        pip list
-    - name: Build Docs
-      run: |
-        make -C docs/ html
-    - name: Deploy documentation to blueskyproject.io
-      # We pin to the SHA, not the tag, for security reasons.
-      # https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/security-hardening-for-github-actions#using-third-party-actions
-      uses: peaceiris/actions-gh-pages@bbdfb200618d235585ad98e965f4aafc39b4c501  # v3.7.3
-      with:
-        deploy_key: ${{ secrets.ACTIONS_DOCUMENTATION_DEPLOY_KEY }}
-        publish_branch: master
-        publish_dir: ./docs/build/html
-        external_repository: bluesky/bluesky.github.io
-        destination_dir: bluesky-httpserver
-        keep_files: true  # Keep old files.
-        force_orphan: false  # Keep git history.
+          pixi list --environment=${{ env.python_env }}
+          pixi run --environment=${{ env.python_env }} pip list
+          pixi run --environment=${{ env.python_env }} conda list
+
+      - name: Run pre-commit
+        run: |
+          pixi run --environment=${{ env.python_env }} make -C docs/ html
+
+      - name: Deploy documentation to blueskyproject.io
+        # We pin to the SHA, not the tag, for security reasons.
+        # https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/security-hardening-for-github-actions#using-third-party-actions
+        uses: peaceiris/actions-gh-pages@bbdfb200618d235585ad98e965f4aafc39b4c501  # v3.7.3
+        with:
+          deploy_key: ${{ secrets.ACTIONS_DOCUMENTATION_DEPLOY_KEY }}
+          publish_branch: master
+          publish_dir: ./docs/build/html
+          external_repository: bluesky/bluesky.github.io
+          destination_dir: bluesky-httpserver
+          keep_files: true  # Keep old files.
+          force_orphan: false  # Keep git history.
