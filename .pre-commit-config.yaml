@@ -4,22 +4,22 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - id: check-added-large-files
       - id: check-yaml
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-  - repo: https://github.com/ambv/black
-    rev: 26.1.0
+      - id: check-merge-conflict
+
+  - repo: local
     hooks:
-      - id: black
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-  - repo: https://github.com/pycqa/isort
-    rev: 7.0.0
-    hooks:
-      - id: isort
-  - repo: https://github.com/kynan/nbstripout
-    rev: 0.9.0
-    hooks:
-      - id: nbstripout
+      - id: ruff
+        name: lint with ruff
+        language: system
+        entry: ruff check --force-exclude --fix
+        types: [python]
+        require_serial: true
+
+      - id: ruff-format
+        name: format with ruff
+        language: system
+        entry: ruff format --force-exclude
+        types: [python]
+        require_serial: true

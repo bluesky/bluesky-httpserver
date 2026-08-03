@@ -1,6 +1,147 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bluesky-httpserver"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+description = "HTTP Server for communicating with Bluesky Queue Server."
+dependencies = [
+    "alembic",
+    "bluesky-queueserver",
+    "bluesky-queueserver-api",
+    "cachetools",
+    "fastapi",
+    "httpx",
+    "ldap3",
+    "orjson",
+    "pamela",
+    "pydantic",
+    "pydantic-settings",
+    "python-jose",
+    "pyzmq",
+    "sqlalchemy",
+    "starlette".
+    "uvicorn",
+]
+dynamic = ["version"]
+license = { file = "LICENSE" }
+readme = "README.rst"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+black
+    "codecov",
+    "coverage",
+    "ruff",
+    "cryptography",
+    "fastapi[all]",
+    "flake8",
+    "pre-commit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-xprocess",
+    "pytest-split",
+    "py",
+    "respx",
+    "sphinx",
+    "ipython",
+    "numpydoc",
+    "matplotlib",
+    "pandas",
+    "sphinx",
+    "sphinx_rtd_theme",
+    "requests",
+    "build",
+    "twine",
+]
+
+[project.scripts]
+start-bluesky-httpserver = "bluesky_httpserver.server:start_server"
+
+[project.urls]
+GitHub = "https://github.com/bluesky/bluesky-httpserver"
+
+[[project.authors]] # Further authors may be added by duplicating this section
+name = "Brookhaven National Laboratory"
+
+[tool.setuptools_scm]
+version_file = "src/bluesky_httpserver/_version.py"
+
+[tool.mypy]
+ignore_missing_imports = true # Ignore missing stubs in imported modules
+
+[tool.pytest.ini_options]
+# Run pytest with all our checkers, and don't spam us with massive tracebacks on error
+# Don't collect the interactive directory which is intended for manual execution
+addopts = """
+    --tb=native -vv 
+    --doctest-modules 
+    --doctest-glob="*.rst" 
+    """
+# https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
+filterwarnings = [
+    "error",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+# Doctest python code in docs, python code in src docstrings, test functions in tests
+testpaths = "src/bluesky_httpserver/tests"
+
+[tool.coverage.run]
+data_file = "/tmp/bluesky_httpserver.coverage"
+
+[tool.coverage.report]
+exclude_lines = ["if __name__ == '__main__':"]
+
+[tool.coverage.paths]
+# Tests are run from installed location, map back to the src directory
+source = ["src", "**/site-packages/"]
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 115
+exclude = [
+    "docs/source/conf.py",
+    "docs/source/examples",
+]
+
+[tool.ruff.lint]
+select = [
+    "B",   # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    "C4",  # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+    "E",   # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+    "F",   # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "W",   # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+    "I",   # isort - https://docs.astral.sh/ruff/rules/#isort-i
+    "UP",  # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+]
+unfixable = [
+    "F401",
+    "UP006",  # ignore non-PEP 585 generic annotations (e.g. typing.List -> list)
+    "UP007",  # e.g. typing.Union[int, float] -> int | float
+    "UP045",  # e.g. typing.Optional[int] -> int | None
+]
+ignore = [
+    "B905",   # adding strict=False to every zip call is just noise
+    "C408",   # errors due to using dict()
+    "B011",   # do not use 'assert False' error
+]
+isort.required-imports = [
+]
+
 [tool.black]
 line-length = 115
-target-version = ['py37']
+target-version = ['py310']
 include = '\.pyi?$'
 force-exclude = '''
 (
