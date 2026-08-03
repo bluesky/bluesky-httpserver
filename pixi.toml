@@ -12,6 +12,8 @@ python = "*"
 pip = "*"
 
 [pypi-dependencies]
+bluesky-queueserver = { git = "https://github.com/bluesky/bluesky-queueserver.git", branch = "main" }
+bluesky-queueserver-api = { git = "https://github.com/bluesky/bluesky-queueserver-api.git", branch = "main" }
 bluesky-httpserver = { path = ".", editable = true, extras = ["dev"] }
 
 [feature.py311.dependencies]

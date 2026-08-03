@@ -26,9 +26,6 @@ jobs:
     - name: Install dependencies
       run: |
         pixi install --environment=${{ matrix.python-env }}
-          pixi run --environment=${{ matrix.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver.git@main"
-          pixi run --environment=${{ matrix.python-env }} pip install "git+https://github.com/bluesky/bluesky-queueserver-api.git@main"
-
         pixi list --environment=${{ matrix.python-env }}
         pixi run --environment=${{ matrix.python-env }} pip list
         pixi run --environment=${{ matrix.python-env }} conda list
