@@ -42,4 +42,5 @@ jobs:
           pixi run --environment=${{ env.python_env }} conda list
 
       - name: Run pre-commit
+        run: |
           pixi run --environment=${{ env.python_env }} pre-commit run --all-files
