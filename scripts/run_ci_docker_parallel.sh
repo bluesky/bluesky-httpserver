@@ -20,7 +20,7 @@ SUMMARY_JSON=""
 TESTS_START_EPOCH=""
 TESTS_START_HUMAN=""
 
-SUPPORTED_PYTHON_VERSIONS=("3.10" "3.11" "3.12" "3.13")
+SUPPORTED_PYTHON_VERSIONS=("3.11" "3.12" "3.13" "3.14")
 
 usage() {
     cat <<'EOF'
@@ -39,8 +39,8 @@ Options:
 
   --python-versions VALUE
       Python version selection: latest | all | comma-separated list.
-      Examples: latest, all, 3.12, 3.11,3.13
-      Default: latest (currently 3.13).
+      Examples: latest, all, 3.12, 3.11, 3.13
+      Default: latest (currently 3.14).
 
   --pytest-args "ARGS"
       Extra arguments passed to pytest in each chunk.
@@ -133,7 +133,7 @@ normalize_python_versions() {
     local normalized=()
 
     if [[ "$selection" == "latest" ]]; then
-        normalized=("3.13")
+        normalized=("3.14")
     elif [[ "$selection" == "all" ]]; then
         normalized=("${SUPPORTED_PYTHON_VERSIONS[@]}")
     else

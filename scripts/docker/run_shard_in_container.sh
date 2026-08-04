@@ -36,7 +36,7 @@ import sys
 group = int(sys.argv[1])
 count = int(sys.argv[2])
 
-tests = sorted(glob.glob("bluesky_httpserver/tests/test_*.py"))
+tests = sorted(glob.glob("src/bluesky_httpserver/tests/test_*.py"))
 selected = [path for idx, path in enumerate(tests) if idx % count == (group - 1)]
 
 for path in selected:
