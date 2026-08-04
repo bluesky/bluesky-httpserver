@@ -23,11 +23,11 @@ dependencies = [
     "ldap3",
     "orjson",
     "pamela",
-    "pydantic",
+    "pydantic>2",
     "pydantic-settings",
     "python-jose",
     "pyzmq",
-    "sqlalchemy",
+    "sqlalchemy>2",
     "starlette",
     "uvicorn",
 ]

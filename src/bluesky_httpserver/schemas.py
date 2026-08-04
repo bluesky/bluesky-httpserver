@@ -33,9 +33,11 @@ class Response(generic_model, Generic[DataT, LinksT, MetaT]):
     links: LinksT | None = None
     meta: MetaT | None = None
 
-    @pydantic.validator("error", always=True)
-    def check_consistency(cls, v, values):
-        if v is not None and values["data"] is not None:
+    @pydantic.field_validator("error", mode="after")
+    @classmethod
+    def check_consistency(cls, v, info):
+        values = info.data
+        if v is not None and values.get("data") is not None:
             raise ValueError("must not provide both data and error")
         if v is None and values.get("data") is None:
             raise ValueError("must provide data or error")
@@ -310,7 +312,7 @@ class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: int | None = pydantic.Field(..., example=600)  # seconds
-    # scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
-    scopes: list[str] | None = pydantic.Field(default=["inherit"], example=["inherit"])
+    expires_in: int | None = pydantic.Field(..., json_schema_extra={"example": 600})  # seconds
+    # scopes: Optional[List[str]] = pydantic.Field(..., json_schema_extra={"example": ["inherit"]})
+    scopes: list[str] | None = pydantic.Field(default=["inherit"], json_schema_extra={"example": ["inherit"]})
     note: str | None = None
