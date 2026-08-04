@@ -20,9 +20,9 @@ def process_exception():
     try:
         raise
     except REManagerAPI.RequestTimeoutError as ex:
-        raise HTTPException(status_code=408, detail=str(ex)) from ex
+        raise HTTPException(status_code=408, detail=str(ex))
     except Exception as ex:
-        raise HTTPException(status_code=400, detail=str(ex)) from ex
+        raise HTTPException(status_code=400, detail=str(ex))
 
 
 # The default user name and user group should never be sent to the manager unless there is a bug.

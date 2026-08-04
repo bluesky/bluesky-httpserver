@@ -323,7 +323,7 @@ def build_app(authentication=None, api_access=None, resource_access=None, server
             try:
                 validate_zmq_key(zmq_public_key)
             except Exception as ex:
-                raise ValueError(f"ZMQ public key is improperly formatted: {ex}") from ex
+                raise ValueError(f"ZMQ public key is improperly formatted: {ex}")
 
         logger.info(
             f"Connecting to RE Manager: \nControl 0MQ socket address: {zmq_control_addr}\n"

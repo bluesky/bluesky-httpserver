@@ -235,12 +235,12 @@ async def get_decoded_access_token(
         return None
     try:
         payload = decode_token(access_token, settings.secret_keys, settings.authenticator)
-    except ExpiredSignatureError as ex:
+    except ExpiredSignatureError:
         raise HTTPException(
             status_code=401,
             detail="Access token has expired. Refresh token.",
             headers=headers_for_401(request, security_scopes),
-        ) from ex
+        )
     return payload
 
 
@@ -1113,9 +1113,9 @@ def build_device_code_token_route(authenticator, provider):
         device_code_hex = body.device_code
         try:
             device_code = bytes.fromhex(device_code_hex)
-        except Exception as ex:
+        except Exception:
             # Not valid hex, therefore not a valid device_code
-            raise HTTPException(status_code=401, detail="Invalid device code") from ex
+            raise HTTPException(status_code=401, detail="Invalid device code")
 
         with get_sessionmaker(settings.database_settings)() as db:
             pending_session = lookup_valid_pending_session_by_device_code(db, device_code)
@@ -1344,8 +1344,8 @@ def revoke_session(
 def slide_session(refresh_token, settings, db, api_access_manager):
     try:
         payload = decode_token(refresh_token, settings.secret_keys)
-    except ExpiredSignatureError as ex:
-        raise HTTPException(status_code=401, detail="Session has expired. Please re-authenticate.") from ex
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Session has expired. Please re-authenticate.")
     # Find this session in the database.
     session = lookup_valid_session(db, payload["sid"])
     now = utcnow()
@@ -1448,9 +1448,9 @@ def current_apikey_info(
         raise HTTPException(status_code=401, detail="No API key was provided with this request.")
     try:
         secret = bytes.fromhex(api_key)
-    except Exception as ex:
+    except Exception:
         # Not valid hex, therefore not a valid API key
-        raise HTTPException(status_code=401, detail="Invalid API key") from ex
+        raise HTTPException(status_code=401, detail="Invalid API key")
     with get_sessionmaker(settings.database_settings)() as db:
         api_key_orm = lookup_valid_api_key(db, secret)
         if api_key_orm is None:
