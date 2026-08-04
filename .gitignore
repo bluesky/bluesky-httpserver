@@ -58,6 +58,8 @@ coverage.xml
 docs/build/
 docs/source/generated/
 
+**/_version.py
+
 # pytest
 .pytest_cache/
 
@@ -84,3 +86,8 @@ target/
 
 # Testing
 .docker-test-artifacts/
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+pixi.lock

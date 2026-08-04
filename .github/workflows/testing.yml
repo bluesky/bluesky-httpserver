@@ -8,67 +8,40 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-        # pydantic-version: ["<2.0.0", ">=2.0.0"]
-        # exclude:
-        #   - python-version: "3.9"
-        #     pydantic-version: "<2.0.0"
-        #   - python-version: "3.11"
-        #     pydantic-version: "<2.0.0"
-        #   - python-version: "3.12"
-        #     pydantic-version: "<2.0.0"
-
+        python-env: ["py311", "py312", "py313", "py314"]
       fail-fast: false
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Fetch tags
-      run: git fetch --tags --prune --unshallow
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        # Need this to get version number from last tag
+        fetch-depth: 0
+
     - uses: shogo82148/actions-setup-redis@v1
       with:
         redis-version: "7.x"
+
+    - uses: prefix-dev/setup-pixi@v0.10.0
     - name: Install dependencies
       run: |
-        # sudo apt install redis
+        pixi install --environment=${{ matrix.python-env }}
+        pixi list --environment=${{ matrix.python-env }}
+        pixi run --environment=${{ matrix.python-env }} pip list
+        pixi run --environment=${{ matrix.python-env }} conda list
 
+    - name: Start LDAP
+      run: |
         # Start LDAP
         bash continuous_integration/scripts/start_LDAP.sh
 
-        # These packages are installed in the base environment but may be older
-        # versions. Explicitly upgrade them because they often create
-        # installation problems if out of date.
-        python -m pip install --upgrade pip setuptools numpy
-
-        pushd ..
-        git clone https://github.com/bluesky/bluesky-queueserver.git
-        cd bluesky-queueserver
-        pip install .
-        popd
-
-        pushd ..
-        git clone https://github.com/bluesky/bluesky-queueserver-api.git
-        cd bluesky-queueserver-api
-        pip install .
-        popd
-
-        pip install --upgrade pip
-        pip install .
-        pip install -r requirements-dev.txt
-        # pip install "pydantic${{ matrix.pydantic-version }}"
-        # pip install bluesky==1.11.0
-
-        pip list
     - name: Test with pytest
       env:
         PYTEST_ADDOPTS: "--durations=20"
       run: |
-        coverage run -m pytest -vv
-        coverage report -m
+        pixi run --environment=${{ matrix.python-env }} coverage run -m pytest -vv
+        pixi run --environment=${{ matrix.python-env }} coverage report -m
+
     - name: Dump LDAP diagnostics on failure
       if: failure()
       run: |
