@@ -138,7 +138,8 @@ ignore = [
     "B008",   # do not perform function call ... in argument defaults
     "B006",   # do not use mutable data structures for argument defaults
     "B024",   # abstract base class has no abstract methods or properties  
-    "B026",   # star-arg unpacking after a keyword argument is strongly discouraged      
+    "B026",   # star-arg unpacking after a keyword argument is strongly discouraged   
+    "B904",   # ithin an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None`
 ]
 isort.required-imports = [
 ]
