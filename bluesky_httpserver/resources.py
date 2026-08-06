@@ -60,5 +60,16 @@ class _ServerResources:
     def system_info_stream(self, _):
         raise RuntimeError("Attempting to set read-only property 'system_info_stream'")
 
+    def set_progress_stream(self, progress_stream):
+        self._progress_stream = progress_stream
+
+    @property
+    def progress_stream(self):
+        return self._progress_stream
+
+    @progress_stream.setter
+    def progress_stream(self, _):
+        raise RuntimeError("Attempting to set read-only property 'progress_stream'")
+
 
 SERVER_RESOURCES = _ServerResources()

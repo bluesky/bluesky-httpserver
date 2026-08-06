@@ -1215,3 +1215,29 @@ async def info_ws(websocket: WebSocket, scopes=["read:monitor"]):
         pass
     finally:
         SR.system_info_stream.remove_queue_info(websocket)
+
+
+@router.websocket("/progress/ws")
+async def progress_ws(websocket: WebSocket, scopes=["read:monitor"]):
+    principal = get_current_principal_websocket(websocket=websocket, scopes=scopes)
+    if not principal:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    await websocket.accept()
+    q = SR.progress_stream.add_queue(websocket)
+    wsmon = WebSocketMonitor(websocket)
+    wsmon.start()
+    try:
+        while wsmon.is_alive:
+            try:
+                msg = await asyncio.wait_for(q.get(), timeout=1)
+                await websocket.send_text(msg)
+            except asyncio.TimeoutError:
+                pass
+            except RuntimeError:  # 'send' after the client is disconnected
+                pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        SR.progress_stream.remove_queue(websocket)

@@ -330,3 +330,72 @@ class SystemInfoStream:
     async def stop(self):
         await self._stop_background_task()
         await self._RM.system_info_monitor.disable_wait()
+
+
+class ProgressStream:
+    def __init__(self, *, rm_ref):
+        self._RM = rm_ref
+        self._queues = {}
+        self._background_task = None
+        self._background_task_running = False
+        self._background_task_stopped = asyncio.Event()
+        self._background_task_stopped.set()
+        self._queue_max_size = 1000
+
+    @property
+    def background_task_running(self):
+        return self._background_task_running
+
+    @property
+    def queues(self):
+        return self._queues
+
+    def add_queue(self, key):
+        """
+        Add a new queue to the dictionary of queues. The key is a reference to the socket for
+        for connection with the client.
+        """
+        queue = asyncio.Queue(maxsize=self._queue_max_size)
+        self._queues[key] = queue
+        return queue
+
+    def remove_queue(self, key):
+        """
+        Remove the queue identified by the key from the dictionary of queues.
+        """
+        if key in self._queues:
+            del self._queues[key]
+
+    def _start_background_task(self):
+        if not self._background_task_running:
+            self._background_task = asyncio.create_task(self._load_msgs_task())
+
+    async def _stop_background_task(self):
+        self._background_task_running = False
+        await self._background_task_stopped.wait()
+
+    async def _load_msgs_task(self):
+        self._background_task_stopped.clear()
+        self._background_task_running = True
+        while self._background_task_running:
+            try:
+                msg = await self._RM.progress_monitor.next_msg(timeout=0.5)
+
+                if isinstance(msg, dict) and "msg" in msg:
+                    msg_json = json.dumps(msg)
+                    for q in self._queues.values():
+                        # Protect from overflow. It's ok to discard old messages.
+                        if q.full():
+                            q.get_nowait()
+                        await q.put(msg_json)
+            except self._RM.RequestTimeoutError:
+                pass
+        self._background_task_stopped.set()
+
+    def start(self):
+        self._RM.progress_monitor.enable()
+        self._start_background_task()
+
+    async def stop(self):
+        await self._stop_background_task()
+        await self._RM.progress_monitor.disable_wait()
