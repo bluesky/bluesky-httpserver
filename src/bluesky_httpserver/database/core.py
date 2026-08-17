@@ -183,13 +183,16 @@ def purge_expired(engine, cls):
     """
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
-    now = datetime.utcnow()
-    deleted = False
-    for obj in db.query(cls).filter(cls.expiration_time.is_not(None)).filter(cls.expiration_time < now):
-        deleted = True
-        db.delete(obj)
-    if deleted:
-        db.commit()
+    try:
+        now = datetime.utcnow()
+        deleted = False
+        for obj in db.query(cls).filter(cls.expiration_time.is_not(None)).filter(cls.expiration_time < now):
+            deleted = True
+            db.delete(obj)
+        if deleted:
+            db.commit()
+    finally:
+        db.close()
     return cls
 
 

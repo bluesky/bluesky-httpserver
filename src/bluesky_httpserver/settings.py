@@ -60,7 +60,7 @@ class Settings(BaseSettings):
         )
 
 
-@lru_cache
+@lru_cache(1)
 def get_settings():
     return Settings()
 
