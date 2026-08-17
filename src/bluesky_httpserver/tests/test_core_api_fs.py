@@ -96,48 +96,50 @@ def test_http_server_queue_upload_spreasheet_1(
     ss_path, plans_expected = _create_test_excel_file1(tmp_path, plan_params=plan_params, col_names=col_names)
 
     # Send the Excel file to the server
-    files = {"spreadsheet": open(ss_path, "rb")}
-    resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
-    assert "success" in resp1, str(resp1)
-    assert resp1["success"] is True, str(resp1)
-    items1 = resp1["items"]
-    results1 = resp1["results"]
-    assert len(items1) == len(plans_expected), str(items1)
-    for p, p_exp in zip(items1, plans_expected):
-        for k, v in p_exp.items():
-            assert k in p
-            assert v == p[k]
+    with open(ss_path, "rb") as f:
+        files = {"spreadsheet": f}
+        resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
+        assert "success" in resp1, str(resp1)
+        assert resp1["success"] is True, str(resp1)
+        items1 = resp1["items"]
+        results1 = resp1["results"]
+        assert len(items1) == len(plans_expected), str(items1)
+        for p, p_exp in zip(items1, plans_expected):
+            for k, v in p_exp.items():
+                assert k in p
+                assert v == p[k]
 
-    assert len(results1) == len(plans_expected), str(results1)
-    assert all(_["success"] is True for _ in results1), str(results1)
-    assert all(_["msg"] == "" for _ in results1), str(results1)
+        assert len(results1) == len(plans_expected), str(results1)
+        assert all(_["success"] is True for _ in results1), str(results1)
+        assert all(_["msg"] == "" for _ in results1), str(results1)
 
-    # Verify that the queue contains correct plans
-    resp2 = request_to_json("get", "/queue/get")
-    assert resp2["success"] is True
-    assert resp2["running_item"] == {}
-    queue = resp2["items"]
-    assert len(queue) == len(plans_expected), str(queue)
-    for p, p_exp in zip(queue, plans_expected):
-        for k, v in p_exp.items():
-            assert k in p
-            assert v == p[k]
+        # Verify that the queue contains correct plans
+        resp2 = request_to_json("get", "/queue/get")
+        assert resp2["success"] is True
+        assert resp2["running_item"] == {}
+        queue = resp2["items"]
+        assert len(queue) == len(plans_expected), str(queue)
+        for p, p_exp in zip(queue, plans_expected):
+            for k, v in p_exp.items():
+                assert k in p
+                assert v == p[k]
 
-    resp3 = request_to_json("post", "/environment/open")
-    assert resp3["success"] is True
-    assert wait_for_environment_to_be_created(10)
+        resp3 = request_to_json("post", "/environment/open")
+        assert resp3["success"] is True
+        assert wait_for_environment_to_be_created(10)
 
-    resp4 = request_to_json("post", "/queue/start")
-    assert resp4["success"] is True
-    assert wait_for_queue_execution_to_complete(60)
+        resp4 = request_to_json("post", "/queue/start")
+        assert resp4["success"] is True
+        assert wait_for_queue_execution_to_complete(60)
 
-    resp5 = request_to_json("get", "/status")
-    assert resp5["items_in_queue"] == 0
-    assert resp5["items_in_history"] == len(plans_expected)
+        resp5 = request_to_json("get", "/status")
+        assert resp5["items_in_queue"] == 0
+        assert resp5["items_in_history"] == len(plans_expected)
 
-    resp6 = request_to_json("post", "/environment/close")
-    assert resp6 == {"success": True, "msg": ""}
-    assert wait_for_manager_state_idle(10)
+        resp6 = request_to_json("post", "/environment/close")
+        assert resp6 == {"success": True, "msg": ""}
+        assert wait_for_manager_state_idle(10)
+
 
 
 def test_http_server_queue_upload_spreasheet_2(re_manager, fastapi_server_fs, tmp_path, monkeypatch):  # noqa F811
@@ -158,13 +160,14 @@ def test_http_server_queue_upload_spreasheet_2(re_manager, fastapi_server_fs, tm
     ss_path, plans_expected = _create_test_excel_file1(tmp_path, plan_params=plan_params, col_names=col_names)
 
     # Send the Excel file to the server
-    files = {"spreadsheet": open(ss_path, "rb")}
-    data = {"data_type": "unsupported"}
-    resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files, data=data)
-    assert resp1["success"] is False, str(resp1)
-    assert resp1["msg"] == "Unsupported data type: 'unsupported'"
-    assert resp1["items"] == []
-    assert resp1["results"] == []
+    with open(ss_path, "rb") as f:
+        files = {"spreadsheet": f}
+        data = {"data_type": "unsupported"}
+        resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files, data=data)
+        assert resp1["success"] is False, str(resp1)
+        assert resp1["msg"] == "Unsupported data type: 'unsupported'"
+        assert resp1["items"] == []
+        assert resp1["results"] == []
 
 
 def test_http_server_queue_upload_spreasheet_3(re_manager, fastapi_server_fs, tmp_path, monkeypatch):  # noqa F811
@@ -189,10 +192,11 @@ def test_http_server_queue_upload_spreasheet_3(re_manager, fastapi_server_fs, tm
     os.rename(ss_path, new_path)
 
     # Send the Excel file to the server
-    files = {"spreadsheet": open(new_path, "rb")}
-    resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
-    assert resp1["success"] is False, str(resp1)
-    assert resp1["msg"] == f"Unsupported file (extension '{new_ext}')"
+    with open(new_path, "rb") as f:
+        files = {"spreadsheet": f}
+        resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
+        assert resp1["success"] is False, str(resp1)
+        assert resp1["msg"] == f"Unsupported file (extension '{new_ext}')"
 
 
 @pytest.mark.parametrize("use_custom", [False, True])
@@ -275,27 +279,29 @@ def test_http_server_queue_upload_spreasheet_5(re_manager, fastapi_server_fs, tm
     ss_path, plans_expected = _create_test_excel_file1(tmp_path, plan_params=plan_params, col_names=col_names)
 
     # Send the Excel file to the server
-    files = {"spreadsheet": open(ss_path, "rb")}
-    resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
-    assert resp1["success"] is False, str(resp1)
-    assert resp1["msg"] == "Failed to add all items: validation of 1 out of 3 submitted items failed"
+    with open(ss_path, "rb") as f:
+        files = {"spreadsheet": f}
 
-    items, results = resp1["items"], resp1["results"]
-    assert len(items) == len(plans_expected), str(items)
-    assert len(results) == len(plans_expected), str(items)
-    for n, p_exp in enumerate(plans_expected):
-        p, r = items[n], results[n]
-        if p_exp["name"] == "nonexisting_plan":
-            assert r["success"] is False
-            assert "not in the list of allowed plans" in r["msg"], r["msg"]
-        else:
-            assert r["success"] is True
-            assert r["msg"] == ""
-        for k, v in p_exp.items():
-            assert k in p
-            assert v == p[k]
+        resp1 = request_to_json("post", "/queue/upload/spreadsheet", files=files)
+        assert resp1["success"] is False, str(resp1)
+        assert resp1["msg"] == "Failed to add all items: validation of 1 out of 3 submitted items failed"
 
-    # No plans are expected to be added to the queue
-    resp2 = request_to_json("get", "/status")
-    assert resp2["items_in_queue"] == 0
-    assert resp2["items_in_history"] == 0
+        items, results = resp1["items"], resp1["results"]
+        assert len(items) == len(plans_expected), str(items)
+        assert len(results) == len(plans_expected), str(items)
+        for n, p_exp in enumerate(plans_expected):
+            p, r = items[n], results[n]
+            if p_exp["name"] == "nonexisting_plan":
+                assert r["success"] is False
+                assert "not in the list of allowed plans" in r["msg"], r["msg"]
+            else:
+                assert r["success"] is True
+                assert r["msg"] == ""
+            for k, v in p_exp.items():
+                assert k in p
+                assert v == p[k]
+
+        # No plans are expected to be added to the queue
+        resp2 = request_to_json("get", "/status")
+        assert resp2["items_in_queue"] == 0
+        assert resp2["items_in_history"] == 0
