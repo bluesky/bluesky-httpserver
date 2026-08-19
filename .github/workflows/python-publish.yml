@@ -1,35 +1,58 @@
-# This workflows will upload a Python Package using flit when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
-
-name: Upload Python Package
+name: Publish the release to PyPI
 
 on:
   release:
     types: [created]
-    branches:
-      - master
 
 jobs:
-  deploy:
+  build:
+
+    name: Upload to PyPI
+
+    permissions:
+      id-token: write
+
     if: github.repository_owner == 'bluesky'
     runs-on: ubuntu-latest
 
+    env:
+      python_env: py313
+
+    strategy:
+      fail-fast: false
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install wheel twine setuptools
-    - name: Build and publish
-      env:
-        TWINE_USERNAME: __token__
-        # The PYPI_PASSWORD must be a pypi token with the "pypi-" prefix with sufficient permissions to upload this package
-        # https://pypi.org/help/#apitoken
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        python setup.py sdist bdist_wheel
-        twine upload dist/*
+      - uses: actions/checkout@v4
+        with:
+          # Need this to get version number from last tag
+          fetch-depth: 0
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+
+      - name: Install dev dependencies
+        run: |
+          set -vxeuo pipefail
+          pixi install --environment=${{ env.python_env }}
+          pixi list --environment=${{ env.python_env }}
+          pixi run --environment=${{ env.python_env }} pip list
+          pixi run --environment=${{ env.python_env }} conda list
+
+      - name: Build sdist and wheel
+        run: >
+          export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) &&
+          pixi run --environment=${{ env.python_env }} python -m build
+
+      - name: Check for packaging errors
+        run: pixi run --environment=${{ env.python_env }} twine check --strict dist/*
+
+      - name: Install produced wheel
+        run: pixi run --environment=${{ env.python_env }} pip install dist/*.whl
+
+      - name: Test module is importable using the installed wheel
+        # If more than one module in src/ replace with module name to test
+        run: pixi run --environment=${{ env.python_env }} python -c "import $(ls --hide='*.egg-info' src | head -1)"
+
+      - name: Publish to PyPI using trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: false
