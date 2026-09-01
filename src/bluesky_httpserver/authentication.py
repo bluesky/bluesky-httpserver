@@ -878,6 +878,9 @@ body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; pad
         # Authenticate with the OIDC provider using the authorization code
         user_session_state = await authenticator.authenticate(request)
         if not user_session_state:
+            pending_session.error = "access_denied"
+            db.add(pending_session)
+            db.commit()
             error_html = """
 <!DOCTYPE html>
 <html>
@@ -907,6 +910,9 @@ body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; pad
         username = user_session_state.user_name
         session_state = user_session_state.state or {}
         if not api_access_manager.is_user_known(username):
+            pending_session.error = "unauthorized_user"
+            db.add(pending_session)
+            db.commit()
             error_html = f"""
 <!DOCTYPE html>
 <html>
@@ -1125,6 +1131,8 @@ def build_device_code_token_route(authenticator, provider):
                     detail="No such device_code. The pending request may have expired.",
                 )
             if pending_session.session_id is None:
+                if pending_session.error:
+                    raise HTTPException(status_code=400, detail={"error": pending_session.error})
                 raise HTTPException(status_code=400, detail={"error": "authorization_pending"})
 
             session = pending_session.session

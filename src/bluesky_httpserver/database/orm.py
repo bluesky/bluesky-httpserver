@@ -204,3 +204,5 @@ class PendingSession(Timestamped, Base):
     expiration_time = Column(DateTime(timezone=False), nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
     session: Mapped[Session] = relationship(lazy="joined")
+    # None = still pending; "access_denied" = OIDC/consent failed; "unauthorized_user" = not permitted
+    error = Column(Unicode(64), nullable=True)
