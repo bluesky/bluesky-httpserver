@@ -14,6 +14,7 @@ classifiers = [
 ]
 description = "HTTP Server for communicating with Bluesky Queue Server."
 dependencies = [
+    "aiosqlite >=0.20",
     "alembic",
     "bluesky-queueserver",
     "bluesky-queueserver-api",
@@ -94,7 +95,7 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
-testpaths = "src/bluesky_httpserver/tests"
+testpaths = ["src/bluesky_httpserver/tests", "src/bluesky_httpserver/v2/tests"]
 
 [tool.coverage.run]
 data_file = "/tmp/bluesky_httpserver.coverage"
