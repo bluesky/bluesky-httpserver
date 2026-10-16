@@ -18,8 +18,10 @@ def db_path(tmp_path: Path) -> Path:
 @pytest_asyncio.fixture
 async def store(db_path: Path) -> AsyncIterator[Store]:
     s = await Store.open(db_path)
-    yield s
-    await s.close()
+    try:
+        yield s
+    finally:
+        await s.close()
 
 
 async def submit(

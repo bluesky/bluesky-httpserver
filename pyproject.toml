@@ -46,6 +46,7 @@ dev = [
     "fastapi[all]",
     "flake8",
     "pre-commit",
+    "pyright",
     "pytest",
     "pytest-asyncio",
     "pytest-xprocess",
@@ -168,3 +169,8 @@ force-exclude = '''
   | versioneer.py
 )
 '''
+
+[tool.pyright]
+include = [
+    "src/bluesky_httpserver/v2",
+]

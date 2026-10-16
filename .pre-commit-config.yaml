@@ -23,3 +23,10 @@ repos:
         entry: ruff format --force-exclude
         types: [python]
         require_serial: true
+
+      - id: pyright
+        name: type check with pyright
+        language: system
+        entry: pyright src/
+        types: [python]
+        require_serial: true
