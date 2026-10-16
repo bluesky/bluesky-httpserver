@@ -115,7 +115,7 @@ def test_websocket_auth_01(
     """
 
     # Start RE Manager
-    params = ["--zmq-publish-console", "ON"]
+    params = ["--zmq-publish-info", "ON"]
     re_manager_cmd(params)
 
     setup_server_with_config_file(config_file_str=config_toy_test, tmpdir=tmpdir, monkeypatch=monkeypatch)
