@@ -27,6 +27,9 @@ repos:
       - id: pyright
         name: type check with pyright
         language: system
-        entry: pyright src/
+        # No paths: command-line paths replace [tool.pyright] include in pyproject.toml.
+        entry: pyright
+        pass_filenames: false
+        files: ^src/bluesky_httpserver/v2/
         types: [python]
         require_serial: true

@@ -5,32 +5,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bluesky-httpserver"
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 description = "HTTP Server for communicating with Bluesky Queue Server."
 dependencies = [
-    "aiosqlite >=0.20",
-    "alembic",
-    "bluesky-queueserver",
-    "bluesky-queueserver-api",
-    "cachetools",
-    "fastapi",
-    "httpx",
-    "ldap3",
-    "orjson",
-    "pamela",
-    "pydantic >=2, <3",
-    "pydantic-settings >=2",
-    "python-jose",
-    "pyzmq",
-    "sqlalchemy >=2",
-    "starlette",
-    "uvicorn",
+  "alembic",
+  "bluesky-queueserver",
+  "bluesky-queueserver-api",
+  "cachetools",
+  "fastapi",
+  "httpx",
+  "ldap3",
+  "orjson",
+  "pamela",
+  "pydantic >=2, <3",
+  "pydantic-settings >=2",
+  "python-jose",
+  "pyzmq",
+  "sqlalchemy >=2",
+  "starlette",
+  "uvicorn",
 ]
 dynamic = ["version"]
 license = { file = "LICENSE" }
@@ -39,31 +38,33 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = [
-    "codecov",
-    "coverage",
-    "ruff",
-    "cryptography",
-    "fastapi[all]",
-    "flake8",
-    "pre-commit",
-    "pyright",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-xprocess",
-    "pytest-split",
-    "py",
-    "respx",
-    "sphinx",
-    "ipython",
-    "numpydoc",
-    "matplotlib",
-    "pandas",
-    "sphinx",
-    "sphinx_rtd_theme",
-    "requests",
-    "build",
-    "twine",
+  "codecov",
+  "coverage",
+  "ruff",
+  "cryptography",
+  "fastapi[all]",
+  "flake8",
+  "pre-commit",
+  "pyright",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-xprocess",
+  "pytest-split",
+  "py",
+  "respx",
+  "sphinx",
+  "ipython",
+  "numpydoc",
+  "matplotlib",
+  "pandas",
+  "sphinx",
+  "sphinx_rtd_theme",
+  "requests",
+  "build",
+  "twine",
+  "bluesky-httpserver[v2]",
 ]
+v2 = ["aiosqlite >=0.20"]
 
 [project.scripts]
 start-bluesky-httpserver = "bluesky_httpserver.server:start_server"
@@ -90,10 +91,10 @@ addopts = """
     """
 # https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
 filterwarnings = [
-    "error",
-    "ignore::PendingDeprecationWarning",
-    "ignore::UserWarning",
-    "ignore::DeprecationWarning",
+  "error",
+  "ignore::PendingDeprecationWarning",
+  "ignore::UserWarning",
+  "ignore::DeprecationWarning",
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
 testpaths = ["src/bluesky_httpserver/tests", "src/bluesky_httpserver/v2/tests"]
@@ -112,39 +113,38 @@ source = ["src", "**/site-packages/"]
 src = ["src", "tests"]
 line-length = 115
 exclude = [
-    "docs/source/conf.py",
-    "docs/source/examples",
-    "src/bluesky_httpserver/_version.py",
+  "docs/source/conf.py",
+  "docs/source/examples",
+  "src/bluesky_httpserver/_version.py",
 ]
 
 [tool.ruff.lint]
 select = [
-    "B",   # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
-    "C4",  # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
-    "E",   # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
-    "F",   # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
-    "W",   # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
-    "I",   # isort - https://docs.astral.sh/ruff/rules/#isort-i
-    "UP",  # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+  "B",  # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+  "C4", # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+  "E",  # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+  "F",  # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+  "W",  # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+  "I",  # isort - https://docs.astral.sh/ruff/rules/#isort-i
+  "UP", # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
 ]
 unfixable = [
-    "F401",
-    "UP006",  # ignore non-PEP 585 generic annotations (e.g. typing.List -> list)
-    "UP007",  # e.g. typing.Union[int, float] -> int | float
-    "UP045",  # e.g. typing.Optional[int] -> int | None
+  "F401",
+  "UP006", # ignore non-PEP 585 generic annotations (e.g. typing.List -> list)
+  "UP007", # e.g. typing.Union[int, float] -> int | float
+  "UP045", # e.g. typing.Optional[int] -> int | None
 ]
 ignore = [
-    "B905",   # adding strict=False to every zip call is just noise
-    "C408",   # errors due to using dict()
-    "B011",   # do not use 'assert False' error
-    "B008",   # do not perform function call ... in argument defaults
-    "B006",   # do not use mutable data structures for argument defaults
-    "B024",   # abstract base class has no abstract methods or properties  
-    "B026",   # star-arg unpacking after a keyword argument is strongly discouraged   
-    "B904",   # ithin an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None`
+  "B905", # adding strict=False to every zip call is just noise
+  "C408", # errors due to using dict()
+  "B011", # do not use 'assert False' error
+  "B008", # do not perform function call ... in argument defaults
+  "B006", # do not use mutable data structures for argument defaults
+  "B024", # abstract base class has no abstract methods or properties  
+  "B026", # star-arg unpacking after a keyword argument is strongly discouraged   
+  "B904", # ithin an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None`
 ]
-isort.required-imports = [
-]
+isort.required-imports = []
 
 [tool.black]
 line-length = 115
@@ -171,6 +171,5 @@ force-exclude = '''
 '''
 
 [tool.pyright]
-include = [
-    "src/bluesky_httpserver/v2",
-]
+include = ["src/bluesky_httpserver/v2"]
+pythonVersion = "3.11"
