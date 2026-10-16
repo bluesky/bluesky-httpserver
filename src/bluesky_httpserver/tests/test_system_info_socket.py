@@ -88,7 +88,7 @@ def test_http_server_system_info_socket_1(
     fastapi_server_fs()
 
     # Start RE Manager
-    params = ["--zmq-publish-console", "ON"]
+    params = ["--zmq-publish-info", "ON"]
     if zmq_port is not None:
         params.extend(["--zmq-info-addr", f"tcp://*:{zmq_port}"])
     re_manager_cmd(params)
