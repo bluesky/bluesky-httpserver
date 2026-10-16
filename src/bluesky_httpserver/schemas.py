@@ -52,7 +52,7 @@ class PaginationLinks(pydantic.BaseModel):
     last: str
 
 
-class EntryFields(str, enum.Enum):
+class EntryFields(enum.StrEnum):
     metadata = "metadata"
     structure_family = "structure_family"
     microstructure = "structure.micro"
@@ -182,7 +182,7 @@ class DeviceCodeResponse(pydantic.BaseModel):
     interval: int
 
 
-class AuthenticationMode(str, enum.Enum):
+class AuthenticationMode(enum.StrEnum):
     password = "password"
     external = "external"
 
@@ -219,7 +219,7 @@ class About(pydantic.BaseModel):
     meta: dict
 
 
-class PrincipalType(str, enum.Enum):
+class PrincipalType(enum.StrEnum):
     user = "user"
     service = "service"  # TODO Add support for services.
 

@@ -181,7 +181,7 @@ def get_api_access_manager():
     )
 
 
-class SpecialUsers(str, enum.Enum):
+class SpecialUsers(enum.StrEnum):
     public = _DEFAULT_USERNAME_PUBLIC
     single_user = _DEFAULT_USERNAME_SINGLE_USER
 
