@@ -451,6 +451,7 @@ class Store:
             # Synchronous, so a committed event is always published; serialized writers keep it increasing.
             self._last_event_id = last_event_id
             self._event_published.set()
+            # Create a fresh event so each waiter is awoken a single time
             self._event_published = asyncio.Event()
 
     async def _read(self, fn: Callable[[Transaction], Awaitable[T]]) -> T:
