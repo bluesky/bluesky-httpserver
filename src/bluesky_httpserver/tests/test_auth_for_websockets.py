@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from bluesky_queueserver.manager.tests.common import re_manager, re_manager_cmd, re_manager_factory  # noqa F401
 from sqlalchemy.orm import sessionmaker
+from starlette.datastructures import State
 from websockets.sync.client import connect
 
 from bluesky_httpserver import authentication as _auth
@@ -215,6 +216,40 @@ def _fake_ws_with_deps(*, api_access_manager=None, authenticators=None, settings
             self.state.cookies_to_set = []
 
     return _WS()
+
+
+def _fake_request_with_state(state):
+    """Minimal stand-in for a request carrying an API key in the query string."""
+
+    class _Request:
+        query_params = {"api_key": "some-api-key"}
+        cookies: dict = {}
+
+    request = _Request()
+    request.state = state
+    return request
+
+
+def test_move_api_key_sets_cookie_on_http_request():
+    """On the HTTP path the middleware has initialized 'cookies_to_set'."""
+    state = State()
+    state.cookies_to_set = []
+    request = _fake_request_with_state(state)
+
+    _auth.move_api_key(request, "some-api-key")
+
+    assert state.cookies_to_set == [{"key": _auth.API_KEY_COOKIE_NAME, "value": "some-api-key"}]
+
+
+def test_move_api_key_skips_cookie_on_websocket_request():
+    """The HTTP middleware does not run for websockets, so 'cookies_to_set'
+    is missing and the API key simply is not moved to a cookie."""
+    state = State()
+    request = _fake_request_with_state(state)
+
+    _auth.move_api_key(request, "some-api-key")
+
+    assert not hasattr(state, "cookies_to_set")
 
 
 def test_authenticate_websocket_first_message_rejects_non_auth_frames():

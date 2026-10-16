@@ -253,7 +253,16 @@ def move_api_key(request: Request, api_key: str | None = Depends(get_api_key)):
     are authenticated. (This approach was inspired by Jupyter notebook.)
     """
     if ("api_key" in request.query_params) and (request.cookies.get(API_KEY_COOKIE_NAME) != api_key):
-        request.state.cookies_to_set.append({"key": API_KEY_COOKIE_NAME, "value": api_key})
+        # The `set_cookies` HTTP middleware initializes `request.state.cookies_to_set`.
+        # That middleware is not executed for WebSocket connections, so guard here
+        # to avoid AttributeError when `state.cookies_to_set` is missing.
+        if hasattr(request.state, "cookies_to_set"):
+            request.state.cookies_to_set.append({"key": API_KEY_COOKIE_NAME, "value": api_key})
+        else:
+            # No place to store a cookie for this request (likely a WebSocket).
+            # Silently skip setting the cookie — browsers opening a websocket
+            # with ?api_key=... should set the cookie via an HTTP request instead.
+            logger.debug("Skipping moving api_key to cookie: request.state.cookies_to_set missing")
 
 
 def get_current_principal(
