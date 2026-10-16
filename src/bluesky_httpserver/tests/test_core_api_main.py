@@ -1466,10 +1466,19 @@ def test_http_server_re_runs(re_manager, fastapi_server, suffix, expected_n_item
     assert wait_for_manager_state_idle(30), "Timeout"
 
 
-def test_http_server_re_metadata(re_manager, fastapi_server):  # noqa F811
+_add_metadata_key_to_md = """
+RE.md['metadata_key'] = 'metadata_value'
+"""
+
+
+def test_http_server_re_metadata(re_manager_cmd, fastapi_server, tmp_path):  # noqa F811
     """
     Basic test for ``/re/metadata`` API.
     """
+    pc_path = copy_default_profile_collection(tmp_path)
+    append_code_to_last_startup_file(pc_path, additional_code=_add_metadata_key_to_md)
+    re_manager_cmd(["--startup-dir", pc_path, "--permitted-re-metadata-keys", "/metadata_key", "/versions"])
+
     request_to_json("post", "/environment/open")
     assert wait_for_environment_to_be_created(10), "Timeout"
 
