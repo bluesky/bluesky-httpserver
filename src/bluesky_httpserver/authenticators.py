@@ -1011,14 +1011,8 @@ class LDAPAuthenticator(InternalAuthenticator):
     def get_connection(self, userdn, password):
         import ldap3
 
-        # NOTE: setting 'active=False' essentially disables exclusion of inactive servers from the pool.
-        # It probably does not matter if the pool contains only one server, but it could have implications
-        # when there are multiple servers in the pool. It is not clear what those implications are.
-        # But using the default 'activate=True' results in the thread being blocked indefinitely
-        # at the step of creating 'ldap3.Connection' regardless of timeouts in case all the servers are
-        # inactive (e.g. the pool has one server and it is unaccessible), which is unacceptable.
-        # Further investigation may be needed in the future.
-        server_pool = ldap3.ServerPool(None, ldap3.RANDOM, active=False)
+        # Try connecting to some server in the pool up to 3 times, before failing.
+        server_pool = ldap3.ServerPool(None, ldap3.RANDOM, active=3)
         for address in self.server_address_list:
             if re.search(r".+:\d+", address):
                 # Port is found in the address
