@@ -80,6 +80,13 @@ async def _fetchone(conn: aiosqlite.Connection, sql: str, params: Sequence[Any] 
         await cursor.close()
 
 
+async def _fetchrow(conn: aiosqlite.Connection, sql: str, params: Sequence[Any] = ()) -> sqlite3.Row:
+    """`_fetchone` for queries that always return a row: pragmas, aggregates, invariant lookups."""
+    row = await _fetchone(conn, sql, params)
+    assert row is not None, sql
+    return row
+
+
 async def _fetchall(conn: aiosqlite.Connection, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
     cursor = await conn.execute(sql, params)
     try:
@@ -139,7 +146,7 @@ async def _prepare_schema(
     clock: Callable[[], int],
 ) -> None:
     """Verify the identity and migration history of the database at ``path`` and bring it up to date."""
-    app_id = (await _fetchone(conn, "PRAGMA application_id"))[0]
+    app_id = (await _fetchrow(conn, "PRAGMA application_id"))[0]
     has_tables = (
         await _fetchone(
             conn, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
@@ -152,7 +159,7 @@ async def _prepare_schema(
         # A crash before migration 1 commits leaves an empty, tagged file, which is treated as new.
         await conn.execute(f"PRAGMA application_id = {APPLICATION_ID}")
 
-    mode = (await _fetchone(conn, "PRAGMA journal_mode=WAL"))[0]
+    mode = (await _fetchrow(conn, "PRAGMA journal_mode=WAL"))[0]
     if mode != "wal":
         raise StoreError(f"SQLite refused WAL journal mode for {path}: {mode}")
     await conn.execute("PRAGMA synchronous=FULL")
@@ -268,7 +275,7 @@ class Store:
             conn.row_factory = sqlite3.Row
             await conn.execute("PRAGMA foreign_keys=ON")
             await _prepare_schema(conn, store_path, migrations, allow_migrate, clock)
-            last_event_id = (await _fetchone(conn, "SELECT COALESCE(MAX(event_id), 0) FROM events"))[0]
+            last_event_id = (await _fetchrow(conn, "SELECT COALESCE(MAX(event_id), 0) FROM events"))[0]
         except BaseException:
             if conn is not None:
                 await conn.close()
@@ -283,9 +290,9 @@ class Store:
         """
         self._check_not_in_write()
         async with self._lock:
-            if self._conn is None:
-                return
             conn, lock_fd = self._conn, self._lock_fd
+            if conn is None or lock_fd is None:  # set and cleared together
+                return
             self._conn = self._lock_fd = None
             try:
                 await conn.close()
@@ -370,7 +377,7 @@ class Store:
                 await conn.execute("BEGIN IMMEDIATE")
                 result = await fn(tx)
                 last_event_id = (
-                    (await _fetchone(conn, "SELECT MAX(event_id) FROM events"))[0] if tx._inserted_events else None
+                    (await _fetchrow(conn, "SELECT MAX(event_id) FROM events"))[0] if tx._inserted_events else None
                 )
             except BaseException:
                 await conn.rollback()
@@ -593,7 +600,8 @@ class Transaction:
         self._require_active()
         await self._check_revision(expected_revision)
         old = await self._pending_operation(operation_uid)
-        entry = await _fetchone(
+        # A queued operation always has a queue entry.
+        entry = await _fetchrow(
             self._conn, "SELECT position FROM queue_entries WHERE operation_uid=?", (operation_uid,)
         )
         position = entry["position"]
@@ -767,7 +775,7 @@ class Transaction:
             raise RuntimeError("Transaction used outside Store.write()")
 
     async def _revision(self) -> int:
-        return (await _fetchone(self._conn, "SELECT queue_revision FROM store_metadata WHERE singleton=1"))[0]
+        return (await _fetchrow(self._conn, "SELECT queue_revision FROM store_metadata WHERE singleton=1"))[0]
 
     async def _check_revision(self, expected: int) -> None:
         current = await self._revision()

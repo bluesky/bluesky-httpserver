@@ -51,6 +51,7 @@ def pending_uids(snapshot):
 @pytest.mark.asyncio
 async def test_concurrent_writers_with_same_revision(store):
     first, second = await asyncio.gather(submit(store, 0), submit(store, 0), return_exceptions=True)
+    assert not isinstance(first, BaseException)
     assert first[1] == 1
     assert isinstance(second, StaleRevision)
     assert (second.expected, second.current) == (0, 1)

@@ -4,12 +4,15 @@ channels = ["conda-forge"]
 name = "bluesky-httpserver"
 platforms = ["linux-64"]
 version = "0.0.14"
+requires-pixi = ">=0.82.1"
 
 [tasks]
 
 [dependencies]
 python = "<3.15"
-pip = "*"
+pip = ">=26.2.2"
+certifi = ">=2026.10.19"
+ca-certificates = ">=2026.10.19"
 
 [pypi-dependencies]
 bluesky-queueserver = { git = "https://github.com/bluesky/bluesky-queueserver.git", branch = "main" }
