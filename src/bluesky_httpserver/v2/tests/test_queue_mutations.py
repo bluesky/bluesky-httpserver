@@ -11,37 +11,7 @@ from bluesky_httpserver.v2.store import (
     StaleRevision,
 )
 
-from .conftest import submit
-
-
-async def cancel(store, revision, operation_uid):
-    return await store.write(
-        lambda tx: tx.cancel(principal="alice", expected_revision=revision, operation_uid=operation_uid)
-    )
-
-
-async def replace(store, revision, operation_uid):
-    return await store.write(
-        lambda tx: tx.replace(
-            principal="alice",
-            expected_revision=revision,
-            operation_uid=operation_uid,
-            operation_id="demo.count",
-            operation_version="1",
-            parameters={"num": 2},
-            descriptor_sha256="1" * 64,
-        )
-    )
-
-
-async def reorder(store, revision, operation_uids):
-    return await store.write(
-        lambda tx: tx.reorder(principal="alice", expected_revision=revision, operation_uids=operation_uids)
-    )
-
-
-async def revision_and_event_count(store):
-    return (await store.queue()).revision, len(await store.events_after(0))
+from .conftest import cancel, reorder, replace, revision_and_event_count, submit
 
 
 def pending_uids(snapshot):
@@ -56,7 +26,10 @@ async def test_concurrent_writers_with_same_revision(store):
     assert isinstance(second, StaleRevision)
     assert (second.expected, second.current) == (0, 1)
     assert len((await store.queue()).pending) == 1
-    assert len(await store.events_after(0)) == 1
+    assert [e.event_type for e in await store.events_after(0)] == [
+        EventType.LEASE_ACQUIRED,
+        EventType.OPERATION_SUBMITTED,
+    ]
 
 
 @pytest.mark.asyncio
@@ -154,5 +127,5 @@ async def test_every_mutation_bumps_revision_once(store):
 
     mutations = 6
     assert revision == (await store.queue()).revision == mutations
-    events = await store.events_after(0)
+    events = [e for e in await store.events_after(0) if e.event_type is not EventType.LEASE_ACQUIRED]
     assert {event.queue_revision for event in events} == set(range(1, mutations + 1))

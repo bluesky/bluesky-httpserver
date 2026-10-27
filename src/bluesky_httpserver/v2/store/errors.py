@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .records import OperationState
+from .records import AttemptState, OperationState, QueueExecutionState
 
 
 class StoreError(Exception):
@@ -64,3 +64,54 @@ class InvalidReorder(StoreError):
 class IdempotencyConflict(StoreError):
     def __init__(self) -> None:
         super().__init__("idempotency key was already used for a different request")
+
+
+class LeaseHeld(StoreError):
+    def __init__(self, holder: str, expires_at: int):
+        self.holder = holder
+        self.expires_at = expires_at
+        super().__init__(f"control lease is held by {holder}")
+
+
+class LeaseRequired(StoreError):
+    def __init__(self, principal: str):
+        self.principal = principal
+        super().__init__(f"{principal} does not hold the control lease")
+
+
+class QueueEmpty(StoreError):
+    def __init__(self) -> None:
+        super().__init__("cannot start a queue execution on an empty queue")
+
+
+class ExecutionActive(StoreError):
+    def __init__(self, queue_execution_uid: str):
+        self.queue_execution_uid = queue_execution_uid
+        super().__init__(f"queue execution {queue_execution_uid} is already active")
+
+
+class ExecutionNotFound(StoreError):
+    def __init__(self, queue_execution_uid: str):
+        self.queue_execution_uid = queue_execution_uid
+        super().__init__(f"queue execution {queue_execution_uid} does not exist")
+
+
+class ExecutionNotRunning(StoreError):
+    def __init__(self, queue_execution_uid: str, state: QueueExecutionState):
+        self.queue_execution_uid = queue_execution_uid
+        self.state = state
+        super().__init__(f"queue execution {queue_execution_uid} is {state.value}, not running")
+
+
+class AttemptNotFound(StoreError):
+    def __init__(self, attempt_uid: str):
+        self.attempt_uid = attempt_uid
+        super().__init__(f"attempt {attempt_uid} does not exist")
+
+
+class InvalidAttemptTransition(StoreError):
+    def __init__(self, attempt_uid: str, current: AttemptState, target: AttemptState):
+        self.attempt_uid = attempt_uid
+        self.current = current
+        self.target = target
+        super().__init__(f"attempt {attempt_uid} cannot go from {current.value} to {target.value}")

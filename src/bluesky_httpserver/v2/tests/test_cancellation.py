@@ -48,8 +48,9 @@ async def test_writer_cancelled_after_begin_rolls_back(store, monkeypatch):
 @pytest.mark.asyncio
 async def test_writer_cancelled_during_commit_still_publishes_events(store, monkeypatch):
     stall = Stall(monkeypatch, store._conn, "commit")
-    waiter = asyncio.create_task(store.wait_for_event(0))
+    cursor = (await store.events_after(0))[-1].event_id
+    waiter = asyncio.create_task(store.wait_for_event(cursor))
     await stall.cancel_inside(asyncio.create_task(submit(store, 0)))
 
-    assert await asyncio.wait_for(waiter, 5) == 1
+    assert await asyncio.wait_for(waiter, 5) == cursor + 1
     assert (await submit(store, 1))[1] == 2

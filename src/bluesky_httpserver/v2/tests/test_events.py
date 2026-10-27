@@ -6,13 +6,14 @@ import pytest
 
 from bluesky_httpserver.v2.store import EventType, StaleRevision, Store
 
-from .conftest import submit
+from .conftest import acquire, claim, mark_running, start, submit
 
 
 @pytest.mark.asyncio
-async def test_queue_and_events_survive_reopen(db_path):
-    store = await Store.open(db_path)
+async def test_queue_and_events_survive_reopen(db_path, clock):
+    store = await Store.open(db_path, clock=clock)
     try:
+        await acquire(store)
         a, revision = await submit(store, 0)
         b, revision = await submit(store, revision)
         c, revision = await store.write(
@@ -30,24 +31,43 @@ async def test_queue_and_events_survive_reopen(db_path):
             lambda tx: tx.cancel(principal="alice", expected_revision=revision, operation_uid=b.operation_uid)
         )
         d, revision = await submit(store, revision)
-        await store.write(
+        reordered = await store.write(
             lambda tx: tx.reorder(
                 principal="alice", expected_revision=revision, operation_uids=[d.operation_uid, c.operation_uid]
             )
         )
+        execution, _ = await start(store, reordered.revision)
+        claimed = await claim(store)
+        assert claimed is not None
+        attempt, _ = await mark_running(store, claimed[0].attempt_uid)
+        lease = await store.lease()
+        assert lease is not None
+        execution = await store.queue_execution(execution.queue_execution_uid)
         snapshot = await store.queue()
         events = await store.events_after(0)
     finally:
         await store.close()
 
-    assert {event.event_type for event in events} == set(EventType)
+    assert {event.event_type for event in events} == {
+        EventType.LEASE_ACQUIRED,
+        EventType.OPERATION_SUBMITTED,
+        EventType.OPERATION_REPLACED,
+        EventType.OPERATION_CANCELLED,
+        EventType.QUEUE_REORDERED,
+        EventType.QUEUE_EXECUTION_STARTED,
+        EventType.OPERATION_CLAIMED,
+        EventType.OPERATION_RUNNING,
+    }
     ids = [event.event_id for event in events]
     assert ids == sorted(set(ids))
 
-    reopened = await Store.open(db_path)
+    reopened = await Store.open(db_path, clock=clock)
     try:
         assert await reopened.queue() == snapshot
         assert await reopened.events_after(0) == events
+        assert await reopened.lease() == lease
+        assert await reopened.queue_execution(execution.queue_execution_uid) == execution
+        assert await reopened.attempt(attempt.attempt_uid) == attempt
         page = await reopened.events_after(after=2, limit=1)
     finally:
         await reopened.close()
@@ -59,6 +79,7 @@ async def test_queue_and_events_survive_reopen(db_path):
 async def test_events_are_append_only(db_path):
     store = await Store.open(db_path)
     try:
+        await acquire(store)
         await submit(store, 0)
     finally:
         await store.close()
@@ -71,17 +92,18 @@ async def test_events_are_append_only(db_path):
 
 @pytest.mark.asyncio
 async def test_wait_for_event(store):
-    waiter = asyncio.create_task(store.wait_for_event(0))
+    cursor = (await store.events_after(0))[-1].event_id
+    waiter = asyncio.create_task(store.wait_for_event(cursor))
     await asyncio.sleep(0)
     assert not waiter.done()
     await submit(store, 0)
-    assert await asyncio.wait_for(waiter, 5) == 1
-    assert await asyncio.wait_for(store.wait_for_event(0), 5) == 1
+    assert await asyncio.wait_for(waiter, 5) == cursor + 1
+    assert await asyncio.wait_for(store.wait_for_event(cursor), 5) == cursor + 1
 
-    waiter = asyncio.create_task(store.wait_for_event(1))
+    waiter = asyncio.create_task(store.wait_for_event(cursor + 1))
     with pytest.raises(StaleRevision):
         await submit(store, 0)
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await asyncio.wait_for(waiter, 0.2)
 
 

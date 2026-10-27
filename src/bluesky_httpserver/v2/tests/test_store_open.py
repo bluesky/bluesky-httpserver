@@ -33,6 +33,7 @@ async def test_lock_is_released_when_process_dies(db_path):
 
         async def main():
             store = await Store.open({str(db_path)!r})
+            await store.write(lambda tx: tx.acquire_lease(principal="alice", ttl_seconds=3600))
             await store.write(
                 lambda tx: tx.submit(
                     principal="alice",

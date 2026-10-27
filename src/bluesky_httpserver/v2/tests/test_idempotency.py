@@ -1,6 +1,14 @@
 import pytest
 
-from bluesky_httpserver.v2.store import IdempotencyConflict, IdempotencyScope, StaleRevision, StoredResponse
+from bluesky_httpserver.v2.store import (
+    EventType,
+    IdempotencyConflict,
+    IdempotencyScope,
+    StaleRevision,
+    StoredResponse,
+)
+
+from .conftest import acquire
 
 SCOPE = IdempotencyScope("alice", "POST", "/api/v2/operations", "k1")
 
@@ -39,7 +47,10 @@ async def test_repeated_request_is_replayed(store):
     snapshot = await store.queue()
     assert snapshot.revision == 1
     assert len(snapshot.pending) == 1
-    assert len(await store.events_after(0)) == 1
+    assert [e.event_type for e in await store.events_after(0)] == [
+        EventType.LEASE_ACQUIRED,
+        EventType.OPERATION_SUBMITTED,
+    ]
 
 
 @pytest.mark.asyncio
@@ -57,6 +68,8 @@ async def test_reused_key_with_different_request_conflicts(store):
 @pytest.mark.asyncio
 async def test_keys_are_scoped_by_principal(store):
     alice = await store.write_idempotent(SCOPE, "h1", SubmitFn())
+    await store.write(lambda tx: tx.release_lease(principal="alice"))
+    await acquire(store, "bob")
     bob_scope = IdempotencyScope("bob", SCOPE.method, SCOPE.path, SCOPE.key)
     bob = await store.write_idempotent(bob_scope, "h1", SubmitFn(expected_revision=1, principal="bob"))
     assert not alice.replayed
