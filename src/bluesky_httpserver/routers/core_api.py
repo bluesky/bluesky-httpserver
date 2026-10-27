@@ -1138,7 +1138,7 @@ class WebSocketMonitor:
                 try:
                     # The following will raise an exception if the socket is disconnected.
                     await asyncio.wait_for(self._websocket.receive(), timeout=0.01)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # The socket is still connected.
                     pass
             except Exception:
@@ -1191,7 +1191,7 @@ async def _authenticate_websocket(websocket, scopes):
     await websocket.accept()
     try:
         message = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await websocket.close(code=_WS_CLOSE_AUTH_REQUIRED, reason="Auth required")
         return None, True
     except WebSocketDisconnect:
@@ -1226,7 +1226,7 @@ async def console_output_ws(websocket: WebSocket, scopes=["read:console"]):
             try:
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             except RuntimeError:  # 'send' after the client is disconnected
                 pass
@@ -1253,7 +1253,7 @@ async def status_ws(websocket: WebSocket, scopes=["read:monitor"]):
             try:
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             except RuntimeError:  # 'send' after the client is disconnected
                 pass
@@ -1279,7 +1279,7 @@ async def info_ws(websocket: WebSocket, scopes=["read:monitor"]):
             try:
                 msg = await asyncio.wait_for(q.get(), timeout=1)
                 await websocket.send_text(msg)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             except RuntimeError:  # 'send' after the client is disconnected
                 pass
