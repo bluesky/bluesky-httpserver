@@ -25,7 +25,7 @@ async def test_concurrent_writers_with_same_revision(store):
     assert first[1] == 1
     assert isinstance(second, StaleRevision)
     assert (second.expected, second.current) == (0, 1)
-    assert len((await store.queue()).pending) == 1
+    assert len((await store.read(lambda tx: tx.queue())).pending) == 1
     assert [e.event_type for e in await store.events_after(0)] == [
         EventType.LEASE_ACQUIRED,
         EventType.OPERATION_SUBMITTED,
@@ -62,8 +62,8 @@ async def test_replace_keeps_position_and_links_operations(store):
 
     c, revision = await replace(store, revision, a.operation_uid)
     assert revision == 3
-    assert pending_uids(await store.queue()) == [c.operation_uid, b.operation_uid]
-    old = await store.operation(a.operation_uid)
+    assert pending_uids(await store.read(lambda tx: tx.queue())) == [c.operation_uid, b.operation_uid]
+    old = await store.read(lambda tx: tx.operation(a.operation_uid))
     assert old.state is OperationState.REPLACED
     assert old.replaced_by == c.operation_uid
 
@@ -93,7 +93,7 @@ async def test_reorder(store):
 
     snapshot = await reorder(store, revision, [c.operation_uid, a.operation_uid, b.operation_uid])
     assert pending_uids(snapshot) == [c.operation_uid, a.operation_uid, b.operation_uid]
-    assert pending_uids(await store.queue()) == pending_uids(snapshot)
+    assert pending_uids(await store.read(lambda tx: tx.queue())) == pending_uids(snapshot)
     revision = snapshot.revision
 
     for invalid in (
@@ -103,7 +103,7 @@ async def test_reorder(store):
     ):
         with pytest.raises(InvalidReorder):
             await reorder(store, revision, invalid)
-        assert (await store.queue()).revision == revision
+        assert (await store.read(lambda tx: tx.queue())).revision == revision
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,11 @@ async def test_submit_after_cancel_appends(store):
     c, revision = await submit(store, 2)
     _, revision = await cancel(store, revision, b.operation_uid)
     d, _ = await submit(store, revision)
-    assert pending_uids(await store.queue()) == [a.operation_uid, c.operation_uid, d.operation_uid]
+    assert pending_uids(await store.read(lambda tx: tx.queue())) == [
+        a.operation_uid,
+        c.operation_uid,
+        d.operation_uid,
+    ]
 
 
 @pytest.mark.asyncio
@@ -126,6 +130,6 @@ async def test_every_mutation_bumps_revision_once(store):
     _, revision = await submit(store, revision)
 
     mutations = 6
-    assert revision == (await store.queue()).revision == mutations
+    assert revision == (await store.read(lambda tx: tx.queue())).revision == mutations
     events = [e for e in await store.events_after(0) if e.event_type is not EventType.LEASE_ACQUIRED]
     assert {event.queue_revision for event in events} == set(range(1, mutations + 1))

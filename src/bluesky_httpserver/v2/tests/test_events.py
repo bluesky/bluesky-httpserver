@@ -6,7 +6,7 @@ import pytest
 
 from bluesky_httpserver.v2.store import EventType, StaleRevision, Store
 
-from .conftest import acquire, claim, mark_running, start, submit
+from .conftest import acquire, claimed, mark_running, start, submit
 
 
 @pytest.mark.asyncio
@@ -37,13 +37,11 @@ async def test_queue_and_events_survive_reopen(db_path, clock):
             )
         )
         execution, _ = await start(store, reordered.revision)
-        claimed = await claim(store)
-        assert claimed is not None
-        attempt, _ = await mark_running(store, claimed[0].attempt_uid)
-        lease = await store.lease()
+        attempt, _ = await mark_running(store, (await claimed(store))[0].attempt_uid)
+        lease = await store.read(lambda tx: tx.lease())
         assert lease is not None
-        execution = await store.queue_execution(execution.queue_execution_uid)
-        snapshot = await store.queue()
+        execution = await store.read(lambda tx: tx.queue_execution(execution.queue_execution_uid))
+        snapshot = await store.read(lambda tx: tx.queue())
         events = await store.events_after(0)
     finally:
         await store.close()
@@ -63,11 +61,11 @@ async def test_queue_and_events_survive_reopen(db_path, clock):
 
     reopened = await Store.open(db_path, clock=clock)
     try:
-        assert await reopened.queue() == snapshot
+        assert await reopened.read(lambda tx: tx.queue()) == snapshot
         assert await reopened.events_after(0) == events
-        assert await reopened.lease() == lease
-        assert await reopened.queue_execution(execution.queue_execution_uid) == execution
-        assert await reopened.attempt(attempt.attempt_uid) == attempt
+        assert await reopened.read(lambda tx: tx.lease()) == lease
+        assert await reopened.read(lambda tx: tx.queue_execution(execution.queue_execution_uid)) == execution
+        assert await reopened.read(lambda tx: tx.attempt(attempt.attempt_uid)) == attempt
         page = await reopened.events_after(after=2, limit=1)
     finally:
         await reopened.close()
@@ -110,7 +108,7 @@ async def test_wait_for_event(store):
 @pytest.mark.asyncio
 async def test_store_is_not_reentrant_and_transactions_expire(store):
     with pytest.raises(RuntimeError, match="inside Store.write"):
-        await store.write(lambda tx: store.queue())
+        await store.write(lambda tx: store.read(lambda inner: inner.queue()))
 
     kept = []
 
@@ -118,5 +116,7 @@ async def test_store_is_not_reentrant_and_transactions_expire(store):
         kept.append(tx)
 
     await store.write(keep)
-    with pytest.raises(RuntimeError, match="outside Store.write"):
-        await kept[0].queue()
+    await store.read(keep)
+    for tx in kept:
+        with pytest.raises(RuntimeError, match="used outside its Store.read"):
+            await tx.queue()

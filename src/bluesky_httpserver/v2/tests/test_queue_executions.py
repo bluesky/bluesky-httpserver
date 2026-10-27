@@ -23,6 +23,7 @@ from .conftest import (
     acquire,
     cancel,
     claim,
+    claimed,
     finish,
     mark_running,
     reorder,
@@ -33,14 +34,8 @@ from .conftest import (
 )
 
 
-async def claimed(store):
-    result = await claim(store)
-    assert result is not None
-    return result
-
-
 async def execution_state(store, queue_execution_uid):
-    return (await store.queue_execution(queue_execution_uid)).state
+    return (await store.read(lambda tx: tx.queue_execution(queue_execution_uid))).state
 
 
 @pytest.mark.asyncio
@@ -112,7 +107,7 @@ async def test_stop_after_current(store):
     assert await claim(store) is None
     await finish(store, attempt.attempt_uid)
     assert await execution_state(store, x) is QueueExecutionState.STOPPED
-    pending = (await store.queue()).pending
+    pending = (await store.read(lambda tx: tx.queue())).pending
     assert [(record.operation_uid, record.state) for record in pending] == [
         (b.operation_uid, OperationState.QUEUED)
     ]
@@ -170,10 +165,11 @@ async def test_failure_policy(store, policy, outcome, expected_state, continues)
     finished, _ = await finish(store, attempt.attempt_uid, outcome, "boom")
     assert finished.state is outcome
     assert finished.diagnostic == "boom"
-    assert (await store.operation(a.operation_uid)).state.value == outcome.value
+    assert (await store.read(lambda tx: tx.operation(a.operation_uid))).state.value == outcome.value
     assert await execution_state(store, execution.queue_execution_uid) is expected_state
     next_claim = await claim(store)
-    assert (next_claim is not None and next_claim[1].operation_uid == b.operation_uid) is continues
+    claimed_next = None if next_claim is None else next_claim[1].operation_uid
+    assert claimed_next == (b.operation_uid if continues else None)
 
 
 @pytest.mark.asyncio
@@ -187,7 +183,7 @@ async def test_claim_makes_stale_edit_fail(store):
     with pytest.raises(StaleRevision) as exc_info:
         await cancel(store, revision, b.operation_uid)
     assert (exc_info.value.expected, exc_info.value.current) == (revision, revision + 1)
-    assert (await store.operation(b.operation_uid)).state is OperationState.QUEUED
+    assert (await store.read(lambda tx: tx.operation(b.operation_uid))).state is OperationState.QUEUED
 
 
 @pytest.mark.asyncio
@@ -242,7 +238,7 @@ async def test_attempt_transitions(store):
         await finish(store, uid, AttemptState.FAILED)
     assert (exc_info.value.current, exc_info.value.target) == (AttemptState.SUCCEEDED, AttemptState.FAILED)
     with pytest.raises(AttemptNotFound):
-        await store.attempt("missing")
+        await store.read(lambda tx: tx.attempt("missing"))
 
 
 @pytest.mark.asyncio

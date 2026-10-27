@@ -133,7 +133,8 @@ class QueueExecutionState(StrEnum):
     COMPLETED
         Finished; no admitted operation is left to run.
     STOPPED
-        Stopped before running all admitted operations.
+        Ended early, by a stop request, a failure under ``stop_on_failure`` or an abort; remaining work
+        stays queued.
     """
 
     RUNNING = "running"

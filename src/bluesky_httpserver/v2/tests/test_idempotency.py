@@ -44,7 +44,7 @@ async def test_repeated_request_is_replayed(store):
     assert second.replayed
     assert second.response == first.response
     assert fn.calls == 1
-    snapshot = await store.queue()
+    snapshot = await store.read(lambda tx: tx.queue())
     assert snapshot.revision == 1
     assert len(snapshot.pending) == 1
     assert [e.event_type for e in await store.events_after(0)] == [
@@ -60,7 +60,7 @@ async def test_reused_key_with_different_request_conflicts(store):
     with pytest.raises(IdempotencyConflict):
         await store.write_idempotent(SCOPE, "h2", fn)
     assert fn.calls == 0
-    snapshot = await store.queue()
+    snapshot = await store.read(lambda tx: tx.queue())
     assert snapshot.revision == 1
     assert len(snapshot.pending) == 1
 
@@ -74,7 +74,7 @@ async def test_keys_are_scoped_by_principal(store):
     bob = await store.write_idempotent(bob_scope, "h1", SubmitFn(expected_revision=1, principal="bob"))
     assert not alice.replayed
     assert not bob.replayed
-    assert len((await store.queue()).pending) == 2
+    assert len((await store.read(lambda tx: tx.queue())).pending) == 2
 
 
 @pytest.mark.asyncio

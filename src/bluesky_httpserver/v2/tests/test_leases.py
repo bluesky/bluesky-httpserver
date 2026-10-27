@@ -29,7 +29,7 @@ async def override(store, principal, reason, ttl_seconds=60):
 
 @pytest.mark.asyncio
 async def test_lease_lifecycle(store, clock):
-    lease = await store.lease()
+    lease = await store.read(lambda tx: tx.lease())
     assert lease.holder == "alice"
     assert lease.expires_at == clock.now + 3600 * SECOND
 
@@ -37,7 +37,7 @@ async def test_lease_lifecycle(store, clock):
     renewed = await renew(store, 60)
     assert renewed.lease_uid == lease.lease_uid
     assert renewed.expires_at == clock.now + 60 * SECOND
-    assert await store.lease() == renewed
+    assert await store.read(lambda tx: tx.lease()) == renewed
 
     with pytest.raises(LeaseHeld) as exc_info:
         await acquire(store, "bob")
@@ -48,9 +48,9 @@ async def test_lease_lifecycle(store, clock):
         await release(store, "bob")
 
     await release(store, "alice")
-    assert await store.lease() is None
+    assert await store.read(lambda tx: tx.lease()) is None
     await acquire(store, "bob")
-    assert (await store.lease()).holder == "bob"
+    assert (await store.read(lambda tx: tx.lease())).holder == "bob"
 
     events = await store.events_after(0)
     assert [event.event_type for event in events] == [
@@ -60,13 +60,13 @@ async def test_lease_lifecycle(store, clock):
         EventType.LEASE_ACQUIRED,
     ]
     assert {event.queue_revision for event in events} == {0}
-    assert (await store.queue()).revision == 0
+    assert (await store.read(lambda tx: tx.queue())).revision == 0
 
 
 @pytest.mark.asyncio
 async def test_expired_lease_is_absent(store, clock):
     clock.advance(3600)
-    assert await store.lease() is None
+    assert await store.read(lambda tx: tx.lease()) is None
     with pytest.raises(LeaseRequired):
         await submit(store, 0)
     with pytest.raises(LeaseRequired):
@@ -96,7 +96,7 @@ async def test_edits_need_the_callers_lease(store):
 async def test_override_displaces_holder(store):
     lease = await override(store, "bob", "alice left")
     assert lease.holder == "bob"
-    assert await store.lease() == lease
+    assert await store.read(lambda tx: tx.lease()) == lease
     event = (await store.events_after(0))[-1]
     assert event.event_type is EventType.LEASE_OVERRIDDEN
     assert event.payload["previous_holder"] == "alice"

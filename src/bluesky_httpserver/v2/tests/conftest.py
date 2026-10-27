@@ -109,7 +109,7 @@ async def reorder(
 
 
 async def revision_and_event_count(store: Store) -> tuple[int, int]:
-    return (await store.queue()).revision, len(await store.events_after(0))
+    return (await store.read(lambda tx: tx.queue())).revision, len(await store.events_after(0))
 
 
 async def start(
@@ -130,6 +130,12 @@ async def stop(store: Store, revision: int, queue_execution_uid: str) -> tuple[Q
 
 async def claim(store: Store) -> tuple[AttemptRecord, OperationRecord, int] | None:
     return await store.write(lambda tx: tx.claim_next())
+
+
+async def claimed(store: Store) -> tuple[AttemptRecord, OperationRecord, int]:
+    result = await claim(store)
+    assert result is not None
+    return result
 
 
 async def mark_running(store: Store, attempt_uid: str, item_uid: str = "item-1") -> tuple[AttemptRecord, int]:

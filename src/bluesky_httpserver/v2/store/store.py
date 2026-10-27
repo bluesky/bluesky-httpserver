@@ -361,81 +361,27 @@ class Store:
             finally:
                 os.close(lock_fd)
 
-    async def queue(self) -> QueueSnapshot:
-        """Return the queue revision and the queued operations in order.
-
-        Returns
-        -------
-        QueueSnapshot
-        """
-        return await self._read(lambda tx: tx.queue())
-
-    async def operation(self, operation_uid: str) -> OperationRecord:
-        """Return one operation in any state.
+    async def read(self, fn: Callable[[ReadTransaction], Awaitable[T]]) -> T:
+        """Run ``fn`` against a consistent view of the store.
 
         Parameters
         ----------
-        operation_uid : str
-            Operation to look up.
+        fn : callable
+            Coroutine function receiving a `ReadTransaction` that is valid only until ``fn`` returns.
 
         Returns
         -------
-        OperationRecord
-
-        Raises
-        ------
-        OperationNotFound
-            ``operation_uid`` does not exist.
+        T
+            The result of ``fn``.
         """
-        return await self._read(lambda tx: tx.operation(operation_uid))
-
-    async def lease(self) -> LeaseRecord | None:
-        """Return the control lease unless it has expired.
-
-        Returns
-        -------
-        LeaseRecord or None
-            The lease, or None if nobody holds control.
-        """
-        return await self._read(lambda tx: tx.lease())
-
-    async def queue_execution(self, queue_execution_uid: str) -> QueueExecutionRecord:
-        """Return one queue execution in any state.
-
-        Parameters
-        ----------
-        queue_execution_uid : str
-            Queue execution to look up.
-
-        Returns
-        -------
-        QueueExecutionRecord
-
-        Raises
-        ------
-        ExecutionNotFound
-            ``queue_execution_uid`` does not exist.
-        """
-        return await self._read(lambda tx: tx.queue_execution(queue_execution_uid))
-
-    async def attempt(self, attempt_uid: str) -> AttemptRecord:
-        """Return one attempt in any state.
-
-        Parameters
-        ----------
-        attempt_uid : str
-            Attempt to look up.
-
-        Returns
-        -------
-        AttemptRecord
-
-        Raises
-        ------
-        AttemptNotFound
-            ``attempt_uid`` does not exist.
-        """
-        return await self._read(lambda tx: tx.attempt(attempt_uid))
+        # Holding the store lock gives reads a consistent view: every write runs under it.
+        self._check_not_in_write()
+        async with self._lock:
+            tx = ReadTransaction(self._connection(), self._clock())
+            try:
+                return await fn(tx)
+            finally:
+                tx._active = False
 
     async def events_after(self, after: int = 0, limit: int = 100) -> list[EventRecord]:
         """Return committed events in ``event_id`` order.
@@ -480,7 +426,7 @@ class Store:
         async with self._lock:
             conn = self._connection()
             self._writer_task = asyncio.current_task()
-            tx = Transaction(conn, self._clock)
+            tx = Transaction(conn, self._clock())
             # aiosqlite executes every queued request even if its awaiter is cancelled, so any exception
             # after BEGIN is queued, cancellation included, must roll back before the lock is released.
             try:
@@ -571,16 +517,6 @@ class Store:
             # Create a fresh event so each waiter is awoken a single time
             self._event_published = asyncio.Event()
 
-    async def _read(self, fn: Callable[[Transaction], Awaitable[T]]) -> T:
-        # Holding the store lock gives reads a consistent view: every write runs under it.
-        self._check_not_in_write()
-        async with self._lock:
-            tx = Transaction(self._connection(), self._clock)
-            try:
-                return await fn(tx)
-            finally:
-                tx._active = False
-
     def _check_not_in_write(self) -> None:
         # The store lock is not reentrant: calling back into the store from a write callback would deadlock.
         if self._writer_task is asyncio.current_task():
@@ -592,18 +528,136 @@ class Store:
         return self._conn
 
 
-class Transaction:
-    """Queue edits and reads inside one `Store.write` (or a read) call.
+class ReadTransaction:
+    """Reads inside one `Store.read` or `Store.write` call; valid only until the call returns.
+
+    Time stands still during the call: lease expiry is judged, and every timestamp is written, at the
+    instant the call started.
+    """
+
+    def __init__(self, conn: aiosqlite.Connection, now: int):
+        self._conn = conn
+        self._now = now
+        self._active = True
+
+    async def queue(self) -> QueueSnapshot:
+        """Return the queue revision and the queued operations in order.
+
+        Returns
+        -------
+        QueueSnapshot
+        """
+        self._require_active()
+        rows = await _fetchall(
+            self._conn,
+            "SELECT o.* FROM queue_entries q JOIN operations o ON o.operation_uid = q.operation_uid"
+            " ORDER BY q.position",
+        )
+        return QueueSnapshot(await self._revision(), tuple(_row_to_operation(row) for row in rows))
+
+    async def operation(self, operation_uid: str) -> OperationRecord:
+        """Return one operation in any state.
+
+        Parameters
+        ----------
+        operation_uid : str
+            Operation to look up.
+
+        Returns
+        -------
+        OperationRecord
+
+        Raises
+        ------
+        OperationNotFound
+            ``operation_uid`` does not exist.
+        """
+        self._require_active()
+        row = await _fetchone(self._conn, "SELECT * FROM operations WHERE operation_uid=?", (operation_uid,))
+        if row is None:
+            raise OperationNotFound(operation_uid)
+        return _row_to_operation(row)
+
+    async def lease(self) -> LeaseRecord | None:
+        """Return the control lease unless it has expired.
+
+        Returns
+        -------
+        LeaseRecord or None
+            The lease, or None if nobody holds control.
+        """
+        self._require_active()
+        # An expired row is left in place and treated as absent; the next grant replaces it.
+        row = await _fetchone(self._conn, "SELECT * FROM control_lease WHERE expires_at > ?", (self._now,))
+        return None if row is None else _row_to_lease(row)
+
+    async def queue_execution(self, queue_execution_uid: str) -> QueueExecutionRecord:
+        """Return one queue execution in any state.
+
+        Parameters
+        ----------
+        queue_execution_uid : str
+            Queue execution to look up.
+
+        Returns
+        -------
+        QueueExecutionRecord
+
+        Raises
+        ------
+        ExecutionNotFound
+            ``queue_execution_uid`` does not exist.
+        """
+        self._require_active()
+        row = await _fetchone(
+            self._conn, "SELECT * FROM queue_executions WHERE queue_execution_uid=?", (queue_execution_uid,)
+        )
+        if row is None:
+            raise ExecutionNotFound(queue_execution_uid)
+        return _row_to_execution(row)
+
+    async def attempt(self, attempt_uid: str) -> AttemptRecord:
+        """Return one attempt in any state.
+
+        Parameters
+        ----------
+        attempt_uid : str
+            Attempt to look up.
+
+        Returns
+        -------
+        AttemptRecord
+
+        Raises
+        ------
+        AttemptNotFound
+            ``attempt_uid`` does not exist.
+        """
+        self._require_active()
+        row = await _fetchone(self._conn, "SELECT * FROM attempts WHERE attempt_uid=?", (attempt_uid,))
+        if row is None:
+            raise AttemptNotFound(attempt_uid)
+        return _row_to_attempt(row)
+
+    def _require_active(self) -> None:
+        # A stale transaction would otherwise write in autocommit mode, outside any revision guarantee.
+        if not self._active:
+            raise RuntimeError("Transaction used outside its Store.read() or Store.write() call")
+
+    async def _revision(self) -> int:
+        return (await _fetchrow(self._conn, "SELECT queue_revision FROM store_metadata WHERE singleton=1"))[0]
+
+
+class Transaction(ReadTransaction):
+    """Queue edits and reads inside one `Store.write` call.
 
     Each edit checks the caller's lease, then ``expected_revision``, then its preconditions, then writes,
     bumps the queue revision exactly once and appends events stamped with the new revision.
     """
 
-    def __init__(self, conn: aiosqlite.Connection, clock: Callable[[], int]):
-        self._conn = conn
-        self._clock = clock
+    def __init__(self, conn: aiosqlite.Connection, now: int):
+        super().__init__(conn, now)
         self._inserted_events = False
-        self._active = True
 
     async def submit(
         self,
@@ -650,7 +704,7 @@ class Transaction:
         await self._require_lease(principal)
         await self._check_revision(expected_revision)
         record = await self._insert_operation(
-            principal, operation_id, operation_version, parameters, descriptor_sha256, self._clock()
+            principal, operation_id, operation_version, parameters, descriptor_sha256
         )
         await self._conn.execute(
             "INSERT INTO queue_entries(operation_uid, position)"
@@ -722,10 +776,9 @@ class Transaction:
             self._conn, "SELECT position FROM queue_entries WHERE operation_uid=?", (operation_uid,)
         )
         position = entry["position"]
-        now = self._clock()
         # Insert before update: replaced_by references the replacement row.
         record = await self._insert_operation(
-            principal, operation_id, operation_version, parameters, descriptor_sha256, now
+            principal, operation_id, operation_version, parameters, descriptor_sha256
         )
         await self._conn.execute("DELETE FROM queue_entries WHERE operation_uid=?", (operation_uid,))
         await self._conn.execute(
@@ -733,7 +786,7 @@ class Transaction:
         )
         await self._conn.execute(
             "UPDATE operations SET state=?, replaced_by=?, updated_at=? WHERE operation_uid=?",
-            (OperationState.REPLACED.value, record.operation_uid, max(now, old.submitted_at), operation_uid),
+            (OperationState.REPLACED.value, record.operation_uid, max(self._now, old.submitted_at), operation_uid),
         )
         revision = await self._bump_revision()
         await self._append_event(
@@ -792,7 +845,7 @@ class Transaction:
         await self._check_revision(expected_revision)
         await self._pending_operation(operation_uid)
         await self._conn.execute("DELETE FROM queue_entries WHERE operation_uid=?", (operation_uid,))
-        await self._set_operation_state(operation_uid, OperationState.CANCELLED, self._clock())
+        await self._set_operation_state(operation_uid, OperationState.CANCELLED)
         revision = await self._bump_revision()
         await self._append_event(
             ActorKind.PRINCIPAL,
@@ -1041,16 +1094,22 @@ class Transaction:
         await self._check_revision(expected_revision)
         active = await self._active_execution()
         if active is not None:
-            raise ExecutionActive(active["queue_execution_uid"])
+            raise ExecutionActive(active.queue_execution_uid)
         queued = await self._queued_uids()
         if not queued:
             raise QueueEmpty()
         queue_execution_uid = str(uuid.uuid4())
-        now = self._clock()
         await self._conn.execute(
             "INSERT INTO queue_executions(queue_execution_uid, state, policy, started_by, started_at, updated_at)"
             " VALUES (?, ?, ?, ?, ?, ?)",
-            (queue_execution_uid, QueueExecutionState.RUNNING.value, policy.value, principal, now, now),
+            (
+                queue_execution_uid,
+                QueueExecutionState.RUNNING.value,
+                policy.value,
+                principal,
+                self._now,
+                self._now,
+            ),
         )
         revision = await self._bump_revision()
         await self._append_event(
@@ -1105,7 +1164,7 @@ class Transaction:
             raise ExecutionNotRunning(queue_execution_uid, execution.state)
         await self._conn.execute(
             "UPDATE queue_executions SET state=?, updated_at=? WHERE queue_execution_uid=?",
-            (QueueExecutionState.STOPPING.value, self._clock(), queue_execution_uid),
+            (QueueExecutionState.STOPPING.value, self._now, queue_execution_uid),
         )
         revision = await self._bump_revision()
         await self._append_event(
@@ -1145,13 +1204,12 @@ class Transaction:
             return None
         operation_uid = head["operation_uid"]
         attempt_uid = str(uuid.uuid4())
-        now = self._clock()
         await self._conn.execute("DELETE FROM queue_entries WHERE operation_uid=?", (operation_uid,))
-        await self._set_operation_state(operation_uid, OperationState.CLAIMED, now)
+        await self._set_operation_state(operation_uid, OperationState.CLAIMED)
         await self._conn.execute(
             "INSERT INTO attempts(attempt_uid, operation_uid, queue_execution_uid, state, claimed_at, updated_at,"
             " item_uid, diagnostic) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
-            (attempt_uid, operation_uid, queue_execution_uid, AttemptState.CLAIMED.value, now, now),
+            (attempt_uid, operation_uid, queue_execution_uid, AttemptState.CLAIMED.value, self._now, self._now),
         )
         revision = await self._bump_revision()
         await self._append_event(
@@ -1194,12 +1252,11 @@ class Transaction:
         attempt = await self.attempt(attempt_uid)
         if attempt.state is not AttemptState.CLAIMED:
             raise InvalidAttemptTransition(attempt_uid, attempt.state, AttemptState.RUNNING)
-        now = self._clock()
         await self._conn.execute(
             "UPDATE attempts SET state=?, item_uid=?, updated_at=? WHERE attempt_uid=?",
-            (AttemptState.RUNNING.value, item_uid, now, attempt_uid),
+            (AttemptState.RUNNING.value, item_uid, self._now, attempt_uid),
         )
-        await self._set_operation_state(attempt.operation_uid, OperationState.RUNNING, now)
+        await self._set_operation_state(attempt.operation_uid, OperationState.RUNNING)
         revision = await self._bump_revision()
         await self._append_event(
             ActorKind.SCHEDULER,
@@ -1253,12 +1310,11 @@ class Transaction:
         attempt = await self.attempt(attempt_uid)
         if attempt.state not in (AttemptState.CLAIMED, AttemptState.RUNNING):
             raise InvalidAttemptTransition(attempt_uid, attempt.state, state)
-        now = self._clock()
         await self._conn.execute(
             "UPDATE attempts SET state=?, diagnostic=?, updated_at=? WHERE attempt_uid=?",
-            (state.value, diagnostic, now, attempt_uid),
+            (state.value, diagnostic, self._now, attempt_uid),
         )
-        await self._set_operation_state(attempt.operation_uid, OperationState(state.value), now)
+        await self._set_operation_state(attempt.operation_uid, OperationState(state.value))
         revision = await self._bump_revision()
         await self._append_event(
             ActorKind.SCHEDULER,
@@ -1276,113 +1332,6 @@ class Transaction:
         )
         await self._end_execution_if_done(ActorKind.SCHEDULER, attempt.queue_execution_uid, revision, stop=stop)
         return await self.attempt(attempt_uid), revision
-
-    async def queue(self) -> QueueSnapshot:
-        """Return the queue revision and the queued operations in order.
-
-        Returns
-        -------
-        QueueSnapshot
-        """
-        self._require_active()
-        rows = await _fetchall(
-            self._conn,
-            "SELECT o.* FROM queue_entries q JOIN operations o ON o.operation_uid = q.operation_uid"
-            " ORDER BY q.position",
-        )
-        return QueueSnapshot(await self._revision(), tuple(_row_to_operation(row) for row in rows))
-
-    async def operation(self, operation_uid: str) -> OperationRecord:
-        """Return one operation in any state.
-
-        Parameters
-        ----------
-        operation_uid : str
-            Operation to look up.
-
-        Returns
-        -------
-        OperationRecord
-
-        Raises
-        ------
-        OperationNotFound
-            ``operation_uid`` does not exist.
-        """
-        self._require_active()
-        row = await _fetchone(self._conn, "SELECT * FROM operations WHERE operation_uid=?", (operation_uid,))
-        if row is None:
-            raise OperationNotFound(operation_uid)
-        return _row_to_operation(row)
-
-    async def lease(self) -> LeaseRecord | None:
-        """Return the control lease unless it has expired.
-
-        Returns
-        -------
-        LeaseRecord or None
-            The lease, or None if nobody holds control.
-        """
-        self._require_active()
-        # An expired row is left in place and treated as absent; the next grant replaces it.
-        row = await _fetchone(self._conn, "SELECT * FROM control_lease WHERE expires_at > ?", (self._clock(),))
-        return None if row is None else _row_to_lease(row)
-
-    async def queue_execution(self, queue_execution_uid: str) -> QueueExecutionRecord:
-        """Return one queue execution in any state.
-
-        Parameters
-        ----------
-        queue_execution_uid : str
-            Queue execution to look up.
-
-        Returns
-        -------
-        QueueExecutionRecord
-
-        Raises
-        ------
-        ExecutionNotFound
-            ``queue_execution_uid`` does not exist.
-        """
-        self._require_active()
-        row = await _fetchone(
-            self._conn, "SELECT * FROM queue_executions WHERE queue_execution_uid=?", (queue_execution_uid,)
-        )
-        if row is None:
-            raise ExecutionNotFound(queue_execution_uid)
-        return _row_to_execution(row)
-
-    async def attempt(self, attempt_uid: str) -> AttemptRecord:
-        """Return one attempt in any state.
-
-        Parameters
-        ----------
-        attempt_uid : str
-            Attempt to look up.
-
-        Returns
-        -------
-        AttemptRecord
-
-        Raises
-        ------
-        AttemptNotFound
-            ``attempt_uid`` does not exist.
-        """
-        self._require_active()
-        row = await _fetchone(self._conn, "SELECT * FROM attempts WHERE attempt_uid=?", (attempt_uid,))
-        if row is None:
-            raise AttemptNotFound(attempt_uid)
-        return _row_to_attempt(row)
-
-    def _require_active(self) -> None:
-        # A stale transaction would otherwise write in autocommit mode, outside any revision guarantee.
-        if not self._active:
-            raise RuntimeError("Transaction used outside Store.write()")
-
-    async def _revision(self) -> int:
-        return (await _fetchrow(self._conn, "SELECT queue_revision FROM store_metadata WHERE singleton=1"))[0]
 
     async def _check_revision(self, expected: int) -> None:
         current = await self._revision()
@@ -1402,10 +1351,10 @@ class Transaction:
                 f"lease TTL must be between {LEASE_TTL_MIN_SECONDS} and {LEASE_TTL_MAX_SECONDS} seconds,"
                 f" not {ttl_seconds}"
             )
-        return self._clock() + ttl_seconds * 1_000_000
+        return self._now + ttl_seconds * 1_000_000
 
     async def _grant_lease(self, principal: str, expires_at: int) -> LeaseRecord:
-        record = LeaseRecord(str(uuid.uuid4()), principal, self._clock(), expires_at)
+        record = LeaseRecord(str(uuid.uuid4()), principal, self._now, expires_at)
         await self._conn.execute("DELETE FROM control_lease")
         await self._conn.execute(
             "INSERT INTO control_lease(singleton, lease_uid, holder, acquired_at, expires_at)"
@@ -1421,14 +1370,15 @@ class Transaction:
     async def _queue_is_empty(self) -> bool:
         return await _fetchone(self._conn, "SELECT 1 FROM queue_entries LIMIT 1") is None
 
-    async def _active_execution(self) -> sqlite3.Row | None:
-        return await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state IN ('running', 'stopping')")
+    async def _active_execution(self) -> QueueExecutionRecord | None:
+        row = await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state IN ('running', 'stopping')")
+        return None if row is None else _row_to_execution(row)
 
     async def _running_execution_uid(self) -> str | None:
-        row = await self._active_execution()
-        if row is None or row["state"] != QueueExecutionState.RUNNING.value:
+        execution = await self._active_execution()
+        if execution is None or execution.state is not QueueExecutionState.RUNNING:
             return None
-        return row["queue_execution_uid"]
+        return execution.queue_execution_uid
 
     async def _has_live_attempt(self) -> bool:
         return (
@@ -1441,19 +1391,19 @@ class Transaction:
     ) -> None:
         # Ends the active execution once nothing is claimed or running: stopped if asked to stop, completed if
         # nothing is left to claim. Runs inside a change that has already bumped the revision.
-        row = await self._active_execution()
-        if row is None or await self._has_live_attempt():
+        execution = await self._active_execution()
+        if execution is None or await self._has_live_attempt():
             return
-        if stop or row["state"] == QueueExecutionState.STOPPING.value:
+        if stop or execution.state is QueueExecutionState.STOPPING:
             state, event_type = QueueExecutionState.STOPPED, EventType.QUEUE_EXECUTION_STOPPED
         elif await self._queue_is_empty():
             state, event_type = QueueExecutionState.COMPLETED, EventType.QUEUE_EXECUTION_COMPLETED
         else:
             return
-        queue_execution_uid = row["queue_execution_uid"]
+        queue_execution_uid = execution.queue_execution_uid
         await self._conn.execute(
             "UPDATE queue_executions SET state=?, updated_at=? WHERE queue_execution_uid=?",
-            (state.value, self._clock(), queue_execution_uid),
+            (state.value, self._now, queue_execution_uid),
         )
         await self._append_event(
             actor_kind, actor_id, event_type, revision, {}, queue_execution_uid=queue_execution_uid
@@ -1469,11 +1419,11 @@ class Transaction:
             raise OperationNotPending(operation_uid, record.state)
         return record
 
-    async def _set_operation_state(self, operation_uid: str, state: OperationState, now: int) -> None:
+    async def _set_operation_state(self, operation_uid: str, state: OperationState) -> None:
         # MAX keeps updated_at >= submitted_at (a CHECK) if the clock stepped backwards.
         await self._conn.execute(
             "UPDATE operations SET state=?, updated_at=MAX(?, submitted_at) WHERE operation_uid=?",
-            (state.value, now, operation_uid),
+            (state.value, self._now, operation_uid),
         )
 
     async def _insert_operation(
@@ -1483,7 +1433,6 @@ class Transaction:
         operation_version: str,
         parameters: Mapping[str, Any],
         descriptor_sha256: str,
-        now: int,
     ) -> OperationRecord:
         operation_uid = str(uuid.uuid4())
         parameters_json = _dumps(dict(parameters))
@@ -1498,9 +1447,9 @@ class Transaction:
                 parameters_json,
                 descriptor_sha256,
                 principal,
-                now,
+                self._now,
                 OperationState.QUEUED.value,
-                now,
+                self._now,
             ),
         )
         # Return the stored representation, identical to what a later read produces.
@@ -1511,9 +1460,9 @@ class Transaction:
             parameters=json.loads(parameters_json),
             descriptor_sha256=descriptor_sha256,
             submitted_by=principal,
-            submitted_at=now,
+            submitted_at=self._now,
             state=OperationState.QUEUED,
-            updated_at=now,
+            updated_at=self._now,
             replaced_by=None,
         )
 
@@ -1533,7 +1482,7 @@ class Transaction:
             "INSERT INTO events(timestamp, actor_kind, actor_id, event_type, operation_uid, queue_execution_uid,"
             " attempt_uid, queue_revision, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                self._clock(),
+                self._now,
                 actor_kind.value,
                 actor_id,
                 event_type.value,
@@ -1574,7 +1523,7 @@ class Transaction:
                 response.status_code,
                 _dumps(response.body),
                 response.etag,
-                self._clock(),
+                self._now,
             ),
         )
 

@@ -37,7 +37,7 @@ from .records import (
     QueueSnapshot,
     StoredResponse,
 )
-from .store import LEASE_TTL_MAX_SECONDS, LEASE_TTL_MIN_SECONDS, Store, Transaction
+from .store import LEASE_TTL_MAX_SECONDS, LEASE_TTL_MIN_SECONDS, ReadTransaction, Store, Transaction
 
 __all__ = [
     "ActorKind",
@@ -70,6 +70,7 @@ __all__ = [
     "QueueExecutionRecord",
     "QueueExecutionState",
     "QueueSnapshot",
+    "ReadTransaction",
     "SchemaMismatch",
     "StaleRevision",
     "Store",

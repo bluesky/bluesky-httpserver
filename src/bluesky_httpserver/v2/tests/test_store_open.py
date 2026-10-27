@@ -52,7 +52,7 @@ async def test_lock_is_released_when_process_dies(db_path):
     subprocess.run([sys.executable, "-c", script], check=True, timeout=60)
     store = await Store.open(db_path)
     try:
-        snapshot = await store.queue()
+        snapshot = await store.read(lambda tx: tx.queue())
     finally:
         await store.close()
     assert snapshot.revision == 1
