@@ -26,6 +26,8 @@ jobs:
           redis-version: "7.x"
 
       - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: ${{ env.python_env }}
 
       - name: Install dev dependencies
         run: |
