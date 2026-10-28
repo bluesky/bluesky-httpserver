@@ -31,7 +31,6 @@ jobs:
         pixi install --environment=${{ matrix.python-env }}
         pixi list --environment=${{ matrix.python-env }}
         pixi run --environment=${{ matrix.python-env }} pip list
-        pixi run --environment=${{ matrix.python-env }} conda list
 
     - name: Start LDAP
       run: |
