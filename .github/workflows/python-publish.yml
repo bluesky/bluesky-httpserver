@@ -28,6 +28,8 @@ jobs:
           fetch-depth: 0
 
       - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: ${{ env.python_env }}
 
       - name: Install dev dependencies
         run: |
@@ -35,7 +37,6 @@ jobs:
           pixi install --environment=${{ env.python_env }}
           pixi list --environment=${{ env.python_env }}
           pixi run --environment=${{ env.python_env }} pip list
-          pixi run --environment=${{ env.python_env }} conda list
 
       - name: Build sdist and wheel
         run: >

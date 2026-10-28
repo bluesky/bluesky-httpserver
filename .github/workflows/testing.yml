@@ -23,12 +23,14 @@ jobs:
         redis-version: "7.x"
 
     - uses: prefix-dev/setup-pixi@v0.10.0
+      with:
+        environments: ${{ matrix.python-env }}
+
     - name: Install dependencies
       run: |
         pixi install --environment=${{ matrix.python-env }}
         pixi list --environment=${{ matrix.python-env }}
         pixi run --environment=${{ matrix.python-env }} pip list
-        pixi run --environment=${{ matrix.python-env }} conda list
 
     - name: Start LDAP
       run: |
