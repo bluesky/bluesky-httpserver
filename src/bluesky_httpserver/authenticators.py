@@ -454,6 +454,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         If no username is found, there are errors in looking up the graphAPI
         username, or whatever it returns None
         """
+        profile = None
         try:
             profile = await self.graph_lookup(access_token, self.graph_username_attribute)
             logger.debug("Graph Profile: %r", profile)

@@ -2,9 +2,10 @@
 
 import httpx2
 import pytest
-from respx import MockRouter
 
 from bluesky_httpserver.authenticators import ProxiedOIDCAuthenticator
+
+from .httpx2_mock import MockRouter
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")

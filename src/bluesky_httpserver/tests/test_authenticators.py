@@ -12,12 +12,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
 from jose import ExpiredSignatureError, jwt
-from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 from starlette.requests import Request
 
 from bluesky_httpserver import authentication as _auth
 
+from .. import authenticators as authenticators_module
 from ..authenticators import (
     EntraAuthenticator,
     LDAPAuthenticator,
@@ -25,6 +25,7 @@ from ..authenticators import (
     ProxiedOIDCAuthenticator,
     UserSessionState,
 )
+from .httpx2_mock import MockRouter
 
 LDAP_TEST_HOST = os.environ.get("QSERVER_TEST_LDAP_HOST", "localhost")
 LDAP_TEST_PORT = int(os.environ.get("QSERVER_TEST_LDAP_PORT", "1389"))
@@ -186,6 +187,35 @@ async def test_proxied_oidc_token_retrieval(oidc_well_known_url: str, mock_oidc_
     test_request = httpx2.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
 
     assert "FOO" == await authenticator.oauth2_schema(test_request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code, expected", [(200, "alice"), (503, None)])
+async def test_entra_graph_lookup_httpx2(
+    mock_oidc_server, oidc_well_known_url, monkeypatch, status_code, expected
+):
+    authenticator = EntraAuthenticator(
+        audience="tiled",
+        client_id="tiled",
+        well_known_uri=oidc_well_known_url,
+        device_flow_client_id="tiled-cli",
+        graph_username_attribute="userPrincipalName",
+    )
+
+    def handle_request(request):
+        assert request.url == "https://graph.microsoft.com/v1.0/me?%24select=userPrincipalName"
+        assert request.headers["Authorization"] == "Bearer graph-token"
+        return httpx2.Response(status_code, json={"userPrincipalName": "alice"})
+
+    client_class = httpx2.AsyncClient
+    transport = httpx2.MockTransport(handle_request)
+    monkeypatch.setattr(
+        authenticators_module.httpx2,
+        "AsyncClient",
+        lambda **kwargs: client_class(transport=transport, **kwargs),
+    )
+
+    assert await authenticator.get_username_from_graph("graph-token") == expected
 
 
 def create_mock_oidc_request(query_params=None):

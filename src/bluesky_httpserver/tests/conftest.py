@@ -12,13 +12,15 @@ from bluesky_queueserver.manager.tests.common import (
 )
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose.backends import RSAKey
-from respx import MockRouter
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from xprocess import ProcessStarter
 
+import bluesky_httpserver.authenticators as authenticators
 import bluesky_httpserver.server as bqss
 from bluesky_httpserver.database.base import Base
+
+from .httpx2_mock import MockRouter
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = "60610"
@@ -251,18 +253,29 @@ def json_web_keyset(keys: tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[di
 
 @pytest.fixture
 def mock_oidc_server(
-    respx_mock: MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
     oidc_well_known_url: str,
     well_known_response: dict[str, Any],
     json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
-    respx_mock.get(oidc_well_known_url).mock(
+    mock_router = MockRouter()
+    mock_router.get(oidc_well_known_url).mock(
         return_value=httpx2.Response(httpx2.codes.OK, json=well_known_response)
     )
-    respx_mock.get(well_known_response["jwks_uri"]).mock(
+    mock_router.get(well_known_response["jwks_uri"]).mock(
         return_value=httpx2.Response(httpx2.codes.OK, json={"keys": json_web_keyset})
     )
-    return respx_mock
+    monkeypatch.setattr(
+        authenticators.httpx2,
+        "get",
+        lambda url, **kwargs: mock_router.request("GET", url, **kwargs),
+    )
+    monkeypatch.setattr(
+        authenticators.httpx2,
+        "post",
+        lambda url, **kwargs: mock_router.request("POST", url, **kwargs),
+    )
+    return mock_router
 
 
 @pytest.fixture

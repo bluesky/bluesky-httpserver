@@ -50,7 +50,6 @@ dev = [
   "pytest-xprocess",
   "pytest-split",
   "py",
-  "respx",
   "sphinx",
   "ipython",
   "numpydoc",
