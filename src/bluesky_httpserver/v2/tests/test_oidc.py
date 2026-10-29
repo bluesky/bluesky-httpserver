@@ -367,6 +367,24 @@ async def test_stale_keys_survive_failed_refresh(idp, idp_key, rotated_key):
 
 
 @pytest.mark.asyncio
+async def test_redirected_key_fetch_is_a_failure_even_if_the_client_follows_redirects(idp_key):
+    # A redirect-following client must still never take keys from the redirect target.
+    requested = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if str(request.url) == JWKS_URI:
+            return httpx.Response(302, headers={"location": "https://elsewhere.example/keys"})
+        return httpx.Response(200, json={"keys": [{**idp_key.jwk(), "use": "sig"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True) as http:
+        authenticator = OidcAuthenticator(SETTINGS, http, monotonic=FakeMonotonic())
+        with pytest.raises(IdentityProviderUnavailable):
+            await authenticator.authenticate(valid(idp_key))
+    assert requested == [JWKS_URI]
+
+
+@pytest.mark.asyncio
 async def test_unusable_keys_are_skipped(idp, idp_key, attacker_key):
     authenticator, fake, _ = idp
     fake.extra = [

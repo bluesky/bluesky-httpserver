@@ -77,7 +77,10 @@ class OidcSettings:
         audit ids could not be looked up in Entra or Microsoft Graph. Rights come from ``roles`` because app
         roles are the only rights claim present in both user tokens and app-only (client-credentials) tokens.
         The API registration must set ``requestedAccessTokenVersion: 2``; v1.0 tokens have issuer
-        ``https://sts.windows.net/{tenant}/`` and are rejected.
+        ``https://sts.windows.net/{tenant}/`` and are rejected. The API registration must not also sign users
+        in: Entra puts app roles in the ID tokens of an app that signs users in, and such an ID token has the
+        API's client ID as ``aud``, so it would pass as an access token. Users sign in through a separate
+        client registration.
 
         Parameters
         ----------
@@ -103,17 +106,18 @@ class OidcSettings:
 class OidcAuthenticator:
     """Verifies access tokens against the signing keys of one identity provider.
 
-    Accepts RS256 only. Keys come only from ``settings.jwks_uri``, never from the token, and the token must
-    name its key with ``kid``. Keys are cached and refreshed daily; an unknown ``kid`` triggers a refetch at
-    most once per ``MIN_KEY_FETCH_INTERVAL_SECONDS``. ``exp``, ``nbf`` and ``iat`` are checked against the
-    system clock.
+    Accepts RS256 only. Keys come only from ``settings.jwks_uri``, never from the token or a redirect, and the
+    token must name its key with ``kid``. Keys are cached and refreshed daily; an unknown ``kid`` triggers a
+    refetch at most once per ``MIN_KEY_FETCH_INTERVAL_SECONDS``. ``exp``, ``nbf`` and ``iat`` are checked
+    against the system clock.
 
     Parameters
     ----------
     settings : OidcSettings
         Which tokens to accept and how to read the caller's identity and rights.
     http : httpx.AsyncClient
-        Client used to fetch signing keys; owned by the caller.
+        Client used to fetch signing keys; owned by the caller. Redirects are never followed for the fetch,
+        whatever the client's own setting.
     monotonic : callable
         Monotonic seconds, for the age of cached keys and the fetch rate limit.
     """
@@ -223,9 +227,13 @@ class OidcAuthenticator:
 
     async def _fetch_keys(self) -> dict[str, jwt.PyJWK]:
         try:
-            response = await self._http.get(self._settings.jwks_uri, timeout=KEY_FETCH_TIMEOUT_SECONDS)
+            response = await self._http.get(
+                self._settings.jwks_uri, timeout=KEY_FETCH_TIMEOUT_SECONDS, follow_redirects=False
+            )
         except httpx.HTTPError as error:
-            raise _KeyFetchError(str(error))
+            # str() of an httpx timeout is empty, so the error type is what tells the log what happened.
+            detail = str(error)
+            raise _KeyFetchError(f"{type(error).__name__}: {detail}" if detail else type(error).__name__)
         if response.status_code != 200:
             raise _KeyFetchError(f"HTTP {response.status_code}")
         try:
