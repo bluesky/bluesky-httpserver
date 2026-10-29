@@ -2,7 +2,7 @@ import os
 import time as ttime
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 import requests
 from bluesky_queueserver.manager.comms import zmq_single_request
@@ -256,9 +256,11 @@ def mock_oidc_server(
     well_known_response: dict[str, Any],
     json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
-    respx_mock.get(oidc_well_known_url).mock(return_value=httpx.Response(httpx.codes.OK, json=well_known_response))
+    respx_mock.get(oidc_well_known_url).mock(
+        return_value=httpx2.Response(httpx2.codes.OK, json=well_known_response)
+    )
     respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
+        return_value=httpx2.Response(httpx2.codes.OK, json={"keys": json_web_keyset})
     )
     return respx_mock
 

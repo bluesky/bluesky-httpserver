@@ -19,7 +19,7 @@ dependencies = [
   "bluesky-queueserver-api",
   "cachetools",
   "fastapi",
-  "httpx",
+  "httpx2",
   "ldap3",
   "orjson",
   "pamela",

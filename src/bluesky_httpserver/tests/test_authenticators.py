@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 from unittest.mock import MagicMock
 
-import httpx
+import httpx2
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
@@ -183,7 +183,7 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
 async def test_proxied_oidc_token_retrieval(oidc_well_known_url: str, mock_oidc_server: MockRouter):
     authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", oidc_well_known_url,
                                              device_flow_client_id="tiled-cli")
-    test_request = httpx.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
+    test_request = httpx2.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
 
     assert "FOO" == await authenticator.oauth2_schema(test_request)
 
@@ -225,7 +225,7 @@ async def test_OIDCAuthenticator_mock(
     }
 
     mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
-        return_value=httpx.Response(
+        return_value=httpx2.Response(
             200,
             json={
                 "access_token": "mock-access-token",
@@ -284,7 +284,7 @@ async def test_OIDCAuthenticator_token_exchange_failure(
     well_known_response,
 ):
     mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
-        return_value=httpx.Response(
+        return_value=httpx2.Response(
             400,
             json={
                 "error": "invalid_client",
@@ -476,8 +476,8 @@ class _FakeAuthorizationEndpoint:
 
     def copy_with(self, params):
         self.captured_params = params
-        # Return an httpx.URL so RedirectResponse can str() it cleanly.
-        return httpx.URL("https://idp.example.com/authorize").copy_with(params=params)
+        # Return an httpx2.URL so RedirectResponse can str() it cleanly.
+        return httpx2.URL("https://idp.example.com/authorize").copy_with(params=params)
 
 
 @pytest.mark.asyncio

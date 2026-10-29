@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping
 from datetime import timedelta
 from typing import Any, cast
 
-import httpx
+import httpx2
 from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
@@ -151,7 +151,7 @@ properties:
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
-        response: httpx.Response = httpx.get(self._well_known_url)
+        response: httpx2.Response = httpx2.get(self._well_known_url)
         response.raise_for_status()
         return response.json()
 
@@ -179,8 +179,8 @@ properties:
         return cast(str, self._config_from_oidc_url.get("token_endpoint"))
 
     @functools.cached_property
-    def authorization_endpoint(self) -> httpx.URL:
-        return httpx.URL(cast(str, self._config_from_oidc_url.get("authorization_endpoint")))
+    def authorization_endpoint(self) -> httpx2.URL:
+        return httpx2.URL(cast(str, self._config_from_oidc_url.get("authorization_endpoint")))
 
     @functools.cached_property
     def device_authorization_endpoint(self) -> str:
@@ -192,7 +192,7 @@ properties:
 
     @cached(TTLCache(maxsize=1, ttl=timedelta(hours=1).total_seconds()))
     def keys(self) -> list[str]:
-        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+        return httpx2.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
     def decode_token(self, id_token: str, access_token: str | None = None) -> dict[str, Any]:
         return jwt.decode(
@@ -419,7 +419,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         """Uses the access token provided in the auth flow to lookup a user parameter"""
         headers = {"Authorization": f"Bearer {access_token}"}
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(
                 "https://graph.microsoft.com/v1.0/me",
                 params={"$select": user_param},
@@ -457,7 +457,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         try:
             profile = await self.graph_lookup(access_token, self.graph_username_attribute)
             logger.debug("Graph Profile: %r", profile)
-        except (httpx.HTTPStatusError, httpx.RequestError, ValueError):
+        except (httpx2.HTTPStatusError, httpx2.RequestError, ValueError):
             logger.warning("Graph lookup failed")
         username = None
         if profile:
@@ -566,7 +566,7 @@ async def exchange_code(
     client_secret: str,
     redirect_uri: str,
     extra_scopes: list[str] | None = None,
-) -> httpx.Response:
+) -> httpx2.Response:
     """Exchange an authorization code for tokens at the IdP token endpoint.
 
     Explicitly requests ``openid offline_access`` scopes in the token POST body
@@ -588,7 +588,7 @@ async def exchange_code(
     if extra_scopes:
         scopes.update(extra_scopes)
     auth_value = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-    response = httpx.post(
+    response = httpx2.post(
         url=token_uri,
         data={
             "grant_type": "authorization_code",
