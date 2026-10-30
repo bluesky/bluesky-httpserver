@@ -11,6 +11,11 @@ Removed
 
 - Support for Python 3.10. The minimum supported Python version is now 3.11.
 
+Changed
+-------
+
+- Replace the `httpx` dependency with `httpx2`.
+
 
 v0.0.14 (2026-01-21)
 ====================
