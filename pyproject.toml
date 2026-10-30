@@ -64,7 +64,7 @@ dev = [
   "twine",
   "bluesky-httpserver[v2]",
 ]
-v2 = ["aiosqlite >=0.20", "PyJWT[crypto] >=2.15.1"]
+v2 = ["aiosqlite >=0.20", "PyJWT[crypto] >=2.15.1", "jsonschema >=4.26"]
 
 [project.scripts]
 start-bluesky-httpserver = "bluesky_httpserver.server:start_server"

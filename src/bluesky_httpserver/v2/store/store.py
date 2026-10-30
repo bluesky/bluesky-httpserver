@@ -639,6 +639,11 @@ class ReadTransaction:
             raise AttemptNotFound(attempt_uid)
         return _row_to_attempt(row)
 
+    async def revision(self) -> int:
+        """Return the current queue revision."""
+        self._require_active()
+        return await self._revision()
+
     def _require_active(self) -> None:
         # A stale transaction would otherwise write in autocommit mode, outside any revision guarantee.
         if not self._active:
