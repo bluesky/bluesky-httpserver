@@ -6,18 +6,18 @@ from datetime import timedelta
 from typing import Any
 from unittest.mock import MagicMock
 
-import httpx
+import httpx2
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
 from jose import ExpiredSignatureError, jwt
-from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 from starlette.requests import Request
 
 from bluesky_httpserver import authentication as _auth
 
+from .. import authenticators as authenticators_module
 from ..authenticators import (
     EntraAuthenticator,
     LDAPAuthenticator,
@@ -25,6 +25,7 @@ from ..authenticators import (
     ProxiedOIDCAuthenticator,
     UserSessionState,
 )
+from .httpx2_mock import MockRouter
 
 LDAP_TEST_HOST = os.environ.get("QSERVER_TEST_LDAP_HOST", "localhost")
 LDAP_TEST_PORT = int(os.environ.get("QSERVER_TEST_LDAP_PORT", "1389"))
@@ -183,9 +184,38 @@ def test_entra_decoding_ignores_unmapped_scopes(caplog):
 async def test_proxied_oidc_token_retrieval(oidc_well_known_url: str, mock_oidc_server: MockRouter):
     authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", oidc_well_known_url,
                                              device_flow_client_id="tiled-cli")
-    test_request = httpx.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
+    test_request = httpx2.Request("GET", "http://example.com", headers={"Authorization": "bearer FOO"})
 
     assert "FOO" == await authenticator.oauth2_schema(test_request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code, expected", [(200, "alice"), (503, None)])
+async def test_entra_graph_lookup_httpx2(
+    mock_oidc_server, oidc_well_known_url, monkeypatch, status_code, expected
+):
+    authenticator = EntraAuthenticator(
+        audience="tiled",
+        client_id="tiled",
+        well_known_uri=oidc_well_known_url,
+        device_flow_client_id="tiled-cli",
+        graph_username_attribute="userPrincipalName",
+    )
+
+    def handle_request(request):
+        assert request.url == "https://graph.microsoft.com/v1.0/me?%24select=userPrincipalName"
+        assert request.headers["Authorization"] == "Bearer graph-token"
+        return httpx2.Response(status_code, json={"userPrincipalName": "alice"})
+
+    client_class = httpx2.AsyncClient
+    transport = httpx2.MockTransport(handle_request)
+    monkeypatch.setattr(
+        authenticators_module.httpx2,
+        "AsyncClient",
+        lambda **kwargs: client_class(transport=transport, **kwargs),
+    )
+
+    assert await authenticator.get_username_from_graph("graph-token") == expected
 
 
 def create_mock_oidc_request(query_params=None):
@@ -225,7 +255,7 @@ async def test_OIDCAuthenticator_mock(
     }
 
     mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
-        return_value=httpx.Response(
+        return_value=httpx2.Response(
             200,
             json={
                 "access_token": "mock-access-token",
@@ -284,7 +314,7 @@ async def test_OIDCAuthenticator_token_exchange_failure(
     well_known_response,
 ):
     mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
-        return_value=httpx.Response(
+        return_value=httpx2.Response(
             400,
             json={
                 "error": "invalid_client",
@@ -476,8 +506,8 @@ class _FakeAuthorizationEndpoint:
 
     def copy_with(self, params):
         self.captured_params = params
-        # Return an httpx.URL so RedirectResponse can str() it cleanly.
-        return httpx.URL("https://idp.example.com/authorize").copy_with(params=params)
+        # Return an httpx2.URL so RedirectResponse can str() it cleanly.
+        return httpx2.URL("https://idp.example.com/authorize").copy_with(params=params)
 
 
 @pytest.mark.asyncio

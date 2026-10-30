@@ -6,9 +6,10 @@ from typing import Any
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
-from respx import MockRouter
 
 from bluesky_httpserver.authenticators import OIDCAuthenticator
+
+from .httpx2_mock import MockRouter
 
 
 def create_token(issued: bool, expired: bool) -> dict[str, Any]:
