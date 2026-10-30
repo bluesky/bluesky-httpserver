@@ -37,7 +37,6 @@ jobs:
       - name: Install dev dependencies
         run: |
           set -vxeuo pipefail
-          set -vxeuo pipefail
           pixi install --environment=${{ env.python_env }}
           pixi list --environment=${{ env.python_env }}
           pixi run --environment=${{ env.python_env }} pip list
