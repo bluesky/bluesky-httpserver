@@ -1,10 +1,11 @@
 """Tests for OIDC Authenticator functionality."""
 
-import httpx
+import httpx2
 import pytest
-from respx import MockRouter
 
 from bluesky_httpserver.authenticators import ProxiedOIDCAuthenticator
+
+from .httpx2_mock import MockRouter
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -26,7 +27,7 @@ class TestProxiedOIDCAuthenticator:
         )
 
         # Create a mock request with Authorization header
-        test_request = httpx.Request(
+        test_request = httpx2.Request(
             "GET",
             "http://example.com/api/test",
             headers={"Authorization": "Bearer TEST_TOKEN"},

@@ -5,7 +5,7 @@ import random
 import time as ttime
 from collections.abc import Iterable
 
-import httpx
+import httpx2
 import jsonschema
 import yaml
 
@@ -610,7 +610,7 @@ class ServerBasedAPIAccessControl(BasicAPIAccessControl):
         Send a single request to the API server and update locally stored access control info.
         """
         access_api = f"/instrument/{self._instrument.lower()}/qserver/access"
-        async with httpx.AsyncClient(base_url=self._base_url, timeout=self._http_timeout) as client:
+        async with httpx2.AsyncClient(base_url=self._base_url, timeout=self._http_timeout) as client:
             response = await client.get(access_api)
             response.raise_for_status()
             groups = response.json()
