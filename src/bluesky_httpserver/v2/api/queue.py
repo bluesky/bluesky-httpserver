@@ -80,7 +80,7 @@ async def get_catalog(services: ServicesDep, principal: ReadPrincipal) -> Catalo
 
     The catalog can change while the server runs; `catalog_sha256` identifies the current one.
     """
-    return CatalogView.from_catalog(services.manager.catalog())
+    return CatalogView.from_catalog(services.worker.catalog())
 
 
 @router.get("/queue", tags=["queue"], response_model=QueueView, responses=_tagged_responses(200))
@@ -148,9 +148,7 @@ async def submit_operation(
     revision = expected_revision(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        descriptor = services.manager.catalog().validate(
-            body.operation_id, body.operation_version, body.parameters
-        )
+        descriptor = services.worker.catalog().validate(body.operation_id, body.operation_version, body.parameters)
         record, new_revision = await tx.submit(
             principal=principal.id,
             expected_revision=revision,
@@ -188,9 +186,7 @@ async def replace_operation(
     revision = expected_revision(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        descriptor = services.manager.catalog().validate(
-            body.operation_id, body.operation_version, body.parameters
-        )
+        descriptor = services.worker.catalog().validate(body.operation_id, body.operation_version, body.parameters)
         record, new_revision = await tx.replace(
             principal=principal.id,
             expected_revision=revision,

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from ..._version import __version__
-from ..gateway import ManagerGateway
+from ..gateway import WorkerGateway
 from ..identity import Authenticator
 from ..store import Store
 from . import events, leases, queue
@@ -86,7 +86,7 @@ def create_app(
     *,
     store: Store,
     authenticator: Authenticator,
-    manager: ManagerGateway,
+    worker: WorkerGateway,
     clock: Callable[[], float] = time.time,
     sse_heartbeat_seconds: float = 15.0,
 ) -> FastAPI:
@@ -101,8 +101,8 @@ def create_app(
         The controller queue; must stay open while the app serves requests.
     authenticator : Authenticator
         Verifies bearer tokens.
-    manager : ManagerGateway
-        The queueserver manager; supplies the operation catalog.
+    worker : WorkerGateway
+        The RE Worker, through RE Manager; supplies the operation catalog.
     clock : callable, optional
         Returns the current time in Unix seconds; event streams end when the caller's token expires.
     sse_heartbeat_seconds : float, optional
@@ -130,7 +130,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
-    app.state.services = Services(store, authenticator, manager, clock, sse_heartbeat_seconds)
+    app.state.services = Services(store, authenticator, worker, clock, sse_heartbeat_seconds)
     install_error_handlers(app)
     app.add_middleware(RequestIdMiddleware)
 

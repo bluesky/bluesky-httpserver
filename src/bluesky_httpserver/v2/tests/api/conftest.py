@@ -14,7 +14,7 @@ from bluesky_httpserver.v2.catalog import Catalog
 from bluesky_httpserver.v2.identity import AuthenticationFailed, IdentityProviderUnavailable, Principal, Role
 from bluesky_httpserver.v2.store import Store
 
-from .fake_manager import DEMO_COUNT, FakeManager
+from .fake_worker import DEMO_COUNT, FakeWorker
 
 
 class FakeAuthenticator:
@@ -40,8 +40,8 @@ class FakeAuthenticator:
 
 
 @pytest.fixture
-def manager() -> FakeManager:
-    return FakeManager(Catalog([DEMO_COUNT]))
+def worker() -> FakeWorker:
+    return FakeWorker(Catalog([DEMO_COUNT]))
 
 
 @pytest.fixture
@@ -50,8 +50,8 @@ def authenticator() -> FakeAuthenticator:
 
 
 @pytest.fixture
-def app(store: Store, authenticator: FakeAuthenticator, manager: FakeManager) -> FastAPI:
-    return create_app(store=store, authenticator=authenticator, manager=manager, sse_heartbeat_seconds=0.05)
+def app(store: Store, authenticator: FakeAuthenticator, worker: FakeWorker) -> FastAPI:
+    return create_app(store=store, authenticator=authenticator, worker=worker, sse_heartbeat_seconds=0.05)
 
 
 @pytest_asyncio.fixture

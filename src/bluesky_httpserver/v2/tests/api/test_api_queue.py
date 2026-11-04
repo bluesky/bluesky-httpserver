@@ -5,7 +5,7 @@ import pytest
 from bluesky_httpserver.v2.catalog import Catalog
 
 from .conftest import headers, new_key, operation_uids, queue, submit
-from .fake_manager import DEMO_COUNT
+from .fake_worker import DEMO_COUNT
 
 OPERATIONS = "/api/v2/operations"
 SUBMISSION = {"operation_id": "demo.count", "operation_version": "1", "parameters": {"num": 1}}
@@ -80,7 +80,7 @@ async def test_stale_write_is_refused(client):
 
 
 @pytest.mark.asyncio
-async def test_replay(client, manager):
+async def test_replay(client, worker):
     first = await submit(client, 0, key="k1")
     repeat = await submit(client, 0, key="k1")
     assert (repeat.status_code, repeat.json()) == (first.status_code, first.json())
@@ -91,7 +91,7 @@ async def test_replay(client, manager):
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "idempotency_conflict"
 
-    manager.current = Catalog([])
+    worker.current = Catalog([])
     after_reload = await submit(client, 0, key="k1")
     assert (after_reload.status_code, after_reload.json()) == (201, first.json())
     unknown = await submit(client, 1)

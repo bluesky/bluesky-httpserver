@@ -5,7 +5,7 @@ import pytest
 from bluesky_httpserver.v2.catalog import Catalog
 
 from .conftest import headers
-from .fake_manager import DEMO_COUNT
+from .fake_worker import DEMO_COUNT
 
 
 @pytest.mark.asyncio

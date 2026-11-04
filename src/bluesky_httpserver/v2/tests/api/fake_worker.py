@@ -17,8 +17,8 @@ DEMO_COUNT = OperationDescriptor(
 )
 
 
-class FakeManager:
-    """Stands in for the manager gateway: serves a catalog the test can replace."""
+class FakeWorker:
+    """Stands in for the worker gateway: serves a catalog the test can replace."""
 
     def __init__(self, catalog: Catalog):
         self.current = catalog

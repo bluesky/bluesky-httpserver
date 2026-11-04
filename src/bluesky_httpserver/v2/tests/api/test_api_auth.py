@@ -52,12 +52,12 @@ async def test_authentication_precedes_body_validation(client):
 
 
 @pytest.mark.asyncio
-async def test_real_verifier(store, manager):
+async def test_real_verifier(store, worker):
     key = SigningKey.generate("k1")
     fake = FakeIdentityProvider(JWKS_URI, [key])
     async with httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)) as http:
         authenticator = OidcAuthenticator(SETTINGS, http, monotonic=FakeMonotonic())
-        app = create_app(store=store, authenticator=authenticator, manager=manager)
+        app = create_app(store=store, authenticator=authenticator, worker=worker)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"
         ) as client:

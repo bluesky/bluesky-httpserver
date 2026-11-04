@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 from fastapi.openapi.models import HTTPBearer as HTTPBearerModel
 from fastapi.security.base import SecurityBase
 
-from ..gateway import ManagerGateway
+from ..gateway import WorkerGateway
 from ..identity import Authenticator, Principal, Role, authorize, bearer_token
 from ..store import Store
 
@@ -25,8 +25,8 @@ class Services:
         The controller queue.
     authenticator : Authenticator
         Verifies bearer tokens.
-    manager : ManagerGateway
-        The queueserver manager.
+    worker : WorkerGateway
+        The RE Worker, through RE Manager.
     clock : callable
         Unix seconds; ends event streams at token expiry.
     sse_heartbeat_seconds : float
@@ -35,7 +35,7 @@ class Services:
 
     store: Store
     authenticator: Authenticator
-    manager: ManagerGateway
+    worker: WorkerGateway
     clock: Callable[[], float]
     sse_heartbeat_seconds: float
 
