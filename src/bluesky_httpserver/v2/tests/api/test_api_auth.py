@@ -6,7 +6,8 @@ import pytest
 from bluesky_httpserver.v2.api import create_app
 from bluesky_httpserver.v2.identity import OidcAuthenticator
 
-from ..test_oidc import JWKS_URI, SETTINGS, FakeIdentityProvider, FakeMonotonic, SigningKey, alg_none, valid
+from ..conftest import FakeMonotonic
+from ..test_oidc import JWKS_URI, SETTINGS, FakeIdentityProvider, SigningKey, alg_none, valid
 from .conftest import headers
 
 OPENAPI = "/api/v2/openapi.json"

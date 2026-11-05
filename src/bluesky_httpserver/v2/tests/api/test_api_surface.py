@@ -19,11 +19,14 @@ def dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any] | None
         yield from dependency_calls(dependency)
 
 
-def test_every_route_but_health_requires_authentication(app: FastAPI):
+PROBES = ("/health", "/ready")
+
+
+def test_every_route_but_probes_requires_authentication(app: FastAPI):
     # Included routers stay nested in app.routes; the contexts carry each route's effective path and dependant.
     for context in iter_route_contexts(app.routes):
         assert isinstance(context.original_route, APIRoute), context.path
-        if context.path == "/health":
+        if context.path in PROBES:
             continue
         assert authenticated_principal in set(dependency_calls(context.dependant)), context.path
 
@@ -43,10 +46,10 @@ async def test_openapi_describes_authentication_errors_and_preconditions(client)
     for path, operations in document["paths"].items():
         for method, operation in operations.items():
             where = f"{method.upper()} {path}"
-            if path != "/health":
+            if path not in PROBES:
                 assert operation["security"] == [{"bearer": []}], where
             for status, response in operation["responses"].items():
-                if int(status) >= 400:
+                if int(status) >= 400 and path != "/ready":
                     schema = response["content"]["application/json"]["schema"]
                     assert schema == {"$ref": "#/components/schemas/ErrorEnvelope"}, (where, status)
             required_headers = {

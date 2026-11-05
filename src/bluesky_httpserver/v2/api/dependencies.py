@@ -74,7 +74,7 @@ _bearer_authorization = _BearerAuthorization()
 async def authenticated_principal(
     services: ServicesDep, authorization: Annotated[str | None, Depends(_bearer_authorization)]
 ) -> Principal:
-    """The caller identified by the request's bearer token; every route except ``/health`` depends on it."""
+    """The caller identified by the request's bearer token; every route but ``/health`` and ``/ready`` needs it."""
     return await services.authenticator.authenticate(bearer_token(authorization))
 
 

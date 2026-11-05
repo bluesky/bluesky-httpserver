@@ -2,6 +2,8 @@
 
 from .errors import (
     AttemptNotFound,
+    AttemptNotLive,
+    DispatchBlocked,
     ExecutionActive,
     ExecutionNotFound,
     ExecutionNotRunning,
@@ -12,6 +14,7 @@ from .errors import (
     LeaseRequired,
     MigrationRequired,
     NotAStore,
+    NotBlocked,
     OperationNotFound,
     OperationNotPending,
     QueueEmpty,
@@ -42,8 +45,10 @@ from .store import LEASE_TTL_MAX_SECONDS, LEASE_TTL_MIN_SECONDS, ReadTransaction
 __all__ = [
     "ActorKind",
     "AttemptNotFound",
+    "AttemptNotLive",
     "AttemptRecord",
     "AttemptState",
+    "DispatchBlocked",
     "EventRecord",
     "EventType",
     "ExecutionActive",
@@ -62,6 +67,7 @@ __all__ = [
     "LeaseRequired",
     "MigrationRequired",
     "NotAStore",
+    "NotBlocked",
     "OperationNotFound",
     "OperationNotPending",
     "OperationRecord",

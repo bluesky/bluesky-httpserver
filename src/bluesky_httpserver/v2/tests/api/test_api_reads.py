@@ -4,8 +4,8 @@ import pytest
 
 from bluesky_httpserver.v2.catalog import Catalog
 
+from ..fake_relay import DEMO_COUNT
 from .conftest import headers
-from .fake_worker import DEMO_COUNT
 
 
 @pytest.mark.asyncio

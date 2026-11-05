@@ -55,7 +55,8 @@ _MIGRATION_1 = Migration(
             submitted_by TEXT NOT NULL,
             submitted_at INTEGER NOT NULL CHECK(submitted_at >= 0),
             state TEXT NOT NULL CHECK(state IN (
-                'queued', 'cancelled', 'replaced', 'claimed', 'running', 'succeeded', 'failed', 'aborted'
+                'queued', 'cancelled', 'replaced', 'claimed', 'running', 'succeeded', 'failed', 'aborted',
+                'unknown'
             )),
             updated_at INTEGER NOT NULL CHECK(updated_at >= submitted_at),
             replaced_by TEXT UNIQUE REFERENCES operations(operation_uid),
@@ -80,7 +81,7 @@ _MIGRATION_1 = Migration(
         """
         CREATE TABLE queue_executions(
             queue_execution_uid TEXT PRIMARY KEY,
-            state TEXT NOT NULL CHECK(state IN ('running', 'stopping', 'completed', 'stopped')),
+            state TEXT NOT NULL CHECK(state IN ('running', 'stopping', 'blocked', 'completed', 'stopped')),
             policy TEXT NOT NULL CHECK(policy IN ('stop_on_failure', 'continue_on_failure')),
             started_by TEXT NOT NULL,
             started_at INTEGER NOT NULL CHECK(started_at >= 0),
@@ -89,18 +90,22 @@ _MIGRATION_1 = Migration(
         """,
         """
         CREATE UNIQUE INDEX queue_executions_one_active
-        ON queue_executions(state IN ('running', 'stopping')) WHERE state IN ('running', 'stopping')
+        ON queue_executions(state IN ('running', 'stopping', 'blocked'))
+        WHERE state IN ('running', 'stopping', 'blocked')
         """,
         """
         CREATE TABLE attempts(
             attempt_uid TEXT PRIMARY KEY,
             operation_uid TEXT NOT NULL REFERENCES operations(operation_uid),
             queue_execution_uid TEXT NOT NULL REFERENCES queue_executions(queue_execution_uid),
-            state TEXT NOT NULL CHECK(state IN ('claimed', 'running', 'succeeded', 'failed', 'aborted')),
+            state TEXT NOT NULL CHECK(state IN (
+                'claimed', 'running', 'succeeded', 'failed', 'aborted', 'unknown'
+            )),
             claimed_at INTEGER NOT NULL CHECK(claimed_at >= 0),
             updated_at INTEGER NOT NULL CHECK(updated_at >= 0),
             item_uid TEXT,
             diagnostic TEXT,
+            safe_stop_requested_at INTEGER CHECK(safe_stop_requested_at IS NULL OR safe_stop_requested_at >= 0),
             CHECK(state != 'running' OR item_uid IS NOT NULL)
         )
         """,

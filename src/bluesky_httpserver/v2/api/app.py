@@ -14,10 +14,10 @@ from ..gateway import WorkerGateway
 from ..identity import Authenticator
 from ..store import Store
 from . import events, leases, queue
-from .dependencies import ReadPrincipal, Services
+from .dependencies import ReadPrincipal, Services, ServicesDep
 from .errors import install_error_handlers
 from .middleware import RequestIdMiddleware
-from .models import HealthView
+from .models import HealthView, ReadinessView
 
 # The OpenAPI document's description: how a client, human or agent, is meant to use the API.
 _GUIDE = """\
@@ -25,14 +25,14 @@ Queue and run operations on a Bluesky instrument.
 
 ## Authentication
 
-Every route except `GET /health` needs `Authorization: Bearer <token>`, an access token from the facility
-identity provider. Its roles bound what the caller may do; each role includes those above it.
+Every route except `GET /health` and `GET /ready` needs `Authorization: Bearer <token>`, an access token from
+the facility identity provider. Its roles bound what the caller may do; each role includes those above it.
 
 | Role | Claim value | Allows |
 |---|---|---|
 | Read | `QueueServer.Read` | every `GET` |
 | Edit | `QueueServer.Edit` | taking the control lease and editing the queue |
-| Run | `QueueServer.Run` | starting and stopping queue executions |
+| Run | `QueueServer.Run` | starting and stopping queue executions, safe stops and recovery |
 | Admin | `QueueServer.Admin` | taking the control lease from its holder |
 
 ## Queueing work
@@ -58,6 +58,16 @@ identity provider. Its roles bound what the caller may do; each role includes th
   and nothing is written; the response's `ETag` is the current revision. Re-read the queue, decide again, and
   send the new edit with a new key.
 
+## Stopping and recovery
+
+- `POST /api/v2/attempts/{attempt_uid}/safe-stop` (Run role) pauses the running operation at its next
+  checkpoint and aborts it; the queue execution then stops.
+- If the controller cannot prove how an operation ended, for example because RE Manager stopped answering,
+  the operation becomes `unknown` and nothing more runs: starting a queue execution is refused with 409
+  `dispatch_blocked`. Once RE Manager reports nothing running, `POST /api/v2/recovery/acknowledge` (Run role)
+  clears the block; queued operations stay queued.
+- `GET /ready` says whether work can run now, and if not, why.
+
 ## Responses
 
 - Every response carries an `X-Request-ID` header.
@@ -73,7 +83,7 @@ _TAGS = [
     {"name": "executions", "description": "Runs of the queue, and the attempts that execute its operations."},
     {"name": "lease", "description": "Control of the instrument; one holder at a time."},
     {"name": "events", "description": "Everything that happens to the queue, paged or streamed."},
-    {"name": "health", "description": "Liveness; needs no token."},
+    {"name": "health", "description": "Liveness and readiness; need no token."},
 ]
 
 
@@ -92,8 +102,8 @@ def create_app(
 ) -> FastAPI:
     """Build the v2 HTTP API over an open store.
 
-    The caller opens and closes ``store`` and owns the HTTP client of ``authenticator``; the app does not
-    manage their lifecycle.
+    The caller opens and closes ``store``, owns the HTTP client of ``authenticator``, and runs ``worker.run()``
+    for as long as the app serves; the app does not manage their lifecycle and only reads from ``worker``.
 
     Parameters
     ----------
@@ -102,7 +112,7 @@ def create_app(
     authenticator : Authenticator
         Verifies bearer tokens.
     worker : WorkerGateway
-        The RE Worker, through RE Manager; supplies the operation catalog.
+        Runs the queue on the RE Worker through RE Manager; supplies the operation catalog.
     clock : callable, optional
         Returns the current time in Unix seconds; event streams end when the caller's token expires.
     sse_heartbeat_seconds : float, optional
@@ -138,6 +148,17 @@ def create_app(
     async def health() -> HealthView:
         """Whether the server is up."""
         return HealthView(status="ok")
+
+    @app.get(
+        "/ready",
+        tags=["health"],
+        response_model=ReadinessView,
+        responses={503: {"model": ReadinessView, "description": "Not ready; the fields say why."}},
+    )
+    async def ready(services: ServicesDep) -> JSONResponse:
+        """Whether the controller can run work now; needs no token."""
+        view = ReadinessView.from_readiness(services.worker.readiness())
+        return JSONResponse(view.model_dump(mode="json"), status_code=200 if view.ready else 503)
 
     @app.get("/api/v2/openapi.json", include_in_schema=False)
     async def openapi(request: Request, principal: ReadPrincipal) -> JSONResponse:

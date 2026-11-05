@@ -28,6 +28,11 @@ class OperationDescriptor:
         Version of the operation; a changed parameter contract gets a new version.
     parameters_schema : mapping
         JSON Schema, draft 2020-12, of the parameters object.
+    plan_name : str
+        Plan the worker runs for this operation; never shown to clients.
+    devices : mapping
+        For each device parameter, the device ids clients may name, each mapped to the worker's name for that
+        device.
     sha256 : str
         Identifies this descriptor; stored with every operation submitted against it.
 
@@ -40,6 +45,8 @@ class OperationDescriptor:
     operation_id: str
     operation_version: str
     parameters_schema: Mapping[str, Any]
+    plan_name: str
+    devices: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     sha256: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -56,10 +63,32 @@ class OperationDescriptor:
                     "operation_id": self.operation_id,
                     "operation_version": self.operation_version,
                     "parameters_schema": self.parameters_schema,
+                    "plan_name": self.plan_name,
+                    "devices": self.devices,
                 }
             )
         ).hexdigest()
         object.__setattr__(self, "sha256", digest)
+
+    def plan_kwargs(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """Return the plan's keyword arguments: ``parameters`` with device ids replaced by the worker's names.
+
+        Parameters
+        ----------
+        parameters : mapping
+            Parameters that passed `Catalog.validate` for this descriptor.
+
+        Returns
+        -------
+        dict
+        """
+        kwargs = dict(parameters)
+        for name, names in self.devices.items():
+            if name not in kwargs:
+                continue
+            value = kwargs[name]
+            kwargs[name] = names[value] if isinstance(value, str) else [names[v] for v in value]
+        return kwargs
 
 
 class UnknownOperation(Exception):
@@ -128,10 +157,23 @@ class Catalog:
             )
         ).hexdigest()
 
+    def descriptor(self, operation_id: str, operation_version: str) -> OperationDescriptor:
+        """Return the descriptor of an operation.
+
+        Raises
+        ------
+        UnknownOperation
+            The operation is not in the catalog.
+        """
+        entry = self._entries.get((operation_id, operation_version))
+        if entry is None:
+            raise UnknownOperation(operation_id, operation_version)
+        return entry[0]
+
     def validate(
         self, operation_id: str, operation_version: str, parameters: Mapping[str, Any]
     ) -> OperationDescriptor:
-        """Check that an operation is in the catalog and that ``parameters`` match its schema.
+        """Check that an operation is in the catalog and that ``parameters`` match its schema and devices.
 
         Parameters
         ----------
@@ -150,25 +192,46 @@ class Catalog:
         UnknownOperation
             The operation is not in the catalog.
         InvalidParameters
-            ``parameters`` contain NaN or infinite numbers, or do not match the schema.
+            ``parameters`` contain NaN or infinite numbers, do not match the schema, or name a device the
+            operation does not accept.
         """
-        entry = self._entries.get((operation_id, operation_version))
-        if entry is None:
-            raise UnknownOperation(operation_id, operation_version)
-        descriptor, validator = entry
+        descriptor = self.descriptor(operation_id, operation_version)
+        validator = self._entries[(operation_id, operation_version)][1]
         try:
             json.dumps(parameters, allow_nan=False)
         except ValueError:
             raise InvalidParameters(
                 [{"path": "$", "message": "parameters must not contain NaN or infinite numbers"}]
             ) from None
-        errors: list[dict[str, str]] = sorted(
-            (
-                {"path": error.json_path, "message": error.message}
-                for error in validator.iter_errors(dict(parameters))
-            ),
-            key=lambda e: (e["path"], e["message"]),
-        )
+        errors = [
+            {"path": error.json_path, "message": error.message}
+            for error in validator.iter_errors(dict(parameters))
+        ]
+        # Device ids are checked only against well-typed values, so a wrongly typed value is reported once.
+        if not errors:
+            errors = _device_errors(descriptor, parameters)
         if errors:
-            raise InvalidParameters(errors)
+            raise InvalidParameters(sorted(errors, key=lambda e: (e["path"], e["message"])))
         return descriptor
+
+
+def _device_errors(descriptor: OperationDescriptor, parameters: Mapping[str, Any]) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    for name, ids in descriptor.devices.items():
+        if name not in parameters:
+            continue
+        value = parameters[name]
+        if isinstance(value, str):
+            named = [(f"$.{name}", value)]
+        elif isinstance(value, list) and all(isinstance(v, str) for v in value):
+            named = [(f"$.{name}[{i}]", v) for i, v in enumerate(value)]
+        else:
+            errors.append({"path": f"$.{name}", "message": "must be a device id or a list of device ids"})
+            continue
+        expected = ", ".join(sorted(ids))
+        errors.extend(
+            {"path": path, "message": f"'{v}' is not a device of this operation; expected one of: {expected}"}
+            for path, v in named
+            if v not in ids
+        )
+    return errors

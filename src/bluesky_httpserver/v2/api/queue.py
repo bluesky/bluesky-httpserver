@@ -1,8 +1,9 @@
-"""Routes of the catalog, the queue, its operations, queue executions and attempts.
+"""Routes of the catalog, the queue, its operations, queue executions, attempts and recovery.
 
-Every queue mutation takes ``Idempotency-Key`` and ``If-Match``; its response carries the new revision as
-``ETag``. Parameters are validated against the catalog inside the mutation's transaction, after any replay,
-so a retried request gets its original response even if the catalog has changed since.
+Every queue mutation takes ``Idempotency-Key`` and ``If-Match``, except a safe stop, which takes only
+``Idempotency-Key``; its response carries the new revision as ``ETag``. Parameters are validated against the
+catalog inside the mutation's transaction, after any replay, so a retried request gets its original response
+even if the catalog has changed since. Likewise, recovery's fence check runs after any replay.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from .models import (
     QueueExecutionStart,
     QueueExecutionView,
     QueueView,
+    RecoveryAcknowledgement,
     ReorderRequest,
 )
 from .preconditions import (
@@ -74,7 +76,9 @@ def _stored(status_code: int, view: BaseModel, revision: int) -> StoredResponse:
     return StoredResponse(status_code, view.model_dump(mode="json"), queue_etag(revision))
 
 
-@router.get("/catalog", tags=["catalog"], response_model=CatalogView, responses=error_responses())
+@router.get(
+    "/catalog", tags=["catalog"], response_model=CatalogView, responses=error_responses("catalog_unavailable")
+)
 async def get_catalog(services: ServicesDep, principal: ReadPrincipal) -> CatalogView:
     """The operations that may be submitted now, each with the JSON Schema of its parameters.
 
@@ -133,7 +137,9 @@ async def get_operation(operation_uid: str, services: ServicesDep, principal: Re
     tags=["queue"],
     response_model=OperationView,
     status_code=201,
-    responses=_edit_responses(201, "invalid_request", "unknown_operation", "invalid_parameters"),
+    responses=_edit_responses(
+        201, "invalid_request", "unknown_operation", "invalid_parameters", "catalog_unavailable"
+    ),
     openapi_extra=mutation_headers(if_match=True),
 )
 async def submit_operation(
@@ -167,7 +173,13 @@ async def submit_operation(
     tags=["queue"],
     response_model=OperationView,
     responses=_edit_responses(
-        200, "invalid_request", "unknown_operation", "invalid_parameters", "not_found", "operation_not_queued"
+        200,
+        "invalid_request",
+        "unknown_operation",
+        "invalid_parameters",
+        "not_found",
+        "operation_not_queued",
+        "catalog_unavailable",
     ),
     openapi_extra=mutation_headers(if_match=True),
 )
@@ -239,6 +251,34 @@ async def get_attempt(attempt_uid: str, services: ServicesDep, principal: ReadPr
     return _tagged(AttemptView.from_record(record), revision)
 
 
+@router.post(
+    "/attempts/{attempt_uid}/safe-stop",
+    tags=["executions"],
+    response_model=AttemptView,
+    status_code=202,
+    responses=_tagged_responses(
+        202, *IDEMPOTENCY_ERRORS, "lease_required", "invalid_request", "not_found", "attempt_not_live"
+    ),
+    openapi_extra=mutation_headers(if_match=False),
+)
+async def safe_stop_attempt(
+    attempt_uid: str, request: Request, services: ServicesDep, principal: RunPrincipal
+) -> JSONResponse:
+    """Stop a live attempt safely. Needs the Run role and the lease.
+
+    The request is recorded at once; the controller then pauses the plan at its next checkpoint and aborts it.
+    If the operation finishes first, its own outcome stands. An aborted attempt stops the queue execution.
+    Takes no `If-Match`, so an emergency stop never fails because the queue changed.
+    """
+    key = require_idempotency_key(request)
+
+    async def action(tx: Transaction) -> StoredResponse:
+        record, revision = await tx.request_safe_stop(principal=principal.id, attempt_uid=attempt_uid)
+        return _stored(202, AttemptView.from_record(record), revision)
+
+    return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
+
+
 @router.get(
     "/queue-executions/{queue_execution_uid}",
     tags=["executions"],
@@ -260,7 +300,7 @@ async def get_queue_execution(
     tags=["executions"],
     response_model=QueueExecutionView,
     status_code=201,
-    responses=_edit_responses(201, "invalid_request", "execution_active", "queue_empty"),
+    responses=_edit_responses(201, "invalid_request", "execution_active", "queue_empty", "dispatch_blocked"),
     openapi_extra=mutation_headers(if_match=True),
 )
 async def start_queue_execution(
@@ -309,3 +349,35 @@ async def stop_queue_execution(
         return _stored(200, QueueExecutionView.from_record(record), new_revision)
 
     return await run_idempotent(request, services, principal, key=key, body=None, revision=revision, action=action)
+
+
+@router.post(
+    "/recovery/acknowledge",
+    tags=["executions"],
+    response_model=QueueExecutionView,
+    responses=_edit_responses(200, "invalid_request", "not_blocked", "no_fence_evidence"),
+    openapi_extra=mutation_headers(if_match=True),
+)
+async def acknowledge_recovery(
+    request: Request, body: RecoveryAcknowledgement, services: ServicesDep, principal: RunPrincipal
+) -> JSONResponse:
+    """Clear the dispatch block left by an attempt whose outcome could not be proven. Needs the Run role and
+    the lease.
+
+    Succeeds only while RE Manager reports nothing running. The blocked execution becomes `stopped`, queued
+    operations stay queued, and the controller reopens the worker environment if it is gone. Start a new queue
+    execution to continue.
+    """
+    key = require_idempotency_key(request)
+    revision = expected_revision(request)
+
+    async def action(tx: Transaction) -> StoredResponse:
+        record, new_revision = await tx.acknowledge_recovery(
+            principal=principal.id,
+            expected_revision=revision,
+            note=body.note,
+            fence=services.worker.fence_evidence,
+        )
+        return _stored(200, QueueExecutionView.from_record(record), new_revision)
+
+    return await run_idempotent(request, services, principal, key=key, body=body, revision=revision, action=action)

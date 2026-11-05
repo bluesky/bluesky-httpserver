@@ -15,9 +15,12 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from ..catalog import InvalidParameters, UnknownOperation
+from ..gateway import CatalogUnavailable, NoFenceEvidence
 from ..identity import AuthenticationFailed, IdentityProviderUnavailable, InsufficientRole
 from ..store import (
     AttemptNotFound,
+    AttemptNotLive,
+    DispatchBlocked,
     ExecutionActive,
     ExecutionNotFound,
     ExecutionNotRunning,
@@ -25,6 +28,7 @@ from ..store import (
     InvalidReorder,
     LeaseHeld,
     LeaseRequired,
+    NotBlocked,
     OperationNotFound,
     OperationNotPending,
     QueueEmpty,
@@ -95,11 +99,26 @@ ERRORS: dict[str, ErrorCode] = {
     "queue_empty": ErrorCode(409, "No operation is queued, so there is nothing to run."),
     "execution_active": ErrorCode(409, "A queue execution is already running or stopping."),
     "execution_not_running": ErrorCode(409, "The queue execution is not running."),
+    "dispatch_blocked": ErrorCode(
+        409,
+        "An attempt's outcome could not be proven, so nothing runs until recovery is acknowledged with"
+        " `POST /api/v2/recovery/acknowledge`.",
+    ),
+    "attempt_not_live": ErrorCode(409, "The attempt has already ended."),
+    "not_blocked": ErrorCode(409, "No queue execution is blocked; there is nothing to acknowledge."),
+    "no_fence_evidence": ErrorCode(
+        409,
+        "The worker is not provably stopped: RE Manager is unreachable or reports something running. Retry once"
+        " it is idle.",
+    ),
+    "catalog_unavailable": ErrorCode(
+        503, "The operation catalog has not been loaded from the worker yet; retry shortly."
+    ),
     "internal_error": ErrorCode(500, "Unexpected server failure; report the `request_id`."),
 }
 
 AUTHENTICATION_ERRORS = ("unauthenticated", "insufficient_role", "identity_provider_unavailable")
-"""Errors every route but ``/health`` may return."""
+"""Errors every route but ``/health`` and ``/ready`` may return."""
 
 
 class ApiError(Exception):
@@ -162,8 +181,13 @@ _CODES: dict[type[Exception], str] = {
     InvalidReorder: "invalid_reorder",
     ExecutionActive: "execution_active",
     ExecutionNotRunning: "execution_not_running",
+    DispatchBlocked: "dispatch_blocked",
     QueueEmpty: "queue_empty",
     UnknownOperation: "unknown_operation",
+    CatalogUnavailable: "catalog_unavailable",
+    AttemptNotLive: "attempt_not_live",
+    NotBlocked: "not_blocked",
+    NoFenceEvidence: "no_fence_evidence",
 }
 
 _WWW_AUTHENTICATE = {

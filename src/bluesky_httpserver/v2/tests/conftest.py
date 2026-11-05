@@ -7,6 +7,8 @@ from typing import Any
 import pytest
 import pytest_asyncio
 
+from bluesky_httpserver.v2.catalog import Catalog
+from bluesky_httpserver.v2.gateway import WorkerGateway
 from bluesky_httpserver.v2.store import (
     AttemptRecord,
     AttemptState,
@@ -17,6 +19,8 @@ from bluesky_httpserver.v2.store import (
     QueueSnapshot,
     Store,
 )
+
+from .fake_relay import DEMO_COUNT, FakeRelay
 
 
 class FakeClock:
@@ -30,6 +34,19 @@ class FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.now += int(seconds * 1_000_000)
+
+
+class FakeMonotonic:
+    """Monotonic clock that moves only when told to."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
 
 
 @pytest.fixture
@@ -50,6 +67,21 @@ async def store(db_path: Path, clock: FakeClock) -> AsyncIterator[Store]:
         yield s
     finally:
         await s.close()
+
+
+@pytest.fixture
+def relay() -> FakeRelay:
+    return FakeRelay(Catalog([DEMO_COUNT]))
+
+
+@pytest.fixture
+def monotonic() -> FakeMonotonic:
+    return FakeMonotonic()
+
+
+@pytest.fixture
+def gateway(store: Store, relay: FakeRelay, monotonic: FakeMonotonic) -> WorkerGateway:
+    return WorkerGateway(store=store, relay=relay, user_group="primary", monotonic=monotonic)
 
 
 async def acquire(store: Store, principal: str = "alice", ttl_seconds: int = 3600) -> LeaseRecord:

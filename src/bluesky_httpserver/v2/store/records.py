@@ -31,6 +31,8 @@ class OperationState(StrEnum):
         Ran and failed; will not be retried.
     ABORTED
         Stopped before finishing.
+    UNKNOWN
+        Its outcome could not be proven; later evidence from the manager may still record the real one.
     """
 
     QUEUED = "queued"
@@ -41,6 +43,7 @@ class OperationState(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     ABORTED = "aborted"
+    UNKNOWN = "unknown"
 
 
 class ActorKind(StrEnum):
@@ -84,6 +87,10 @@ class EventType(StrEnum):
         An operation ran and failed.
     OPERATION_ABORTED
         An operation was stopped before finishing.
+    OPERATION_UNKNOWN
+        An operation's outcome could not be proven; its queue execution is blocked.
+    OPERATION_SAFE_STOP_REQUESTED
+        A principal asked for a live operation to be paused at its next checkpoint and aborted.
     QUEUE_EXECUTION_STARTED
         The queue started running.
     QUEUE_EXECUTION_STOP_REQUESTED
@@ -92,6 +99,8 @@ class EventType(StrEnum):
         The queue finished; no admitted operation is left to run.
     QUEUE_EXECUTION_STOPPED
         The queue stopped before running all admitted operations.
+    QUEUE_EXECUTION_BLOCKED
+        The queue stopped dispatching because an operation's outcome could not be proven.
     LEASE_ACQUIRED
         A principal took control of the instrument.
     LEASE_RENEWED
@@ -100,6 +109,8 @@ class EventType(StrEnum):
         The controlling principal gave up control.
     LEASE_OVERRIDDEN
         An administrator took control, displacing any holder.
+    WORKER_FENCED
+        A principal acknowledged recovery while RE Manager reported the worker idle; the block was cleared.
     """
 
     OPERATION_SUBMITTED = "operation.submitted"
@@ -111,14 +122,18 @@ class EventType(StrEnum):
     OPERATION_SUCCEEDED = "operation.succeeded"
     OPERATION_FAILED = "operation.failed"
     OPERATION_ABORTED = "operation.aborted"
+    OPERATION_UNKNOWN = "operation.unknown"
+    OPERATION_SAFE_STOP_REQUESTED = "operation.safe_stop_requested"
     QUEUE_EXECUTION_STARTED = "queue_execution.started"
     QUEUE_EXECUTION_STOP_REQUESTED = "queue_execution.stop_requested"
     QUEUE_EXECUTION_COMPLETED = "queue_execution.completed"
     QUEUE_EXECUTION_STOPPED = "queue_execution.stopped"
+    QUEUE_EXECUTION_BLOCKED = "queue_execution.blocked"
     LEASE_ACQUIRED = "lease.acquired"
     LEASE_RENEWED = "lease.renewed"
     LEASE_RELEASED = "lease.released"
     LEASE_OVERRIDDEN = "lease.overridden"
+    WORKER_FENCED = "worker.fenced"
 
 
 class QueueExecutionState(StrEnum):
@@ -130,15 +145,19 @@ class QueueExecutionState(StrEnum):
         Running admitted operations, one at a time.
     STOPPING
         Will stop once the current operation finishes.
+    BLOCKED
+        An attempt's outcome could not be proven; nothing is claimed until an operator acknowledges recovery,
+        which stops the execution.
     COMPLETED
         Finished; no admitted operation is left to run.
     STOPPED
-        Ended early, by a stop request, a failure under ``stop_on_failure`` or an abort; remaining work
-        stays queued.
+        Ended early, by a stop request, a failure under ``stop_on_failure``, an abort or a recovery
+        acknowledgement; remaining work stays queued.
     """
 
     RUNNING = "running"
     STOPPING = "stopping"
+    BLOCKED = "blocked"
     COMPLETED = "completed"
     STOPPED = "stopped"
 
@@ -173,6 +192,8 @@ class AttemptState(StrEnum):
         Ran and failed; will not be retried.
     ABORTED
         Stopped before finishing.
+    UNKNOWN
+        Its outcome could not be proven; later evidence from the manager may still record the real one.
     """
 
     CLAIMED = "claimed"
@@ -180,6 +201,7 @@ class AttemptState(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     ABORTED = "aborted"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -310,6 +332,8 @@ class AttemptRecord:
         The manager's identifier for the running item, once started.
     diagnostic : str or None
         Why it ended as it did, if known.
+    safe_stop_requested_at : int or None
+        When a principal asked for a safe stop; None if nobody did.
     """
 
     attempt_uid: str
@@ -320,6 +344,7 @@ class AttemptRecord:
     updated_at: int
     item_uid: str | None
     diagnostic: str | None
+    safe_stop_requested_at: int | None
 
 
 @dataclass(frozen=True)

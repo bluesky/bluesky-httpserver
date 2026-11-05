@@ -25,6 +25,8 @@ from bluesky_httpserver.v2.identity import (
     Role,
 )
 
+from .conftest import FakeMonotonic
+
 ISSUER = "https://idp.example/realms/facility"
 AUDIENCE = "queueserver-api"
 JWKS_URI = "https://idp.example/realms/facility/keys"
@@ -47,19 +49,6 @@ class FromNow:
     """
 
     seconds: int
-
-
-class FakeMonotonic:
-    """Monotonic clock that moves only when told to."""
-
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
 
 
 def b64(data: bytes) -> str:

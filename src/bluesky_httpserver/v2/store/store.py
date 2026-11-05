@@ -22,6 +22,8 @@ import aiosqlite
 
 from .errors import (
     AttemptNotFound,
+    AttemptNotLive,
+    DispatchBlocked,
     ExecutionActive,
     ExecutionNotFound,
     ExecutionNotRunning,
@@ -32,6 +34,7 @@ from .errors import (
     LeaseRequired,
     MigrationRequired,
     NotAStore,
+    NotBlocked,
     OperationNotFound,
     OperationNotPending,
     QueueEmpty,
@@ -71,7 +74,11 @@ _TERMINAL_ATTEMPT_EVENTS: Mapping[AttemptState, EventType] = {
     AttemptState.SUCCEEDED: EventType.OPERATION_SUCCEEDED,
     AttemptState.FAILED: EventType.OPERATION_FAILED,
     AttemptState.ABORTED: EventType.OPERATION_ABORTED,
+    AttemptState.UNKNOWN: EventType.OPERATION_UNKNOWN,
 }
+
+# Outcomes later evidence may record for an unknown attempt.
+_PROVEN_OUTCOMES = frozenset({AttemptState.SUCCEEDED, AttemptState.FAILED, AttemptState.ABORTED})
 
 
 def _utc_microseconds() -> int:
@@ -167,6 +174,7 @@ def _row_to_attempt(row: sqlite3.Row) -> AttemptRecord:
         updated_at=row["updated_at"],
         item_uid=row["item_uid"],
         diagnostic=row["diagnostic"],
+        safe_stop_requested_at=row["safe_stop_requested_at"],
     )
 
 
@@ -639,6 +647,42 @@ class ReadTransaction:
             raise AttemptNotFound(attempt_uid)
         return _row_to_attempt(row)
 
+    async def live_attempt(self) -> AttemptRecord | None:
+        """Return the claimed or running attempt; None if there is none. There is at most one."""
+        self._require_active()
+        row = await _fetchone(self._conn, "SELECT * FROM attempts WHERE state IN ('claimed', 'running')")
+        return None if row is None else _row_to_attempt(row)
+
+    async def unknown_attempts(self) -> list[AttemptRecord]:
+        """Return the attempts whose outcome could not be proven, in the order they were claimed."""
+        self._require_active()
+        rows = await _fetchall(
+            self._conn, "SELECT * FROM attempts WHERE state='unknown' ORDER BY claimed_at, attempt_uid"
+        )
+        return [_row_to_attempt(row) for row in rows]
+
+    async def blocked_execution(self) -> QueueExecutionRecord | None:
+        """Return the blocked queue execution; None if dispatch is not blocked. There is at most one."""
+        self._require_active()
+        row = await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state='blocked'")
+        return None if row is None else _row_to_execution(row)
+
+    async def active_descriptors(self) -> list[tuple[str, str, str]]:
+        """Return the descriptors that queued, claimed and running operations were validated against.
+
+        Returns
+        -------
+        list of tuple
+            Distinct ``(operation_id, operation_version, descriptor_sha256)``, sorted.
+        """
+        self._require_active()
+        rows = await _fetchall(
+            self._conn,
+            "SELECT DISTINCT operation_id, operation_version, descriptor_sha256 FROM operations"
+            " WHERE state IN ('queued', 'claimed', 'running') ORDER BY 1, 2, 3",
+        )
+        return [(row[0], row[1], row[2]) for row in rows]
+
     async def revision(self) -> int:
         """Return the current queue revision."""
         self._require_active()
@@ -1091,12 +1135,17 @@ class Transaction(ReadTransaction):
             ``expected_revision`` is not the current revision.
         ExecutionActive
             Another execution is running or stopping.
+        DispatchBlocked
+            An execution is blocked until recovery is acknowledged.
         QueueEmpty
             No operation is queued.
         """
         self._require_active()
         await self._require_lease(principal)
         await self._check_revision(expected_revision)
+        blocked = await self.blocked_execution()
+        if blocked is not None:
+            raise DispatchBlocked(blocked.queue_execution_uid)
         active = await self._active_execution()
         if active is not None:
             raise ExecutionActive(active.queue_execution_uid)
@@ -1276,21 +1325,29 @@ class Transaction(ReadTransaction):
         return await self.attempt(attempt_uid), revision
 
     async def finish_attempt(
-        self, *, attempt_uid: str, state: AttemptState, diagnostic: str | None = None
+        self,
+        *,
+        attempt_uid: str,
+        state: AttemptState,
+        diagnostic: str | None = None,
+        run_uids: Sequence[str] = (),
     ) -> tuple[AttemptRecord, int]:
-        """Record how a claimed or running attempt ended, and end its execution if that was the last of it.
+        """Record how a claimed or running attempt ended, and end or block its execution accordingly.
 
         The execution stops after an aborted attempt, and after a failed one under
-        `FailurePolicy.STOP_ON_FAILURE`; it completes when nothing is left to claim.
+        `FailurePolicy.STOP_ON_FAILURE`; it completes when nothing is left to claim. An ``unknown`` outcome
+        blocks the execution under either policy, until `acknowledge_recovery`.
 
         Parameters
         ----------
         attempt_uid : str
             Claimed or running attempt.
         state : AttemptState
-            ``succeeded``, ``failed`` or ``aborted``; the operation ends in the same state.
+            ``succeeded``, ``failed``, ``aborted`` or ``unknown``; the operation ends in the same state.
         diagnostic : str or None, optional
             Why it ended as it did.
+        run_uids : sequence of str, optional
+            Bluesky runs the attempt produced; recorded in the event.
 
         Returns
         -------
@@ -1326,17 +1383,218 @@ class Transaction(ReadTransaction):
             attempt.queue_execution_uid,
             event_type,
             revision,
-            {"diagnostic": diagnostic},
+            {"diagnostic": diagnostic, "run_uids": list(run_uids)},
             operation_uid=attempt.operation_uid,
             queue_execution_uid=attempt.queue_execution_uid,
             attempt_uid=attempt_uid,
         )
-        execution = await self.queue_execution(attempt.queue_execution_uid)
-        stop = state is AttemptState.ABORTED or (
-            state is AttemptState.FAILED and execution.policy is FailurePolicy.STOP_ON_FAILURE
-        )
-        await self._end_execution_if_done(ActorKind.SCHEDULER, attempt.queue_execution_uid, revision, stop=stop)
+        if state is AttemptState.UNKNOWN:
+            await self._block_execution(attempt, revision)
+        else:
+            execution = await self.queue_execution(attempt.queue_execution_uid)
+            stop = state is AttemptState.ABORTED or (
+                state is AttemptState.FAILED and execution.policy is FailurePolicy.STOP_ON_FAILURE
+            )
+            await self._end_execution_if_done(
+                ActorKind.SCHEDULER, attempt.queue_execution_uid, revision, stop=stop
+            )
         return await self.attempt(attempt_uid), revision
+
+    async def resolve_unknown_attempt(
+        self,
+        *,
+        attempt_uid: str,
+        state: AttemptState,
+        item_uid: str | None,
+        diagnostic: str | None = None,
+        run_uids: Sequence[str] = (),
+    ) -> tuple[AttemptRecord, int]:
+        """Record the outcome the manager later proved for an ``unknown`` attempt.
+
+        The execution stays blocked: a block clears only by `acknowledge_recovery`.
+
+        Parameters
+        ----------
+        attempt_uid : str
+            Unknown attempt.
+        state : AttemptState
+            ``succeeded``, ``failed`` or ``aborted``; the operation ends in the same state.
+        item_uid : str or None
+            The manager's identifier for the item; recorded if the attempt has none yet.
+        diagnostic : str or None, optional
+            Why it ended as it did.
+        run_uids : sequence of str, optional
+            Bluesky runs the attempt produced; recorded in the event.
+
+        Returns
+        -------
+        attempt : AttemptRecord
+            The attempt with its proven outcome.
+        revision : int
+            The new queue revision.
+
+        Raises
+        ------
+        ValueError
+            ``state`` is not a proven outcome.
+        AttemptNotFound
+            ``attempt_uid`` does not exist.
+        InvalidAttemptTransition
+            ``attempt_uid`` is not unknown.
+        """
+        self._require_active()
+        if state not in _PROVEN_OUTCOMES:
+            raise ValueError(f"{state.value} is not a proven outcome")
+        attempt = await self.attempt(attempt_uid)
+        if attempt.state is not AttemptState.UNKNOWN:
+            raise InvalidAttemptTransition(attempt_uid, attempt.state, state)
+        await self._conn.execute(
+            "UPDATE attempts SET state=?, diagnostic=?, item_uid=COALESCE(item_uid, ?), updated_at=?"
+            " WHERE attempt_uid=?",
+            (state.value, diagnostic, item_uid, self._now, attempt_uid),
+        )
+        await self._set_operation_state(attempt.operation_uid, OperationState(state.value))
+        revision = await self._bump_revision()
+        await self._append_event(
+            ActorKind.SCHEDULER,
+            attempt.queue_execution_uid,
+            _TERMINAL_ATTEMPT_EVENTS[state],
+            revision,
+            {"diagnostic": diagnostic, "run_uids": list(run_uids), "previous_state": AttemptState.UNKNOWN.value},
+            operation_uid=attempt.operation_uid,
+            queue_execution_uid=attempt.queue_execution_uid,
+            attempt_uid=attempt_uid,
+        )
+        return await self.attempt(attempt_uid), revision
+
+    async def request_safe_stop(self, *, principal: str, attempt_uid: str) -> tuple[AttemptRecord, int]:
+        """Ask for a live attempt to be paused at its next checkpoint and aborted.
+
+        Takes no revision, so an emergency stop never fails because the queue changed. Asking again changes
+        nothing.
+
+        Parameters
+        ----------
+        principal : str
+            Principal asking.
+        attempt_uid : str
+            Claimed or running attempt.
+
+        Returns
+        -------
+        attempt : AttemptRecord
+            The attempt, with ``safe_stop_requested_at`` set.
+        revision : int
+            The queue revision after the request; unchanged if a safe stop was already requested.
+
+        Raises
+        ------
+        LeaseRequired
+            ``principal`` does not hold the control lease.
+        AttemptNotFound
+            ``attempt_uid`` does not exist.
+        AttemptNotLive
+            ``attempt_uid`` has already ended.
+        """
+        self._require_active()
+        await self._require_lease(principal)
+        attempt = await self.attempt(attempt_uid)
+        if attempt.state not in (AttemptState.CLAIMED, AttemptState.RUNNING):
+            raise AttemptNotLive(attempt_uid, attempt.state)
+        if attempt.safe_stop_requested_at is not None:
+            return attempt, await self._revision()
+        await self._conn.execute(
+            "UPDATE attempts SET safe_stop_requested_at=? WHERE attempt_uid=?", (self._now, attempt_uid)
+        )
+        revision = await self._bump_revision()
+        await self._append_event(
+            ActorKind.PRINCIPAL,
+            principal,
+            EventType.OPERATION_SAFE_STOP_REQUESTED,
+            revision,
+            {},
+            operation_uid=attempt.operation_uid,
+            queue_execution_uid=attempt.queue_execution_uid,
+            attempt_uid=attempt_uid,
+        )
+        return await self.attempt(attempt_uid), revision
+
+    async def acknowledge_recovery(
+        self,
+        *,
+        principal: str,
+        expected_revision: int,
+        note: str,
+        fence: Callable[[], Mapping[str, Any]],
+    ) -> tuple[QueueExecutionRecord, int]:
+        """Clear the dispatch block by stopping the blocked execution, once the worker is provably stopped.
+
+        Queued work stays queued; a new queue execution runs it.
+
+        Parameters
+        ----------
+        principal : str
+            Principal acknowledging.
+        expected_revision : int
+            Queue revision the acknowledgement is based on.
+        note : str
+            What the operator checked; recorded in the ``worker.fenced`` event.
+        fence : callable
+            Returns JSON-serializable evidence that the worker runs nothing, recorded in the event, or raises
+            if there is none. Called after every other check, so nothing is written without evidence.
+
+        Returns
+        -------
+        record : QueueExecutionRecord
+            The execution, now ``stopped``.
+        revision : int
+            The new queue revision.
+
+        Raises
+        ------
+        ValueError
+            ``note`` is blank.
+        LeaseRequired
+            ``principal`` does not hold the control lease.
+        StaleRevision
+            ``expected_revision`` is not the current revision.
+        NotBlocked
+            No execution is blocked.
+        Exception
+            Whatever ``fence`` raises.
+        """
+        self._require_active()
+        if not note.strip():
+            raise ValueError("recovery note must not be blank")
+        await self._require_lease(principal)
+        await self._check_revision(expected_revision)
+        blocked = await self.blocked_execution()
+        if blocked is None:
+            raise NotBlocked()
+        evidence = dict(fence())
+        queue_execution_uid = blocked.queue_execution_uid
+        await self._conn.execute(
+            "UPDATE queue_executions SET state=?, updated_at=? WHERE queue_execution_uid=?",
+            (QueueExecutionState.STOPPED.value, self._now, queue_execution_uid),
+        )
+        revision = await self._bump_revision()
+        await self._append_event(
+            ActorKind.PRINCIPAL,
+            principal,
+            EventType.WORKER_FENCED,
+            revision,
+            {"note": note, "status": evidence},
+            queue_execution_uid=queue_execution_uid,
+        )
+        await self._append_event(
+            ActorKind.PRINCIPAL,
+            principal,
+            EventType.QUEUE_EXECUTION_STOPPED,
+            revision,
+            {},
+            queue_execution_uid=queue_execution_uid,
+        )
+        return await self.queue_execution(queue_execution_uid), revision
 
     async def _check_revision(self, expected: int) -> None:
         current = await self._revision()
@@ -1412,6 +1670,22 @@ class Transaction(ReadTransaction):
         )
         await self._append_event(
             actor_kind, actor_id, event_type, revision, {}, queue_execution_uid=queue_execution_uid
+        )
+
+    async def _block_execution(self, attempt: AttemptRecord, revision: int) -> None:
+        # A live attempt implies its execution is running or stopping; blocked, it claims nothing more.
+        await self._conn.execute(
+            "UPDATE queue_executions SET state=?, updated_at=? WHERE queue_execution_uid=?",
+            (QueueExecutionState.BLOCKED.value, self._now, attempt.queue_execution_uid),
+        )
+        await self._append_event(
+            ActorKind.SCHEDULER,
+            attempt.queue_execution_uid,
+            EventType.QUEUE_EXECUTION_BLOCKED,
+            revision,
+            {},
+            queue_execution_uid=attempt.queue_execution_uid,
+            attempt_uid=attempt.attempt_uid,
         )
 
     async def _bump_revision(self) -> int:

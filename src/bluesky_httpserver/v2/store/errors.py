@@ -115,3 +115,21 @@ class InvalidAttemptTransition(StoreError):
         self.current = current
         self.target = target
         super().__init__(f"attempt {attempt_uid} cannot go from {current.value} to {target.value}")
+
+
+class AttemptNotLive(StoreError):
+    def __init__(self, attempt_uid: str, state: AttemptState):
+        self.attempt_uid = attempt_uid
+        self.state = state
+        super().__init__(f"attempt {attempt_uid} is {state.value}, not claimed or running")
+
+
+class DispatchBlocked(StoreError):
+    def __init__(self, queue_execution_uid: str):
+        self.queue_execution_uid = queue_execution_uid
+        super().__init__(f"queue execution {queue_execution_uid} is blocked until recovery is acknowledged")
+
+
+class NotBlocked(StoreError):
+    def __init__(self) -> None:
+        super().__init__("no queue execution is blocked")

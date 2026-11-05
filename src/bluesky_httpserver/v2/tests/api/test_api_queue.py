@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from bluesky_httpserver.v2.catalog import Catalog
 
+from ..fake_relay import DEMO_COUNT
 from .conftest import headers, new_key, operation_uids, queue, submit
-from .fake_worker import DEMO_COUNT
 
 OPERATIONS = "/api/v2/operations"
 SUBMISSION = {"operation_id": "demo.count", "operation_version": "1", "parameters": {"num": 1}}
@@ -41,6 +43,14 @@ async def test_submit(client):
             ["$", "$.num"],
         ),
         ("alice", '"qrev-0"', NAN_SUBMISSION, 422, "invalid_parameters", ["$"]),
+        (
+            "alice",
+            '"qrev-0"',
+            {**SUBMISSION, "parameters": {"num": 1, "detectors": ["primary", "nope"]}},
+            422,
+            "invalid_parameters",
+            ["$.detectors[1]"],
+        ),
         ("alice", '"qrev-0"', {**SUBMISSION, "submitted_by": "eve"}, 422, "invalid_request", None),
         ("alice", None, SUBMISSION, 428, "precondition_required", None),
         ("alice", "*", SUBMISSION, 400, "invalid_if_match", None),
@@ -80,7 +90,7 @@ async def test_stale_write_is_refused(client):
 
 
 @pytest.mark.asyncio
-async def test_replay(client, worker):
+async def test_replay(client, relay, worker):
     first = await submit(client, 0, key="k1")
     repeat = await submit(client, 0, key="k1")
     assert (repeat.status_code, repeat.json()) == (first.status_code, first.json())
@@ -91,7 +101,9 @@ async def test_replay(client, worker):
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "idempotency_conflict"
 
-    worker.current = Catalog([])
+    relay.catalog = Catalog([])
+    relay.state = dataclasses.replace(relay.state, plans_allowed_uid="allowed-1")
+    await worker.step()
     after_reload = await submit(client, 0, key="k1")
     assert (after_reload.status_code, after_reload.json()) == (201, first.json())
     unknown = await submit(client, 1)

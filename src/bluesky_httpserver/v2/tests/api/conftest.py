@@ -10,11 +10,9 @@ import pytest_asyncio
 from fastapi import FastAPI
 
 from bluesky_httpserver.v2.api import create_app
-from bluesky_httpserver.v2.catalog import Catalog
+from bluesky_httpserver.v2.gateway import WorkerGateway
 from bluesky_httpserver.v2.identity import AuthenticationFailed, IdentityProviderUnavailable, Principal, Role
 from bluesky_httpserver.v2.store import Store
-
-from .fake_worker import DEMO_COUNT, FakeWorker
 
 
 class FakeAuthenticator:
@@ -39,9 +37,11 @@ class FakeAuthenticator:
         raise AuthenticationFailed("invalid token signature")
 
 
-@pytest.fixture
-def worker() -> FakeWorker:
-    return FakeWorker(Catalog([DEMO_COUNT]))
+@pytest_asyncio.fixture
+async def worker(gateway: WorkerGateway) -> WorkerGateway:
+    # One step loads the catalog; in the fixture state it writes nothing.
+    await gateway.step()
+    return gateway
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def authenticator() -> FakeAuthenticator:
 
 
 @pytest.fixture
-def app(store: Store, authenticator: FakeAuthenticator, worker: FakeWorker) -> FastAPI:
+def app(store: Store, authenticator: FakeAuthenticator, worker: WorkerGateway) -> FastAPI:
     return create_app(store=store, authenticator=authenticator, worker=worker, sse_heartbeat_seconds=0.05)
 
 

@@ -7,11 +7,12 @@ Attribute docstrings become field descriptions in the OpenAPI document.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from ..catalog import Catalog, OperationDescriptor
+from ..gateway import CatalogState, DispatchState, EnvironmentPresence, Readiness, WorkerReachability
 from ..store import (
     LEASE_TTL_MAX_SECONDS,
     LEASE_TTL_MIN_SECONDS,
@@ -37,6 +38,16 @@ def utc(microseconds: int) -> datetime:
     return _EPOCH + timedelta(microseconds=microseconds)
 
 
+def _not_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be blank")
+    return value
+
+
+_Note = Annotated[str, Field(min_length=1, max_length=1000), AfterValidator(_not_blank)]
+"""Free text an operator records with an action; must not be blank."""
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(use_attribute_docstrings=True)
 
@@ -56,17 +67,17 @@ class LeaseRequest(_RequestBody):
 class LeaseOverrideRequest(_RequestBody):
     """Take control of the instrument from its holder."""
 
-    reason: str = Field(min_length=1, max_length=1000)
+    reason: _Note
     """Why control is taken; recorded in the `lease.overridden` event. Must not be blank."""
     ttl_seconds: int = Field(ge=LEASE_TTL_MIN_SECONDS, le=LEASE_TTL_MAX_SECONDS)
     """Seconds from now until control lapses unless renewed."""
 
-    @field_validator("reason")
-    @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("reason must not be blank")
-        return value
+
+class RecoveryAcknowledgement(_RequestBody):
+    """Clear the dispatch block after an attempt's outcome could not be proven."""
+
+    note: _Note
+    """What the operator checked before clearing the block; recorded in the `worker.fenced` event."""
 
 
 class OperationSubmission(_RequestBody):
@@ -226,6 +237,8 @@ class AttemptView(_Model):
     """The manager's identifier for the running item, once started."""
     diagnostic: str | None
     """Why it ended as it did, if known."""
+    safe_stop_requested_at: datetime | None
+    """When a safe stop was requested; null if none was."""
 
     @classmethod
     def from_record(cls, record: AttemptRecord) -> AttemptView:
@@ -238,6 +251,9 @@ class AttemptView(_Model):
             updated_at=utc(record.updated_at),
             item_uid=record.item_uid,
             diagnostic=record.diagnostic,
+            safe_stop_requested_at=(
+                None if record.safe_stop_requested_at is None else utc(record.safe_stop_requested_at)
+            ),
         )
 
 
@@ -298,6 +314,8 @@ class DescriptorView(_Model):
     """Version of the operation; a changed parameter contract gets a new version."""
     parameters_schema: dict[str, Any]
     """JSON Schema (draft 2020-12) that the `parameters` of a submission must match."""
+    devices: dict[str, list[str]]
+    """For each device parameter, the device ids it accepts."""
     descriptor_sha256: str
     """Identifies this descriptor; recorded with every operation submitted against it."""
 
@@ -307,6 +325,7 @@ class DescriptorView(_Model):
             operation_id=descriptor.operation_id,
             operation_version=descriptor.operation_version,
             parameters_schema=dict(descriptor.parameters_schema),
+            devices={name: sorted(ids) for name, ids in descriptor.devices.items()},
             descriptor_sha256=descriptor.sha256,
         )
 
@@ -331,6 +350,35 @@ class HealthView(_Model):
     """The server is up."""
 
     status: Literal["ok"]
+
+
+class ReadinessView(_Model):
+    """Whether the controller can run work now, and if not, why."""
+
+    ready: bool
+    """True only when every other field is in its ready state."""
+    worker: WorkerReachability
+    """Whether RE Manager answers and refuses queue control from anyone but the controller; ready when
+    `reachable`."""
+    environment: EnvironmentPresence
+    """Whether the worker environment is open; `unknown` while RE Manager is unreachable. Ready when
+    `present`."""
+    catalog: CatalogState
+    """`incompatible` if a queued or live operation was validated against a descriptor the worker no longer
+    offers; `unavailable` before the catalog is first loaded. Ready when `compatible`."""
+    dispatch: DispatchState
+    """`blocked` after an attempt's outcome could not be proven, until `POST /api/v2/recovery/acknowledge`.
+    Ready when `open`."""
+
+    @classmethod
+    def from_readiness(cls, readiness: Readiness) -> ReadinessView:
+        return cls(
+            ready=readiness.ready,
+            worker=readiness.worker,
+            environment=readiness.environment,
+            catalog=readiness.catalog,
+            dispatch=readiness.dispatch,
+        )
 
 
 class ErrorBody(_Model):
