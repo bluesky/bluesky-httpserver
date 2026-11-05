@@ -3,8 +3,8 @@ Release History
 ===============
 
 
-Unreleased
-==========
+v0.0.15 (2026-11-05)
+====================
 
 Removed
 -------
@@ -14,7 +14,14 @@ Removed
 Changed
 -------
 
-- Replace the `httpx` dependency with `httpx2`.
+- Replace the ``httpx`` dependency with ``httpx2``.
+
+
+Fixed
+-----
+
+- Fixed ``AttributeError`` when authenticating a WebSocket connection with an
+  API key passed as a query parameter (e.g. ``/console_output/ws?api_key=...``).
 
 
 v0.0.14 (2026-01-21)
