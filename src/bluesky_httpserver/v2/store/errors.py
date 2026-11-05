@@ -16,6 +16,12 @@ class StoreLocked(StoreError):
         super().__init__(f"store {path} is already open (lock {lock_path} is held)")
 
 
+class StoreNotFound(StoreError):
+    def __init__(self, path: Path):
+        self.path = path
+        super().__init__(f"no store at {path}")
+
+
 class NotAStore(StoreError):
     def __init__(self, path: Path, application_id: int):
         self.path = path

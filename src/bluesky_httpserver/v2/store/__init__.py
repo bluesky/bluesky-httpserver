@@ -22,6 +22,7 @@ from .errors import (
     StaleRevision,
     StoreError,
     StoreLocked,
+    StoreNotFound,
 )
 from .records import (
     ActorKind,
@@ -82,6 +83,7 @@ __all__ = [
     "Store",
     "StoreError",
     "StoreLocked",
+    "StoreNotFound",
     "StoredResponse",
     "Transaction",
 ]

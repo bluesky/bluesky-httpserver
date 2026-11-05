@@ -8,11 +8,11 @@ from typing import Any
 import httpx
 import pytest
 
-from bluesky_httpserver.v2.api import create_app
+from bluesky_httpserver.v2.api import Services
 from bluesky_httpserver.v2.gateway import WorkerGateway
 from bluesky_httpserver.v2.store import EventType, Store
 
-from .conftest import headers, new_key, submit
+from .conftest import headers, new_key, serving, started, submit
 
 EXECUTIONS = "/api/v2/queue-executions"
 ACKNOWLEDGE = "/api/v2/recovery/acknowledge"
@@ -127,8 +127,7 @@ async def test_ready(client, relay, worker):
 
 @pytest.mark.asyncio
 async def test_catalog_unavailable_before_the_first_step(store, authenticator, gateway):
-    app = create_app(store=store, authenticator=authenticator, worker=gateway)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+    async with started(serving(Services(store, authenticator, gateway))) as client:
         response = await client.get("/api/v2/catalog", headers=headers("reader"))
         assert (response.status_code, error_code(response)) == (503, "catalog_unavailable")
         ready = await client.get("/ready")
@@ -149,12 +148,9 @@ async def wait_for(store: Store, event_type: EventType) -> None:
 @pytest.mark.asyncio
 async def test_queue_runs_end_to_end(store, relay, authenticator):
     gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=0.01)
-    app = create_app(store=store, authenticator=authenticator, worker=gateway)
     task = asyncio.create_task(gateway.run())
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
+        async with started(serving(Services(store, authenticator, gateway))) as client:
             async with asyncio.timeout(5):
                 while (await client.get("/ready")).status_code != 200:
                     await asyncio.sleep(0.01)

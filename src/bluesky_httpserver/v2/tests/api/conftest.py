@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
-from bluesky_httpserver.v2.api import create_app
+from bluesky_httpserver.v2.api import Services, create_app
 from bluesky_httpserver.v2.gateway import WorkerGateway
 from bluesky_httpserver.v2.identity import AuthenticationFailed, IdentityProviderUnavailable, Principal, Role
+from bluesky_httpserver.v2.server import create_server_app
 from bluesky_httpserver.v2.store import Store
+
+from ..conftest import server_settings
+from ..fake_relay import FakeRelay
 
 
 class FakeAuthenticator:
@@ -49,14 +55,41 @@ def authenticator() -> FakeAuthenticator:
     return FakeAuthenticator()
 
 
+def serving(services: Services) -> FastAPI:
+    """App whose lifespan serves ``services``; the test opens, runs and closes them itself."""
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        app.state.services = services
+        yield
+
+    return create_app(lifespan)
+
+
+@contextlib.asynccontextmanager
+async def started(app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """A client of ``app`` inside its lifespan, which `httpx.ASGITransport` does not run."""
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            yield client
+
+
 @pytest.fixture
 def app(store: Store, authenticator: FakeAuthenticator, worker: WorkerGateway) -> FastAPI:
-    return create_app(store=store, authenticator=authenticator, worker=worker, sse_heartbeat_seconds=0.05)
+    return serving(Services(store, authenticator, worker, sse_heartbeat_seconds=0.05))
+
+
+@pytest.fixture
+def server_app(db_path: Path, relay: FakeRelay) -> FastAPI:
+    """The served app; its lifespan never runs, so only its routes may be inspected."""
+    return create_server_app(server_settings(db_path), relay, on_gateway_failure=lambda error: None)
 
 
 @pytest_asyncio.fixture
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as c:
+    async with started(app) as c:
         yield c
 
 

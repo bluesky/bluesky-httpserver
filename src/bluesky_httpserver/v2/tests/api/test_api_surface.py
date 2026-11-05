@@ -22,13 +22,17 @@ def dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any] | None
 PROBES = ("/health", "/ready")
 
 
-def test_every_route_but_probes_requires_authentication(app: FastAPI):
+@pytest.mark.parametrize("app_fixture", ["app", "server_app"])
+def test_every_route_but_probes_requires_authentication(request: pytest.FixtureRequest, app_fixture: str):
+    app: FastAPI = request.getfixturevalue(app_fixture)
     # Included routers stay nested in app.routes; the contexts carry each route's effective path and dependant.
     for context in iter_route_contexts(app.routes):
-        assert isinstance(context.original_route, APIRoute), context.path
-        if context.path in PROBES:
+        path = context.path
+        assert path is not None and (path in PROBES or path.startswith("/api/v2/")), path
+        assert isinstance(context.original_route, APIRoute), path
+        if path in PROBES:
             continue
-        assert authenticated_principal in set(dependency_calls(context.dependant)), context.path
+        assert authenticated_principal in set(dependency_calls(context.dependant)), path
 
 
 @pytest.mark.asyncio

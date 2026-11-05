@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from ..._version import __version__
-from ..gateway import WorkerGateway
-from ..identity import Authenticator
-from ..store import Store
 from . import events, leases, queue
-from .dependencies import ReadPrincipal, Services, ServicesDep
+from .dependencies import ReadPrincipal, ServicesDep
 from .errors import install_error_handlers
 from .middleware import RequestIdMiddleware
 from .models import HealthView, ReadinessView
@@ -92,43 +89,22 @@ def _operation_id(route: APIRoute) -> str:
     return route.name
 
 
-def create_app(
-    *,
-    store: Store,
-    authenticator: Authenticator,
-    worker: WorkerGateway,
-    clock: Callable[[], float] = time.time,
-    sse_heartbeat_seconds: float = 15.0,
-) -> FastAPI:
-    """Build the v2 HTTP API over an open store.
+def create_app(lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]]) -> FastAPI:
+    """Build the v2 HTTP API, which serves only inside ``lifespan``.
 
-    The caller opens and closes ``store``, owns the HTTP client of ``authenticator``, and runs ``worker.run()``
-    for as long as the app serves; the app does not manage their lifecycle and only reads from ``worker``.
+    On entry, ``lifespan`` sets ``app.state.services`` to the `Services` the routes use, and keeps them usable
+    until it exits: the store open, the authenticator's HTTP client open, and ``worker.run()`` running. The app
+    manages none of them and only reads from the worker gateway.
 
     Parameters
     ----------
-    store : Store
-        The controller queue; must stay open while the app serves requests.
-    authenticator : Authenticator
-        Verifies bearer tokens.
-    worker : WorkerGateway
-        Runs the queue on the RE Worker through RE Manager; supplies the operation catalog.
-    clock : callable, optional
-        Returns the current time in Unix seconds; event streams end when the caller's token expires.
-    sse_heartbeat_seconds : float, optional
-        Longest silence on an event stream before a heartbeat comment is sent.
+    lifespan : callable
+        Receives the app and returns the context it serves inside.
 
     Returns
     -------
     FastAPI
-
-    Raises
-    ------
-    ValueError
-        ``sse_heartbeat_seconds`` is not positive.
     """
-    if sse_heartbeat_seconds <= 0:
-        raise ValueError("sse_heartbeat_seconds must be positive")
     # The default documentation routes would be unauthenticated; the schema is served below instead.
     app = FastAPI(
         title="bluesky-httpserver v2",
@@ -139,8 +115,8 @@ def create_app(
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        lifespan=lifespan,
     )
-    app.state.services = Services(store, authenticator, worker, clock, sse_heartbeat_seconds)
     install_error_handlers(app)
     app.add_middleware(RequestIdMiddleware)
 

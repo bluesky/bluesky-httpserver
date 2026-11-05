@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated
@@ -27,17 +28,27 @@ class Services:
         Verifies bearer tokens.
     worker : WorkerGateway
         The RE Worker, through RE Manager.
-    clock : callable
+    clock : callable, optional
         Unix seconds; ends event streams at token expiry.
-    sse_heartbeat_seconds : float
+    sse_heartbeat_seconds : float, optional
         Longest silence on an event stream before a heartbeat comment is sent.
+
+    Raises
+    ------
+    ValueError
+        ``sse_heartbeat_seconds`` is not positive.
     """
 
     store: Store
     authenticator: Authenticator
     worker: WorkerGateway
-    clock: Callable[[], float]
-    sse_heartbeat_seconds: float
+    clock: Callable[[], float] = time.time
+    sse_heartbeat_seconds: float = 15.0
+
+    def __post_init__(self) -> None:
+        # The heartbeat bounds each wait of an event stream; zero would spin.
+        if self.sse_heartbeat_seconds <= 0:
+            raise ValueError("sse_heartbeat_seconds must be positive")
 
 
 def get_services(request: Request) -> Services:

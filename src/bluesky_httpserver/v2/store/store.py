@@ -8,7 +8,6 @@ A rejected change writes nothing.
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import json
 import os
 import sqlite3
@@ -33,16 +32,14 @@ from .errors import (
     LeaseHeld,
     LeaseRequired,
     MigrationRequired,
-    NotAStore,
     NotBlocked,
     OperationNotFound,
     OperationNotPending,
     QueueEmpty,
-    SchemaMismatch,
     StaleRevision,
     StoreError,
-    StoreLocked,
 )
+from .files import applied_version, check_application_id, lock_store, store_paths
 from .migrations import APPLICATION_ID, MIGRATIONS, Migration
 from .records import (
     ActorKind,
@@ -223,8 +220,7 @@ async def _prepare_schema(
         )
         is not None
     )
-    if app_id != APPLICATION_ID and (has_tables or app_id != 0):
-        raise NotAStore(path, app_id)
+    check_application_id(path, app_id, has_tables)
     if not has_tables:
         # A crash before migration 1 commits leaves an empty, tagged file, which is treated as new.
         await conn.execute(f"PRAGMA application_id = {APPLICATION_ID}")
@@ -240,20 +236,11 @@ async def _prepare_schema(
         history_table = await _fetchone(
             conn, "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
         )
-        if history_table is None:
-            raise SchemaMismatch(f"{path} has no migration history")
-        rows = await _fetchall(conn, "SELECT version, checksum FROM schema_migrations ORDER BY version")
-        versions = [row["version"] for row in rows]
-        if versions != list(range(1, len(versions) + 1)):
-            raise SchemaMismatch(f"migration history is not contiguous: {versions}")
-        current = len(versions)
-        if current > len(migrations):
-            raise SchemaMismatch(
-                f"store schema version {current} is newer than supported version {len(migrations)}"
-            )
-        for row in rows:
-            if row["checksum"] != migrations[row["version"] - 1].checksum:
-                raise SchemaMismatch(f"migration {row['version']} checksum does not match")
+        history: list[tuple[int, str]] | None = None
+        if history_table is not None:
+            rows = await _fetchall(conn, "SELECT version, checksum FROM schema_migrations ORDER BY version")
+            history = [(row["version"], row["checksum"]) for row in rows]
+        current = applied_version(path, history, migrations)
         pending = migrations[current:]
         if pending and not allow_migrate:
             raise MigrationRequired(current, len(migrations))
@@ -327,20 +314,10 @@ class Store:
         MigrationRequired
             Migrations are pending and ``allow_migrate`` is false.
         """
-        candidate = Path(path).expanduser().absolute()
-        directory = candidate.parent.resolve(strict=True)
-        store_path = directory / candidate.name
-        lock_path = directory / (candidate.name + ".lock")
-
-        # flock locks belong to the open file description: a second open in this process is refused
-        # too, and the kernel releases the lock when the process dies. The lock file is never deleted.
-        lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        store_path, lock_path = store_paths(path)
+        lock_fd = lock_store(store_path, lock_path)
         conn: aiosqlite.Connection | None = None
         try:
-            try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise StoreLocked(store_path, lock_path) from None
             conn = await aiosqlite.connect(store_path, isolation_level=None)
             conn.row_factory = sqlite3.Row
             await conn.execute("PRAGMA foreign_keys=ON")

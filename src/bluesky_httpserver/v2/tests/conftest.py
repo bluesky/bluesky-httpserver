@@ -9,6 +9,7 @@ import pytest_asyncio
 
 from bluesky_httpserver.v2.catalog import Catalog
 from bluesky_httpserver.v2.gateway import WorkerGateway
+from bluesky_httpserver.v2.settings import Settings
 from bluesky_httpserver.v2.store import (
     AttemptRecord,
     AttemptState,
@@ -82,6 +83,23 @@ def monotonic() -> FakeMonotonic:
 @pytest.fixture
 def gateway(store: Store, relay: FakeRelay, monotonic: FakeMonotonic) -> WorkerGateway:
     return WorkerGateway(store=store, relay=relay, user_group="primary", monotonic=monotonic)
+
+
+def server_settings(store_path: Path, **gateway: float) -> Settings:
+    """Settings of a controller with a store at ``store_path`` and the given `GatewaySettings`."""
+    return Settings.model_validate(
+        {
+            "store_path": str(store_path),
+            "user_group": "primary",
+            "identity": {
+                "provider": "oidc",
+                "issuer": "https://idp.example/realms/facility",
+                "audience": "queueserver-api",
+                "jwks_uri": "https://idp.example/realms/facility/keys",
+            },
+            "gateway": gateway,
+        }
+    )
 
 
 async def acquire(store: Store, principal: str = "alice", ttl_seconds: int = 3600) -> LeaseRecord:

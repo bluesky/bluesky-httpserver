@@ -3,12 +3,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from bluesky_httpserver.v2.api import create_app
+from bluesky_httpserver.v2.api import Services
 from bluesky_httpserver.v2.identity import OidcAuthenticator
 
 from ..conftest import FakeMonotonic
 from ..test_oidc import JWKS_URI, SETTINGS, FakeIdentityProvider, SigningKey, alg_none, valid
-from .conftest import headers
+from .conftest import headers, serving, started
 
 OPENAPI = "/api/v2/openapi.json"
 
@@ -58,9 +58,6 @@ async def test_real_verifier(store, worker):
     fake = FakeIdentityProvider(JWKS_URI, [key])
     async with httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)) as http:
         authenticator = OidcAuthenticator(SETTINGS, http, monotonic=FakeMonotonic())
-        app = create_app(store=store, authenticator=authenticator, worker=worker)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
-        ) as client:
+        async with started(serving(Services(store, authenticator, worker))) as client:
             assert (await client.get(OPENAPI, headers=headers(valid(key)))).status_code == 200
             assert (await client.get(OPENAPI, headers=headers(alg_none(key)))).status_code == 401
