@@ -10,7 +10,7 @@ import asyncio
 import shutil
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -42,14 +42,33 @@ RE = RunEngine({})
         "properties": {
             "detectors": {"type": "array", "items": {"type": "string"}},
             "num": {"type": "integer", "minimum": 1},
+            "delay": {"type": "number", "minimum": 0},
         },
         "required": ["detectors"],
         "additionalProperties": False,
     },
     devices={"detectors": {"primary": "det1", "secondary": "det2"}},
 )
-def count_operation(detectors, num=1):
-    yield from count(detectors, num=num)
+def count_operation(detectors, num=1, delay=0):
+    yield from count(detectors, num=num, delay=delay)
+"""
+
+CONTROLLER = """\
+store_path = "{store_path}"
+user_group = "primary"
+
+[identity]
+provider = "oidc"
+issuer = "https://idp.example/realms/facility"
+audience = "queueserver-api"
+jwks_uri = "https://idp.example/realms/facility/keys"
+
+[manager]
+control_address = "{control}"
+info_address = "{info}"
+
+[server]
+port = 0
 """
 
 PERMISSIONS = """
@@ -193,3 +212,96 @@ async def test_gateway_runs_an_operation_on_re_manager(re_manager, db_path):
     finally:
         relay.close()
         await store.close()
+
+
+async def wait_until(condition: Callable[[], bool], what: str, timeout: float = 60) -> None:
+    try:
+        async with asyncio.timeout(timeout):
+            while not condition():
+                await asyncio.sleep(0.1)
+    except TimeoutError:
+        pytest.fail(f"timed out waiting for {what}")
+
+
+@pytest.mark.asyncio
+async def test_killed_controller_resumes_the_running_attempt(re_manager, db_path, tmp_path):
+    """Kill the controller process while its attempt runs, restart it: nothing committed is lost, the
+    attempt is finished from the manager's history, and the plan is not sent again."""
+    executable = shutil.which("bluesky-httpserver-v2")
+    assert executable is not None
+    relay = ZmqManagerRelay(re_manager.control, re_manager.info, timeout_seconds=5.0)
+    try:
+        # Open the environment, so that the operation can be submitted against the manager's catalog.
+        assert request(re_manager.control, "environment_open")["success"]
+        await wait_until(
+            lambda: (
+                "count_operation"
+                in request(re_manager.control, "plans_allowed", {"user_group": "primary"})["plans_allowed"]
+            ),
+            "the catalog",
+        )
+        descriptor = (await relay.plans_allowed("primary")).catalog.descriptor("demo.count", "1")
+        store = await Store.open(db_path)
+        try:
+            await acquire(store)
+            _, revision = await store.write(
+                lambda tx: tx.submit(
+                    principal="alice",
+                    expected_revision=0,
+                    operation_id="demo.count",
+                    operation_version="1",
+                    parameters={"detectors": ["primary"], "num": 5, "delay": 1},
+                    descriptor_sha256=descriptor.sha256,
+                )
+            )
+            await start(store, revision)
+        finally:
+            await store.close()
+
+        config = tmp_path / "controller.toml"
+        config.write_text(CONTROLLER.format(store_path=db_path, control=re_manager.control, info=re_manager.info))
+        log = tmp_path / "controller.log"
+        with log.open("w") as output:
+            controller = subprocess.Popen(
+                [executable, "serve", "--config", str(config)], stdout=output, stderr=subprocess.STDOUT
+            )
+        try:
+
+            def running() -> bool:
+                assert controller.poll() is None, log.read_text()
+                return request(re_manager.control, "status")["running_item_uid"] is not None
+
+            await wait_until(running, "the controller to start the plan")
+            item_uid = request(re_manager.control, "status")["running_item_uid"]
+            await asyncio.sleep(1)  # the controller records the item it started
+        finally:
+            controller.kill()
+            controller.wait()
+
+        store = await Store.open(db_path)
+        try:
+            attempt = await store.read(lambda tx: tx.live_attempt())
+            assert attempt is not None
+            assert (attempt.state, attempt.item_uid) == (AttemptState.RUNNING, item_uid)
+            committed = await store.events_after(0)
+
+            gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=60)
+            task = asyncio.create_task(gateway.run())
+            try:
+                async with asyncio.timeout(60):
+                    events = await events_until(store, EventType.QUEUE_EXECUTION_COMPLETED)
+            finally:
+                task.cancel()
+                await asyncio.wait([task])
+
+            assert events[: len(committed)] == committed
+            assert [event.event_id for event in events] == list(range(1, len(events) + 1))
+            finished = await store.read(lambda tx: tx.attempt(attempt.attempt_uid))
+            assert finished.state is AttemptState.SUCCEEDED
+        finally:
+            await store.close()
+
+        (item,) = request(re_manager.control, "history_get")["items"]
+        assert (item["item_uid"], item["result"]["exit_status"]) == (item_uid, "completed")
+    finally:
+        relay.close()
