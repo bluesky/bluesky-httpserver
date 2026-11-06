@@ -6,6 +6,7 @@ Attribute docstrings become field descriptions in the OpenAPI document.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -239,9 +240,13 @@ class AttemptView(_Model):
     """Why it ended as it did, if known."""
     safe_stop_requested_at: datetime | None
     """When a safe stop was requested; null if none was."""
+    current_run_uids: list[str] | None
+    """Bluesky runs a running attempt has opened so far, as RE Manager last reported them; null for an attempt
+    that is not running, or whose runs RE Manager has not reported yet. A finished attempt's runs are the
+    `run_uids` of its last event."""
 
     @classmethod
-    def from_record(cls, record: AttemptRecord) -> AttemptView:
+    def from_record(cls, record: AttemptRecord, current_run_uids: Sequence[str] | None = None) -> AttemptView:
         return cls(
             attempt_uid=record.attempt_uid,
             operation_uid=record.operation_uid,
@@ -254,6 +259,7 @@ class AttemptView(_Model):
             safe_stop_requested_at=(
                 None if record.safe_stop_requested_at is None else utc(record.safe_stop_requested_at)
             ),
+            current_run_uids=None if current_run_uids is None else list(current_run_uids),
         )
 
 

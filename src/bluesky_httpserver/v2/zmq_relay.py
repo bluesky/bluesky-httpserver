@@ -29,6 +29,7 @@ def _manager_status(status: Mapping[str, Any]) -> ManagerStatus:
         worker_environment_exists=status["worker_environment_exists"],
         plan_history_uid=status["plan_history_uid"],
         plans_allowed_uid=status["plans_allowed_uid"],
+        run_list_uid=status["run_list_uid"],
         # A manager that does not report the mode predates it, so it is not controller-fronted.
         controller_fronted=status.get("controller_fronted", False),
     )
@@ -148,6 +149,11 @@ class ZmqManagerRelay:
                 )
             )
         return History(reply["plan_history_uid"], tuple(entries))
+
+    async def runs(self) -> tuple[str, ...]:
+        # Without an option, 're_runs' lists every run of the running item, open or closed.
+        reply = await self._call("re_runs")
+        return tuple(run["uid"] for run in reply["run_list"])
 
     async def environment_open(self) -> None:
         await self._call("environment_open")

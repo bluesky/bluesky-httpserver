@@ -37,7 +37,8 @@ class FakeRelay:
 
     def __init__(self, catalog: Catalog):
         self.catalog = catalog
-        self.state = ManagerStatus("idle", None, True, "history-0", "allowed-0", True)
+        self.state = ManagerStatus("idle", None, True, "history-0", "allowed-0", "runs-0", True)
+        self.run_uids: list[str] = []
         self.history_entries: list[HistoryEntry] = []
         self.reachable = True
         self.execute_fault: Literal["reject", "lost", "reply_lost"] | None = None
@@ -91,6 +92,7 @@ class FakeRelay:
             HistoryEntry(item_uid, self._running_attempt_uid, exit_status, msg, tuple(run_uids))
         )
         self._running_attempt_uid = None
+        self.run_uids = []
         self.state = dataclasses.replace(
             self.state,
             manager_state="idle",
@@ -98,9 +100,18 @@ class FakeRelay:
             plan_history_uid=f"history-{len(self.history_entries)}",
         )
 
+    def open_run(self, run_uid: str) -> None:
+        """Open a Bluesky run in the running item, as the worker reports it to the manager."""
+        self.run_uids.append(run_uid)
+        self.state = dataclasses.replace(self.state, run_list_uid=f"runs-{run_uid}")
+
     async def history(self) -> History:
         self._call("history")
         return History(self.state.plan_history_uid, tuple(self.history_entries))
+
+    async def runs(self) -> tuple[str, ...]:
+        self._call("runs")
+        return tuple(self.run_uids)
 
     async def environment_open(self) -> None:
         self._call("environment_open")

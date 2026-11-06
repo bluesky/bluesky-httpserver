@@ -43,6 +43,8 @@ class ManagerStatus:
         Changes whenever the history changes.
     plans_allowed_uid : str
         Changes whenever the allowed operations change.
+    run_list_uid : str
+        Changes whenever the runs of the running item change.
     controller_fronted : bool
         Whether the manager refuses every queue, script and permission method (A3).
     """
@@ -52,6 +54,7 @@ class ManagerStatus:
     worker_environment_exists: bool
     plan_history_uid: str
     plans_allowed_uid: str
+    run_list_uid: str
     controller_fronted: bool
 
 
@@ -147,6 +150,10 @@ class ManagerRelay(Protocol):
 
     async def history(self) -> History:
         """Return the items the manager ran."""
+        ...
+
+    async def runs(self) -> tuple[str, ...]:
+        """Return the uids of the Bluesky runs the running item has opened so far."""
         ...
 
     async def environment_open(self) -> None:

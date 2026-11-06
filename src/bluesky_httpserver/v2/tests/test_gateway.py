@@ -365,6 +365,29 @@ async def test_manager_not_controller_fronted_is_not_used(relay, gateway):
 
 
 @pytest.mark.asyncio
+async def test_runs_of_the_running_attempt_are_read_when_they_change(store, relay, gateway):
+    await queue_and_start(store)
+    await gateway.step()
+    a = await only_attempt(store)
+    assert gateway.runs(a.attempt_uid) is None
+
+    relay.open_run("run-a")
+    await gateway.step()
+    await gateway.step()
+    assert gateway.runs(a.attempt_uid) == ("run-a",)
+    assert relay.calls.count("runs") == 1
+
+    relay.open_run("run-b")
+    await gateway.step()
+    assert gateway.runs(a.attempt_uid) == ("run-a", "run-b")
+    assert gateway.runs("another-attempt") is None
+
+    relay.finish_running("completed", run_uids=["run-a", "run-b"])
+    await gateway.step()
+    assert gateway.runs(a.attempt_uid) is None
+
+
+@pytest.mark.asyncio
 async def test_absent_environment_is_opened_at_most_every_retry_interval(relay, gateway, monotonic):
     set_state(relay, worker_environment_exists=False)
     await gateway.step()

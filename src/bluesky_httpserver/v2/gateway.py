@@ -179,6 +179,9 @@ class WorkerGateway:
         self._pause_sent: str | None = None
         self._abort_sent: str | None = None
         self._environment_opened_at: float | None = None
+        # The live attempt's runs as RE Manager last reported them, and the run list uid they were read at.
+        self._runs: tuple[str, tuple[str, ...]] | None = None
+        self._run_list_uid: str | None = None
         self._wakeup = asyncio.Event()
 
     def catalog(self) -> Catalog:
@@ -194,6 +197,15 @@ class WorkerGateway:
         if self._catalog is None:
             raise CatalogUnavailable()
         return self._catalog
+
+    def runs(self, attempt_uid: str) -> tuple[str, ...] | None:
+        """Return the uids of the Bluesky runs the running attempt ``attempt_uid`` has opened so far.
+
+        Returns None for any other attempt, and until RE Manager has reported the runs.
+        """
+        if self._runs is None or self._runs[0] != attempt_uid:
+            return None
+        return self._runs[1]
 
     def fence_evidence(self) -> dict[str, Any]:
         """Return RE Manager's last status, if it proves the worker runs nothing.
@@ -406,6 +418,7 @@ class WorkerGateway:
         if attempt.state is AttemptState.RUNNING and status.running_item_uid is not None:
             if status.running_item_uid == attempt.item_uid:
                 self._deadlines.pop(uid, None)
+                await self._refresh_runs(attempt, status)
                 if attempt.safe_stop_requested_at is not None:
                     await self._safe_stop(attempt, status)
                 return
@@ -428,6 +441,17 @@ class WorkerGateway:
                 f"after {self._grace:g} s RE Manager neither runs the attempt's item"
                 " nor has a history entry for it",
             )
+
+    async def _refresh_runs(self, attempt: AttemptRecord, status: ManagerStatus) -> None:
+        uid = attempt.attempt_uid
+        if self._runs is not None and self._runs[0] == uid and status.run_list_uid == self._run_list_uid:
+            return
+        try:
+            runs = await self._relay.runs()
+        except RelayRejected as error:
+            logger.warning("RE Manager refused the runs of attempt %s: %s", uid, error.message)
+            return
+        self._runs, self._run_list_uid = (uid, runs), status.run_list_uid
 
     async def _safe_stop(self, attempt: AttemptRecord, status: ManagerStatus) -> None:
         uid = attempt.attempt_uid
@@ -529,6 +553,8 @@ class WorkerGateway:
 
         await self._store.write(write)
         self._deadlines.pop(uid, None)
+        if self._runs is not None and self._runs[0] == uid:
+            self._runs = None
         if self._pause_sent == uid:
             self._pause_sent = None
         if self._abort_sent == uid:

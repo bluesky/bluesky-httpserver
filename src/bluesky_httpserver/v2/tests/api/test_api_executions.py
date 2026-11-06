@@ -73,3 +73,22 @@ async def test_claim_between_read_and_write_then_stop(client, store):
     assert again.json()["error"]["code"] == "execution_not_running"
     execution = await client.get(f"{EXECUTIONS}/{queue_execution_uid}", headers=headers("reader"))
     assert execution.json()["state"] == "stopping"
+
+
+@pytest.mark.asyncio
+async def test_running_attempt_shows_its_runs(client, relay, worker):
+    await submit(client, 0)
+    await start(client, 1)
+    await worker.step()
+    ((item, _, _),) = relay.executed
+    attempt = f"/api/v2/attempts/{item['meta']['attempt_uid']}"
+
+    relay.open_run("run-a")
+    await worker.step()
+    running = (await client.get(attempt, headers=headers("reader"))).json()
+    assert (running["state"], running["current_run_uids"]) == ("running", ["run-a"])
+
+    relay.finish_running("completed", run_uids=["run-a"])
+    await worker.step()
+    finished = (await client.get(attempt, headers=headers("reader"))).json()
+    assert (finished["state"], finished["current_run_uids"]) == ("succeeded", None)

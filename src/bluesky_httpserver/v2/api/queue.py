@@ -248,7 +248,7 @@ async def cancel_operation(
 async def get_attempt(attempt_uid: str, services: ServicesDep, principal: ReadPrincipal) -> JSONResponse:
     """One attempt to execute an operation; event `attempt_uid` fields name attempts."""
     record, revision = await _read_with_revision(services.store, lambda tx: tx.attempt(attempt_uid))
-    return _tagged(AttemptView.from_record(record), revision)
+    return _tagged(AttemptView.from_record(record, services.worker.runs(attempt_uid)), revision)
 
 
 @router.post(

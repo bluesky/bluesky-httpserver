@@ -21,9 +21,11 @@ STATUS = {
     "worker_environment_exists": True,
     "plan_history_uid": "history-1",
     "plans_allowed_uid": "allowed-1",
+    "run_list_uid": "runs-1",
     "controller_fronted": True,
     "items_in_queue": 0,
 }
+EXPECTED_STATUS = ManagerStatus("executing_queue", "item-1", True, "history-1", "allowed-1", "runs-1", True)
 
 COUNT_SCHEMA = {
     "type": "object",
@@ -105,7 +107,7 @@ def relay(address: str, info_address: str) -> Iterator[ZmqManagerRelay]:
 
 
 @pytest.mark.asyncio
-async def test_reads_status_catalog_and_history(manager, relay):
+async def test_reads_status_catalog_history_and_runs(manager, relay):
     manager.replies = {
         "status": STATUS,
         "plans_allowed": plans_allowed(("count_operation", "demo.count", "1")),
@@ -119,9 +121,18 @@ async def test_reads_status_catalog_and_history(manager, relay):
                 history_item("item-2", {"attempt_uid": "attempt-2"}, "failed", "boom", ["run-a", "run-b"]),
             ],
         },
+        "re_runs": {
+            "success": True,
+            "msg": "",
+            "run_list": [
+                {"uid": "run-c", "is_open": False, "exit_status": "success"},
+                {"uid": "run-d", "is_open": True, "exit_status": None},
+            ],
+            "run_list_uid": "runs-1",
+        },
     }
 
-    assert await relay.status() == ManagerStatus("executing_queue", "item-1", True, "history-1", "allowed-1", True)
+    assert await relay.status() == EXPECTED_STATUS
 
     allowed = await relay.plans_allowed("primary")
     assert allowed.uid == "allowed-1"
@@ -136,10 +147,13 @@ async def test_reads_status_catalog_and_history(manager, relay):
         HistoryEntry("item-2", "attempt-2", "failed", "boom", ("run-a", "run-b")),
     )
 
+    assert await relay.runs() == ("run-c", "run-d")
+
     assert manager.requests == [
         {"method": "status", "params": {}},
         {"method": "plans_allowed", "params": {"user_group": "primary"}},
         {"method": "history_get", "params": {}},
+        {"method": "re_runs", "params": {}},
     ]
 
 
@@ -232,7 +246,7 @@ async def test_status_updates_come_from_the_info_publisher(info_address, relay):
     try:
         async with asyncio.timeout(5):
             status = await anext(updates)
-        assert status == ManagerStatus("executing_queue", "item-1", True, "history-1", "allowed-1", True)
+        assert status == EXPECTED_STATUS
     finally:
         await updates.aclose()
         publisher.cancel()
