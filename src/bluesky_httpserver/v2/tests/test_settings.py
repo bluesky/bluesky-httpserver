@@ -15,6 +15,7 @@ VALID: dict[str, Any] = {
     "store_path": "/var/lib/bluesky-httpserver/controller.sqlite",
     "user_group": "primary",
     "identity": {"provider": "oidc", "issuer": ISSUER, "audience": AUDIENCE, "jwks_uri": JWKS_URI},
+    "manager": {"control_address": "ipc:///run/bluesky/manager-control"},
 }
 
 
@@ -30,6 +31,9 @@ provider = "entra"
 tenant_id = "{TENANT}"
 client_id = "{CLIENT}"
 
+[manager]
+control_address = "ipc:///run/bluesky/manager-control"
+
 [gateway]
 grace_seconds = 60.0
 """
@@ -39,6 +43,7 @@ grace_seconds = 60.0
 
     assert settings.identity.oidc_settings() == OidcSettings.entra(tenant_id=TENANT, client_id=CLIENT)
     assert settings.gateway.grace_seconds == 60.0
+    assert (settings.server.host, settings.server.port) == ("127.0.0.1", 8000)
 
 
 def test_generic_provider_defaults_come_from_oidc_settings():
@@ -64,6 +69,10 @@ def _zero_poll(settings: dict[str, Any]) -> None:
     settings["gateway"] = {"poll_seconds": 0}
 
 
+def _tcp_manager(settings: dict[str, Any]) -> None:
+    settings["manager"]["control_address"] = "tcp://localhost:60615"
+
+
 @pytest.mark.parametrize(
     ("change", "loc"),
     [
@@ -71,6 +80,7 @@ def _zero_poll(settings: dict[str, Any]) -> None:
         (_signing_secret, ("signing_secret",)),
         (_relative_store, ("store_path",)),
         (_zero_poll, ("gateway", "poll_seconds")),
+        (_tcp_manager, ("manager", "control_address")),
     ],
 )
 def test_invalid_settings_are_refused(change, loc):

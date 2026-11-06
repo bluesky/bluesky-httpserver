@@ -10,6 +10,13 @@
     tenant_id = "<directory GUID>"
     client_id = "<API application GUID>"
 
+    [manager]
+    control_address = "ipc:///run/bluesky/manager-control"
+
+    [server]
+    host = "127.0.0.1"
+    port = 8000
+
     [gateway]
     grace_seconds = 60.0
 
@@ -95,6 +102,31 @@ class GatewaySettings(_Section):
     """Shortest interval between requests to open the worker environment."""
 
 
+class ManagerSettings(_Section):
+    """How to reach RE Manager."""
+
+    control_address: str
+    """0MQ control address of RE Manager, an ``ipc://`` path: a controller-fronted manager binds no other."""
+    request_timeout_seconds: float = Field(default=5.0, gt=0)
+    """How long to wait for RE Manager to answer a request before treating it as unreachable."""
+
+    @field_validator("control_address")
+    @classmethod
+    def _ipc(cls, value: str) -> str:
+        if not value.startswith("ipc://"):
+            raise ValueError("must be an ipc:// address")
+        return value
+
+
+class ServerSettings(_Section):
+    """Where the HTTP API listens."""
+
+    host: str = "127.0.0.1"
+    """Address to bind; the default accepts only local connections, e.g. from a TLS-terminating proxy."""
+    port: int = Field(default=8000, ge=0, le=65535)
+    """Port to bind; 0 picks a free port."""
+
+
 class Settings(_Section):
     """Settings of the v2 controller."""
 
@@ -104,6 +136,10 @@ class Settings(_Section):
     """Manager user group that operations run as; its allowed operations are the catalog."""
     identity: Annotated[OidcIdentity | EntraIdentity, Field(discriminator="provider")]
     """Identity provider that issues access tokens."""
+    manager: ManagerSettings
+    """How to reach RE Manager."""
+    server: ServerSettings = Field(default_factory=ServerSettings)
+    """Where the HTTP API listens."""
     gateway: GatewaySettings = Field(default_factory=GatewaySettings)
     """Pacing of the worker gateway."""
     sse_heartbeat_seconds: float = Field(default=15.0, gt=0)

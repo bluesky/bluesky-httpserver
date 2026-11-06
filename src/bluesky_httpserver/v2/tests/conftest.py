@@ -86,7 +86,8 @@ def gateway(store: Store, relay: FakeRelay, monotonic: FakeMonotonic) -> WorkerG
 
 
 def server_settings(store_path: Path, **gateway: float) -> Settings:
-    """Settings of a controller with a store at ``store_path`` and the given `GatewaySettings`."""
+    """Settings of a controller with a store at ``store_path``, the given `GatewaySettings`, an ephemeral
+    port, and a manager address the fake relays never use."""
     return Settings.model_validate(
         {
             "store_path": str(store_path),
@@ -97,6 +98,8 @@ def server_settings(store_path: Path, **gateway: float) -> Settings:
                 "audience": "queueserver-api",
                 "jwks_uri": "https://idp.example/realms/facility/keys",
             },
+            "manager": {"control_address": f"ipc://{store_path.parent}/manager-control"},
+            "server": {"port": 0},
             "gateway": gateway,
         }
     )

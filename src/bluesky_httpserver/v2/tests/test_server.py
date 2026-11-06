@@ -6,8 +6,9 @@ import httpx
 import pytest
 
 from bluesky_httpserver.v2.catalog import Catalog
+from bluesky_httpserver.v2.cli import main
 from bluesky_httpserver.v2.relay import ManagerStatus
-from bluesky_httpserver.v2.server import create_server_app
+from bluesky_httpserver.v2.server import create_server_app, serve
 from bluesky_httpserver.v2.store import Store, StoreLocked
 
 from .conftest import server_settings
@@ -63,3 +64,29 @@ async def test_gateway_failure_is_reported(db_path):
     assert isinstance(error, BaseExceptionGroup)
     assert error.subgroup(RuntimeError) is not None
     await (await Store.open(db_path)).close()
+
+
+@pytest.mark.asyncio
+async def test_serve_stops_when_the_gateway_fails(db_path):
+    async with asyncio.timeout(10):
+        assert await serve(server_settings(db_path), BrokenRelay(Catalog([DEMO_COUNT]))) is False
+    await (await Store.open(db_path)).close()
+
+
+@pytest.mark.asyncio
+async def test_serve_fails_to_start_on_a_store_open_elsewhere(db_path, relay):
+    store = await Store.open(db_path)
+    try:
+        async with asyncio.timeout(10):
+            with pytest.raises(SystemExit) as startup_failure:
+                await serve(server_settings(db_path), relay)
+        assert startup_failure.value.code == 3
+    finally:
+        await store.close()
+
+
+def test_serve_command_refuses_invalid_settings(tmp_path, capsys):
+    config = tmp_path / "controller.toml"
+    config.write_text('store_path = "relative.sqlite"\n')
+    assert main(["serve", "--config", str(config)]) == 1
+    assert capsys.readouterr().err.startswith(f"error: {config}: ")

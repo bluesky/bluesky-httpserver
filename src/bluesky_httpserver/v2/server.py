@@ -8,6 +8,7 @@ import logging
 from collections.abc import AsyncGenerator, Callable
 
 import httpx
+import uvicorn
 from fastapi import FastAPI
 
 from .api import Services, create_app
@@ -83,3 +84,37 @@ def create_server_app(
             await store.close()
 
     return create_app(lifespan)
+
+
+async def serve(settings: Settings, relay: ManagerRelay) -> bool:
+    """Serve the controller's HTTP API at ``settings.server`` until it is stopped or the worker gateway fails.
+
+    SIGINT and SIGTERM stop the server gracefully; uvicorn then raises the signal again, so the process ends
+    as the signal requests (SIGINT raises `KeyboardInterrupt`).
+
+    Parameters
+    ----------
+    settings : Settings
+        The controller's settings.
+    relay : ManagerRelay
+        RE Manager.
+
+    Returns
+    -------
+    bool
+        False if the app failed to start, e.g. because the store is open elsewhere, or the worker gateway
+        failed; uvicorn has logged why.
+    """
+    gateway_failed = False
+
+    def stop(error: BaseException) -> None:
+        nonlocal gateway_failed
+        gateway_failed = True
+        server.should_exit = True
+
+    app = create_server_app(settings, relay, on_gateway_failure=stop)
+    # With lifespan "auto", uvicorn would serve without services if the lifespan failed to start.
+    config = uvicorn.Config(app, host=settings.server.host, port=settings.server.port, lifespan="on")
+    server = uvicorn.Server(config)
+    await server.serve()
+    return server.started and not gateway_failed
