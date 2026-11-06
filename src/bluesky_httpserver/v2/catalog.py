@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -197,27 +197,49 @@ class Catalog:
         """
         descriptor = self.descriptor(operation_id, operation_version)
         validator = self._entries[(operation_id, operation_version)][1]
-        try:
-            json.dumps(parameters, allow_nan=False)
-        except ValueError:
-            raise InvalidParameters(
-                [{"path": "$", "message": "parameters must not contain NaN or infinite numbers"}]
-            ) from None
-        errors = [
-            {"path": error.json_path, "message": error.message}
-            for error in validator.iter_errors(dict(parameters))
-        ]
-        # Device ids are checked only against well-typed values, so a wrongly typed value is reported once.
-        if not errors:
-            errors = _device_errors(descriptor, parameters)
+        errors = parameter_errors(validator, descriptor.devices, parameters)
         if errors:
-            raise InvalidParameters(sorted(errors, key=lambda e: (e["path"], e["message"])))
+            raise InvalidParameters(errors)
         return descriptor
 
 
-def _device_errors(descriptor: OperationDescriptor, parameters: Mapping[str, Any]) -> list[dict[str, str]]:
+def parameter_errors(
+    validator: Draft202012Validator,
+    devices: Mapping[str, Collection[str]],
+    parameters: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Return what is wrong with ``parameters`` as ``{"path", "message"}`` dicts; empty if they are valid.
+
+    Parameters
+    ----------
+    validator : Draft202012Validator
+        Validator of the operation's parameters schema.
+    devices : mapping
+        For each device parameter, the device ids it accepts.
+    parameters : mapping
+        Decoded JSON parameters object.
+
+    Returns
+    -------
+    list of dict
+        Sorted by path, then message; ``path`` is a JSON path into the parameters.
+    """
+    try:
+        json.dumps(parameters, allow_nan=False)
+    except ValueError:
+        return [{"path": "$", "message": "parameters must not contain NaN or infinite numbers"}]
+    errors = [
+        {"path": error.json_path, "message": error.message} for error in validator.iter_errors(dict(parameters))
+    ]
+    # Device ids are checked only against well-typed values, so a wrongly typed value is reported once.
+    if not errors:
+        errors = _device_errors(devices, parameters)
+    return sorted(errors, key=lambda e: (e["path"], e["message"]))
+
+
+def _device_errors(devices: Mapping[str, Collection[str]], parameters: Mapping[str, Any]) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
-    for name, ids in descriptor.devices.items():
+    for name, ids in devices.items():
         if name not in parameters:
             continue
         value = parameters[name]
