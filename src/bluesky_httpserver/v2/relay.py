@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -115,12 +115,20 @@ class History:
 class ManagerRelay(Protocol):
     """RE Manager methods the worker gateway calls.
 
-    Every method raises `RelayUnreachable` when the manager does not answer, and `RelayRejected` when it
-    answers with a refusal.
+    Every request method raises `RelayUnreachable` when the manager does not answer, and `RelayRejected` when
+    it answers with a refusal.
     """
 
     async def status(self) -> ManagerStatus:
         """Return the manager's status."""
+        ...
+
+    def status_updates(self) -> AsyncIterator[ManagerStatus]:
+        """Yield the status the manager publishes when it changes, and periodically; never ends.
+
+        Delivery is best effort: updates may be lost, and none arrive while the manager is down, so callers
+        still poll `status`.
+        """
         ...
 
     async def plans_allowed(self, user_group: str) -> AllowedOperations:

@@ -15,7 +15,10 @@ VALID: dict[str, Any] = {
     "store_path": "/var/lib/bluesky-httpserver/controller.sqlite",
     "user_group": "primary",
     "identity": {"provider": "oidc", "issuer": ISSUER, "audience": AUDIENCE, "jwks_uri": JWKS_URI},
-    "manager": {"control_address": "ipc:///run/bluesky/manager-control"},
+    "manager": {
+        "control_address": "ipc:///run/bluesky/manager-control",
+        "info_address": "ipc:///run/bluesky/manager-info",
+    },
 }
 
 
@@ -33,6 +36,7 @@ client_id = "{CLIENT}"
 
 [manager]
 control_address = "ipc:///run/bluesky/manager-control"
+info_address = "ipc:///run/bluesky/manager-info"
 
 [gateway]
 grace_seconds = 60.0

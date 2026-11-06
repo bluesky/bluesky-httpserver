@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -380,3 +381,25 @@ async def test_absent_environment_is_opened_at_most_every_retry_interval(relay, 
 async def test_catalog_is_unavailable_before_the_first_step(gateway):
     with pytest.raises(CatalogUnavailable):
         gateway.catalog()
+
+
+@pytest.mark.asyncio
+async def test_published_status_change_wakes_the_gateway(store, relay, monotonic):
+    # Polling is an hour away, so only the published status can report that the item finished.
+    gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=3600, monotonic=monotonic)
+    (o,), _ = await queue_and_start(store)
+    task = asyncio.create_task(gateway.run())
+    try:
+        async with asyncio.timeout(5):
+            while await operation_state(store, o) is not OperationState.RUNNING:
+                await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)  # let the steps woken by the dispatch's own events finish
+
+        relay.finish_running("completed")
+        relay.publish()
+        async with asyncio.timeout(5):
+            while await operation_state(store, o) is not OperationState.SUCCEEDED:
+                await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+        await asyncio.wait([task])

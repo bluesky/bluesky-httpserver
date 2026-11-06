@@ -12,7 +12,7 @@ import subprocess
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 import zmq
@@ -74,9 +74,14 @@ def request(address: str, method: str, params: dict[str, Any] | None = None, tim
         return socket.recv_json()
 
 
+class Manager(NamedTuple):
+    control: str
+    info: str
+
+
 @pytest.fixture
-def re_manager(tmp_path: Path) -> Iterator[str]:
-    """Start RE Manager in controller-fronted mode with a worker that offers ``demo.count``; yield its address."""
+def re_manager(tmp_path: Path) -> Iterator[Manager]:
+    """Start RE Manager in controller-fronted mode with a worker that offers ``demo.count``."""
     executable = shutil.which("start-re-manager")
     assert executable is not None, "start-re-manager is not installed"
     usage = subprocess.run([executable, "-h"], capture_output=True, text=True, timeout=60).stdout
@@ -86,7 +91,7 @@ def re_manager(tmp_path: Path) -> Iterator[str]:
     startup.mkdir()
     (startup / "00-startup.py").write_text(STARTUP)
     (startup / "user_group_permissions.yaml").write_text(PERMISSIONS)
-    address = f"ipc://{tmp_path}/control"
+    manager = Manager(f"ipc://{tmp_path}/control", f"ipc://{tmp_path}/info")
     log = tmp_path / "manager.log"
 
     with log.open("w") as output:
@@ -94,8 +99,9 @@ def re_manager(tmp_path: Path) -> Iterator[str]:
             [
                 executable,
                 "--controller-fronted=ON",
-                f"--zmq-control-addr={address}",
-                f"--zmq-info-addr=ipc://{tmp_path}/info",
+                f"--zmq-control-addr={manager.control}",
+                f"--zmq-info-addr={manager.info}",
+                "--zmq-publish-info=ON",
                 f"--startup-dir={startup}",
                 f"--existing-plans-devices={startup}/existing_plans_and_devices.yaml",
                 f"--user-group-permissions={startup}/user_group_permissions.yaml",
@@ -107,15 +113,17 @@ def re_manager(tmp_path: Path) -> Iterator[str]:
         )
     try:
         deadline = time.monotonic() + 30
-        while (status := request(address, "status", timeout=0.5)) is None or status["manager_state"] != "idle":
+        while (status := request(manager.control, "status", timeout=0.5)) is None or status[
+            "manager_state"
+        ] != "idle":
             if process.poll() is not None or time.monotonic() > deadline:
                 pytest.fail(f"RE Manager did not start (is Redis running?):\n{log.read_text()[-3000:]}")
         # The history persists in Redis between runs; the test reads only what it ran.
-        assert request(address, "history_clear")["success"]
-        yield address
+        assert request(manager.control, "history_clear")["success"]
+        yield manager
     finally:
         if process.poll() is None:
-            request(address, "manager_stop", {"option": "safe_off"})
+            request(manager.control, "manager_stop", {"option": "safe_off"})
             try:
                 process.wait(30)
             except subprocess.TimeoutExpired:
@@ -137,9 +145,10 @@ async def events_until(store: Store, event_type: EventType) -> list[EventRecord]
 @pytest.mark.asyncio
 async def test_gateway_runs_an_operation_on_re_manager(re_manager, db_path):
     store = await Store.open(db_path)
-    relay = ZmqManagerRelay(re_manager, timeout_seconds=5.0)
+    relay = ZmqManagerRelay(re_manager.control, re_manager.info, timeout_seconds=5.0)
     try:
-        gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=0.1)
+        # Polling is a minute away: what the gateway sees promptly, it learns from published status.
+        gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=60)
         task = asyncio.create_task(gateway.run())
         try:
             # The gateway opens the worker environment and loads the catalog from the manager.
@@ -175,7 +184,7 @@ async def test_gateway_runs_an_operation_on_re_manager(re_manager, db_path):
         assert len(succeeded.payload["run_uids"]) == 1
 
         # The manager ran the plan as the submitter, with device ids replaced by the worker's names.
-        (item,) = request(re_manager, "history_get")["items"]
+        (item,) = request(re_manager.control, "history_get")["items"]
         assert item["item_uid"] == attempt.item_uid
         assert item["meta"]["attempt_uid"] == attempt_uid
         assert (item["name"], item["user"]) == ("count_operation", "alice")

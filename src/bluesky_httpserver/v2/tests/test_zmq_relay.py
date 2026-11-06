@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,11 @@ def address(tmp_path: Path) -> str:
     return f"ipc://{tmp_path}/control"
 
 
+@pytest.fixture
+def info_address(tmp_path: Path) -> str:
+    return f"ipc://{tmp_path}/info"
+
+
 @pytest_asyncio.fixture
 async def manager(address: str) -> AsyncIterator[FakeManager]:
     fake = FakeManager(address)
@@ -92,8 +98,8 @@ async def manager(address: str) -> AsyncIterator[FakeManager]:
 
 
 @pytest.fixture
-def relay(address: str) -> Iterator[ZmqManagerRelay]:
-    relay = ZmqManagerRelay(address, timeout_seconds=2.0)
+def relay(address: str, info_address: str) -> Iterator[ZmqManagerRelay]:
+    relay = ZmqManagerRelay(address, info_address, timeout_seconds=2.0)
     yield relay
     relay.close()
 
@@ -184,8 +190,8 @@ async def test_refusals(manager, relay):
 
 
 @pytest.mark.asyncio
-async def test_unreachable_until_the_manager_answers(address):
-    relay = ZmqManagerRelay(address, timeout_seconds=0.2)
+async def test_unreachable_until_the_manager_answers(address, info_address):
+    relay = ZmqManagerRelay(address, info_address, timeout_seconds=0.2)
     try:
         with pytest.raises(RelayUnreachable) as unreachable:
             await relay.status()
@@ -201,3 +207,33 @@ async def test_unreachable_until_the_manager_answers(address):
             await asyncio.wait([task])
     finally:
         relay.close()
+
+
+async def publish_info(address: str) -> None:
+    """Publish as RE Manager does on its info socket, periodically: console output, progress and status."""
+    context = zmq.asyncio.Context()
+    socket = context.socket(zmq.PUB)
+    socket.bind(address)
+    try:
+        while True:
+            await socket.send_multipart([b"QS_Console", json.dumps({"time": 0, "msg": "output"}).encode()])
+            await socket.send_multipart([b"QS_Info", json.dumps({"time": 0, "msg": {"progress": {}}}).encode()])
+            await socket.send_multipart([b"QS_Info", json.dumps({"time": 0, "msg": {"status": STATUS}}).encode()])
+            await asyncio.sleep(0.05)
+    finally:
+        socket.close(linger=0)
+        context.term()
+
+
+@pytest.mark.asyncio
+async def test_status_updates_come_from_the_info_publisher(info_address, relay):
+    publisher = asyncio.create_task(publish_info(info_address))
+    updates = relay.status_updates()
+    try:
+        async with asyncio.timeout(5):
+            status = await anext(updates)
+        assert status == ManagerStatus("executing_queue", "item-1", True, "history-1", "allowed-1", True)
+    finally:
+        await updates.aclose()
+        publisher.cancel()
+        await asyncio.wait([publisher])

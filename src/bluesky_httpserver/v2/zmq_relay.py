@@ -1,8 +1,9 @@
-"""`ManagerRelay` over RE Manager's 0MQ control socket."""
+"""`ManagerRelay` over RE Manager's 0MQ control socket and its info (``QS_Info``) publisher."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, Literal
 
 import zmq
@@ -18,23 +19,41 @@ from .relay import (
     RelayUnreachable,
 )
 
+_INFO_TOPIC = b"QS_Info"
+
+
+def _manager_status(status: Mapping[str, Any]) -> ManagerStatus:
+    return ManagerStatus(
+        manager_state=status["manager_state"],
+        running_item_uid=status["running_item_uid"],
+        worker_environment_exists=status["worker_environment_exists"],
+        plan_history_uid=status["plan_history_uid"],
+        plans_allowed_uid=status["plans_allowed_uid"],
+        # A manager that does not report the mode predates it, so it is not controller-fronted.
+        controller_fronted=status.get("controller_fronted", False),
+    )
+
 
 class ZmqManagerRelay:
-    """RE Manager reached through its 0MQ control socket, with JSON encoding.
+    """RE Manager reached through its 0MQ control socket and info publisher, with JSON encoding.
 
     Each request uses a new socket, so a request that timed out leaves nothing behind and the next request
     finds the manager as soon as it answers again. Call `close` when done.
 
     Parameters
     ----------
-    address : str
+    control_address : str
         RE Manager's control address, e.g. ``ipc:///run/bluesky/manager-control``.
+    info_address : str
+        Address where RE Manager publishes its status; it does so only if started with
+        ``--zmq-publish-info=ON``.
     timeout_seconds : float
         How long to wait for an answer before raising `RelayUnreachable`.
     """
 
-    def __init__(self, address: str, *, timeout_seconds: float):
-        self._address = address
+    def __init__(self, control_address: str, info_address: str, *, timeout_seconds: float):
+        self._control_address = control_address
+        self._info_address = info_address
         self._timeout_ms = int(timeout_seconds * 1000)
         self._context = zmq.asyncio.Context()
 
@@ -46,7 +65,7 @@ class ZmqManagerRelay:
         socket = self._context.socket(zmq.REQ)
         socket.setsockopt(zmq.LINGER, 0)
         try:
-            socket.connect(self._address)
+            socket.connect(self._control_address)
             await socket.send_json({"method": method, "params": dict(params)})
             if not await socket.poll(self._timeout_ms):
                 raise RelayUnreachable(method)
@@ -61,16 +80,23 @@ class ZmqManagerRelay:
         return reply
 
     async def status(self) -> ManagerStatus:
-        reply = await self._request("status", {})
-        return ManagerStatus(
-            manager_state=reply["manager_state"],
-            running_item_uid=reply["running_item_uid"],
-            worker_environment_exists=reply["worker_environment_exists"],
-            plan_history_uid=reply["plan_history_uid"],
-            plans_allowed_uid=reply["plans_allowed_uid"],
-            # A manager that does not report the mode predates it, so it is not controller-fronted.
-            controller_fronted=reply.get("controller_fronted", False),
-        )
+        return _manager_status(await self._request("status", {}))
+
+    async def status_updates(self) -> AsyncIterator[ManagerStatus]:
+        # 0MQ reconnects the subscription by itself when RE Manager restarts.
+        socket = self._context.socket(zmq.SUB)
+        socket.setsockopt(zmq.LINGER, 0)
+        socket.setsockopt(zmq.SUBSCRIBE, _INFO_TOPIC)
+        try:
+            socket.connect(self._info_address)
+            while True:
+                _, payload = await socket.recv_multipart()
+                # Info messages are {"time": ..., "msg": {<kind>: ...}}; only "status" ones matter here.
+                status = json.loads(payload)["msg"].get("status")
+                if status is not None:
+                    yield _manager_status(status)
+        finally:
+            socket.close()
 
     async def plans_allowed(self, user_group: str) -> AllowedOperations:
         """Return the operations ``user_group`` may run: its allowed plans that are operations.

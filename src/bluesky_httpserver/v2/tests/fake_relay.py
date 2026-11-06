@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Literal
 
 from bluesky_httpserver.v2.catalog import Catalog, OperationDescriptor
@@ -43,6 +44,7 @@ class FakeRelay:
         self.calls: list[str] = []
         self.executed: list[tuple[dict[str, Any], str, str]] = []
         self._running_attempt_uid: str | None = None
+        self._published: asyncio.Queue[ManagerStatus] = asyncio.Queue()
 
     def _call(self, method: str, record: str | None = None) -> None:
         self.calls.append(record or method)
@@ -52,6 +54,14 @@ class FakeRelay:
     async def status(self) -> ManagerStatus:
         self._call("status")
         return self.state
+
+    async def status_updates(self) -> AsyncIterator[ManagerStatus]:
+        while True:
+            yield await self._published.get()
+
+    def publish(self) -> None:
+        """Publish the current state, as RE Manager does on its info socket."""
+        self._published.put_nowait(self.state)
 
     async def plans_allowed(self, user_group: str) -> AllowedOperations:
         self._call("plans_allowed")

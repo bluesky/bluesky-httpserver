@@ -12,6 +12,7 @@
 
     [manager]
     control_address = "ipc:///run/bluesky/manager-control"
+    info_address = "ipc:///run/bluesky/manager-info"
 
     [server]
     host = "127.0.0.1"
@@ -107,10 +108,13 @@ class ManagerSettings(_Section):
 
     control_address: str
     """0MQ control address of RE Manager, an ``ipc://`` path: a controller-fronted manager binds no other."""
+    info_address: str
+    """0MQ address where RE Manager publishes its status, an ``ipc://`` path. Start RE Manager with
+    ``--zmq-publish-info=ON``; otherwise the controller sees changes only when it polls."""
     request_timeout_seconds: float = Field(default=5.0, gt=0)
     """How long to wait for RE Manager to answer a request before treating it as unreachable."""
 
-    @field_validator("control_address")
+    @field_validator("control_address", "info_address")
     @classmethod
     def _ipc(cls, value: str) -> str:
         if not value.startswith("ipc://"):

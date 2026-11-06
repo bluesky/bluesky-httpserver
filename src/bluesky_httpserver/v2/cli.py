@@ -26,8 +26,9 @@ def _serve(config: str) -> int:
         print(f"error: {config}: {error}", file=sys.stderr)
         return 1
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    manager = settings.manager
     relay = ZmqManagerRelay(
-        settings.manager.control_address, timeout_seconds=settings.manager.request_timeout_seconds
+        manager.control_address, manager.info_address, timeout_seconds=manager.request_timeout_seconds
     )
     try:
         served = asyncio.run(serve(settings, relay))

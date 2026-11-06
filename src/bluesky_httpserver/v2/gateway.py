@@ -244,11 +244,13 @@ class WorkerGateway:
     async def run(self) -> None:
         """Step until cancelled.
 
-        After each step, wait ``poll_seconds`` or until the store commits an event, whichever comes first.
-        The caller runs this for as long as the app serves.
+        After each step, wait ``poll_seconds``, or until the store commits an event or RE Manager publishes
+        a status that differs from the last one observed, whichever comes first. The caller runs this for as
+        long as the app serves.
         """
         async with asyncio.TaskGroup() as group:
             group.create_task(self._wake_on_events())
+            group.create_task(self._wake_on_status())
             while True:
                 self._wakeup.clear()
                 await self.step()
@@ -327,6 +329,12 @@ class WorkerGateway:
         while True:
             cursor = await self._store.wait_for_event(cursor)
             self._wakeup.set()
+
+    async def _wake_on_status(self) -> None:
+        async for status in self._relay.status_updates():
+            # RE Manager republishes an unchanged status every second; only a change needs a step.
+            if status != self._status:
+                self._wakeup.set()
 
     def _note_unreachable(self, now: float) -> float:
         """Start the unreachability clock unless it runs; return when RE Manager became unreachable."""

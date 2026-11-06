@@ -98,7 +98,10 @@ def server_settings(store_path: Path, **gateway: float) -> Settings:
                 "audience": "queueserver-api",
                 "jwks_uri": "https://idp.example/realms/facility/keys",
             },
-            "manager": {"control_address": f"ipc://{store_path.parent}/manager-control"},
+            "manager": {
+                "control_address": f"ipc://{store_path.parent}/manager-control",
+                "info_address": f"ipc://{store_path.parent}/manager-info",
+            },
             "server": {"port": 0},
             "gateway": gateway,
         }
