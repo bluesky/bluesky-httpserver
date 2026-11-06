@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from .api import Services, create_app
 from .gateway import WorkerGateway
 from .identity import OidcAuthenticator
-from .relay import ManagerRelay
+from .relay import ManagerRelay, RelayUnreachable
 from .settings import Settings
 from .store import Store
 
@@ -28,8 +28,8 @@ def create_server_app(
 
     The app's lifespan opens the store, owns the HTTP client that fetches the identity provider's signing
     keys, and runs the worker gateway; on shutdown it stops the gateway, closes the client, then closes the
-    store. Startup raises whatever `Store.open` raises: `StoreLocked`, `MigrationRequired`, `NotAStore` or
-    `SchemaMismatch`.
+    store. Startup raises `RuntimeError` if RE Manager answers but is not in controller-fronted mode, and
+    whatever `Store.open` raises: `StoreLocked`, `MigrationRequired`, `NotAStore` or `SchemaMismatch`.
 
     Parameters
     ----------
@@ -56,6 +56,13 @@ def create_server_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        # A manager that does not answer may still be starting; the gateway uses it only once it reports
+        # controller-fronted mode.
+        with contextlib.suppress(RelayUnreachable):
+            if not (await relay.status()).controller_fronted:
+                raise RuntimeError(
+                    "RE Manager is not in controller-fronted mode; start it with --controller-fronted=ON"
+                )
         store = await Store.open(settings.store_path)
         try:
             async with httpx.AsyncClient() as http:

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 
 import httpx
 import pytest
 
 from bluesky_httpserver.v2.catalog import Catalog
 from bluesky_httpserver.v2.cli import main
-from bluesky_httpserver.v2.relay import ManagerStatus
+from bluesky_httpserver.v2.relay import AllowedOperations
 from bluesky_httpserver.v2.server import create_server_app, serve
 from bluesky_httpserver.v2.store import Store, StoreLocked
 
@@ -39,7 +40,9 @@ async def test_lifespan_runs_the_controller(db_path, relay):
 
 
 class BrokenRelay(FakeRelay):
-    async def status(self) -> ManagerStatus:
+    """Answers the startup check, then fails the gateway's first step."""
+
+    async def plans_allowed(self, user_group: str) -> AllowedOperations:
         raise RuntimeError("relay bug")
 
 
@@ -64,6 +67,28 @@ async def test_gateway_failure_is_reported(db_path):
     assert isinstance(error, BaseExceptionGroup)
     assert error.subgroup(RuntimeError) is not None
     await (await Store.open(db_path)).close()
+
+
+@pytest.mark.asyncio
+async def test_startup_refuses_a_manager_that_is_not_controller_fronted(db_path, relay):
+    relay.state = dataclasses.replace(relay.state, controller_fronted=False)
+    app = create_server_app(server_settings(db_path), relay, on_gateway_failure=lambda error: None)
+    with pytest.raises(RuntimeError, match="not in controller-fronted mode"):
+        async with app.router.lifespan_context(app):
+            pass
+    await (await Store.open(db_path)).close()
+
+
+@pytest.mark.asyncio
+async def test_startup_does_not_wait_for_an_unreachable_manager(db_path, relay):
+    relay.reachable = False
+    app = create_server_app(server_settings(db_path), relay, on_gateway_failure=lambda error: None)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.get("/ready")
+    assert (response.status_code, response.json()["worker"]) == (503, "unreachable")
 
 
 @pytest.mark.asyncio
