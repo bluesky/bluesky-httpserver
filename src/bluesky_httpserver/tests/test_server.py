@@ -1,5 +1,7 @@
+import logging
 import os
 import pprint
+import secrets
 
 import pytest
 from bluesky_queueserver import generate_zmq_keys
@@ -14,6 +16,9 @@ from bluesky_queueserver.manager.tests.common import (  # noqa F401
     set_qserver_zmq_public_key,
 )
 
+from bluesky_httpserver.app import build_app
+from bluesky_httpserver.server import print_admin_api_key_if_generated
+from bluesky_httpserver.settings import get_settings
 from bluesky_httpserver.tests.conftest import (  # noqa F401
     SERVER_ADDRESS,
     SERVER_PORT,
@@ -292,3 +297,31 @@ def test_http_server_custom_routers_1(tmpdir, monkeypatch, re_manager, fastapi_s
     assert "manager_state" in resp3, pprint.pformat(resp3)
     resp4 = request_to_json("post", "/some_prefix/status_duplicate_post", request_prefix="")
     assert resp3 == resp4
+
+
+def test_startup_log_hides_secrets(caplog):
+    """
+    The settings logged at startup contain neither the token signing keys, nor the single-user API key, nor the
+    database password.
+    """
+    signing_keys = [secrets.token_hex(32), secrets.token_hex(32)]
+    api_key, password = secrets.token_hex(32), secrets.token_hex(16)
+    # build_app() configures the settings object cached by get_settings(); start and leave with a fresh one.
+    get_settings.cache_clear()
+    try:
+        app = build_app(
+            authentication={"secret_keys": signing_keys, "single_user_api_key": api_key},
+            server_settings={
+                "server_configuration": {},
+                "database": {"uri": f"postgresql://qserver:{password}@db.example/qserver"},
+            },
+        )
+        with caplog.at_level(logging.INFO, logger="bluesky_httpserver"):
+            print_admin_api_key_if_generated(app, host="localhost", port=60610)
+    finally:
+        get_settings.cache_clear()
+
+    for secret in [*signing_keys, api_key, password]:
+        assert secret not in caplog.text
+    # The rest of the settings, including where the database is, are still logged.
+    assert "db.example" in caplog.text

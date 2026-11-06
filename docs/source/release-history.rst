@@ -3,6 +3,17 @@ Release History
 ===============
 
 
+Unreleased
+==========
+
+Fixed
+-----
+
+- The server settings logged at startup no longer contain secrets. The token signing keys
+  (``secret_keys``), the single-user API key and the password in the database URI were logged
+  in plain text at the INFO level; deployments whose logs others can read should replace them.
+
+
 v0.0.15 (2026-11-05)
 ====================
 
