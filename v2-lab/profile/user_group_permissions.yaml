@@ -1,0 +1,9 @@
+# The controller runs operations as user group "primary" (user_group in state/controller.toml). Its catalog is the
+# allowed plans that are operations, so allowing every plan here exposes only the @operation plans.
+user_groups:
+  root:
+    allowed_plans: [null]
+    allowed_devices: [null]
+  primary:
+    allowed_plans: [":.*"]
+    allowed_devices: [":?.*"]

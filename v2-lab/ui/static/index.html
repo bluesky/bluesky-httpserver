@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bluesky-httpserver v2 · lab console</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%2338bdf8'/><circle cx='16' cy='16' r='6' fill='%230b1220'/></svg>">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">
+      <span class="logo"></span>
+      <div>
+        <div class="title">bluesky-httpserver <span class="v2">v2</span></div>
+        <div class="subtitle">lab console</div>
+      </div>
+    </div>
+    <nav id="tabs"></nav>
+    <div id="readiness"></div>
+    <div id="lease"></div>
+    <div id="identity"></div>
+  </header>
+
+  <main id="layout">
+    <section id="view"></section>
+    <aside id="events"></aside>
+  </main>
+
+  <footer id="inspector"></footer>
+  <div id="drawer" class="hidden"></div>
+  <div id="toasts"></div>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

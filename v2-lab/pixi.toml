@@ -1,0 +1,119 @@
+# bluesky-httpserver v2 in front of RE Manager running the tst-sim-tools XRT simulation, for a lab on one host.
+#
+# Run each service in its own terminal, in this order:
+#   pixi run redis        # skip if Redis already listens on localhost:6379
+#   the XRT IOC, from ../tst-sim-tools as usual, e.g.
+#     pixi run -e ioc python iocs/xrt_xml_ioc.py --xml iocs/bmm.xml --prefix 'XF:31ID1-XRT{BMM:01}'
+#   pixi run manager      # RE Manager in controller-fronted mode
+#   pixi run issuer       # stand-in identity provider: serves the token signing keys over HTTPS
+#   pixi run controller   # the v2 API at http://127.0.0.1:8000
+# Then `pixi run demo` runs one operation, `pixi run stress` load-tests the controller (see stress.py), and
+# `pixi run token` prints an access token for calling the API by hand.
+# `pixi run ui` serves a web console at http://127.0.0.1:8080 that operates the controller and demonstrates, next to
+# v1, what v2 guarantees (see ui/server.py).
+# `state/` holds the keys, the controller's settings and its store; delete it to start over.
+#
+# compare.py runs the same scenarios against bluesky-httpserver v1 and v2. v1 needs two more services, on a second
+# RE Manager in normal mode with the same profile (its state is in state/v1/):
+#   pixi run v1-manager   # RE Manager for v1
+#   pixi run v1-server    # bluesky-httpserver v1 at http://127.0.0.1:8010
+# then `pixi run compare` (see compare.py).
+
+[workspace]
+name = "v2-lab"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+requires-pixi = ">=0.82.1"
+
+# RE Manager and RE Worker: tst-sim-tools' "startup" feature, with bluesky-queueserver from the local clone,
+# which has controller-fronted mode and the operation catalog.
+[feature.manager.dependencies]
+python = "3.12.*"
+bluesky-base = ">=1.15"
+matplotlib-base = ">=3.9.3,<4"
+networkx = ">=3.4.2"
+numpy = "*"
+ophyd = ">=1.11.0"
+pyepics = "*"
+semver = ">=3.0.4,<4"
+tiled-client = ">=0.1.6"
+hdf5-external-filter-plugins = ">=0.1.0,<0.2"
+blosc-hdf5-plugin = ">=1.0.1,<2"
+databroker = "==2.0.0"
+epicscorelibs = ">=7.0.7.99.1.1,<8"
+bluesky-tiled-plugins = ">=2.0.0"
+ophyd-async = ">=0.21.3,<0.22"
+ipython = "*"
+redis-server = "*"
+
+[feature.manager.pypi-dependencies]
+nslsii = ">=0.12.0"
+bluesky-queueserver = { path = "../bluesky-queueserver", editable = true }
+tst-sim-tools = { path = "../tst-sim-tools", editable = true }
+
+[feature.manager.tasks]
+redis = "redis-server --bind 127.0.0.1 --port 6379 --save '' --appendonly no"
+
+[feature.manager.tasks.manager]
+# Its own Redis key prefix keeps this manager's history apart from a 0.x manager sharing the Redis server.
+cmd = """start-re-manager --controller-fronted=ON \
+--zmq-control-addr=ipc://$PIXI_PROJECT_ROOT/state/run/control \
+--zmq-info-addr=ipc://$PIXI_PROJECT_ROOT/state/run/info \
+--zmq-publish-info=ON \
+--startup-dir=$PIXI_PROJECT_ROOT/profile \
+--user-group-permissions=$PIXI_PROJECT_ROOT/profile/user_group_permissions.yaml \
+--existing-plans-devices=$PIXI_PROJECT_ROOT/state/existing_plans_and_devices.yaml \
+--update-existing-plans-devices=NEVER \
+--redis-name-prefix=v2_lab"""
+depends-on = [{ task = "init", environment = "controller" }]
+
+[feature.manager.tasks.v1-manager]
+# Same profile, normal mode, its own sockets and Redis prefix: what bluesky-httpserver v1 fronts, for compare.py.
+cmd = """start-re-manager \
+--zmq-control-addr=ipc://$PIXI_PROJECT_ROOT/state/v1/run/control \
+--zmq-info-addr=ipc://$PIXI_PROJECT_ROOT/state/v1/run/info \
+--zmq-publish-info=ON \
+--startup-dir=$PIXI_PROJECT_ROOT/profile \
+--user-group-permissions=$PIXI_PROJECT_ROOT/profile/user_group_permissions.yaml \
+--existing-plans-devices=$PIXI_PROJECT_ROOT/state/v1/existing_plans_and_devices.yaml \
+--update-existing-plans-devices=NEVER \
+--redis-name-prefix=v1_lab"""
+depends-on = [{ task = "init", environment = "controller" }]
+
+# The controller, the stand-in identity provider and the client.
+[feature.controller.dependencies]
+python = "3.12.*"
+
+[feature.controller.pypi-dependencies]
+bluesky-httpserver = { path = "..", editable = true, extras = ["v2"] }
+bluesky-queueserver = { path = "../bluesky-queueserver", editable = true }
+
+[feature.controller.tasks]
+init = "python lab.py init"
+issuer = { cmd = "python lab.py issuer", depends-on = ["init"] }
+# The controller fetches the signing keys over HTTPS, so it must trust the issuer's lab CA.
+controller = { cmd = "SSL_CERT_FILE=state/ca.pem bluesky-httpserver-v2 serve --config state/controller.toml", depends-on = ["init"] }
+token = { cmd = "python lab.py token", depends-on = ["init"] }
+demo = { cmd = "python demo.py", depends-on = ["init"] }
+stress = { cmd = "python stress.py", depends-on = ["init"] }
+ui = { cmd = "python ui/server.py", depends-on = ["init"] }
+
+# bluesky-httpserver v1 (which also needs pandas) and compare.py, in an environment of their own so the controller's
+# stays as it is.
+[feature.v1.dependencies]
+python = "3.12.*"
+pandas = "*"
+websockets = "*"
+
+[feature.v1.pypi-dependencies]
+bluesky-httpserver = { path = "..", editable = true, extras = ["v2"] }
+bluesky-queueserver = { path = "../bluesky-queueserver", editable = true }
+
+[feature.v1.tasks]
+v1-server = { cmd = "QSERVER_HTTP_SERVER_CONFIG=state/v1/httpserver.yml start-bluesky-httpserver", depends-on = [{ task = "init", environment = "controller" }] }
+compare = { cmd = "python compare.py", depends-on = [{ task = "init", environment = "controller" }] }
+
+[environments]
+manager = { features = ["manager"], no-default-feature = true }
+controller = { features = ["controller"], no-default-feature = true }
+v1 = { features = ["v1"], no-default-feature = true }
