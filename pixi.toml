@@ -31,9 +31,26 @@ python = "3.13.*"
 [feature.py314.dependencies]
 python = "3.14.*"
 
+# Environments of the v2 controller. They do not include the default feature, so that RE Manager comes from the
+# local clone (branch 'v2'), which has the operation catalog, dead-worker detection and controller-fronted mode
+# until they are published. The other environments are unchanged.
+[feature.v2.dependencies]
+python = "<3.15"
+pip = ">=26.2.2"
+certifi = ">=2026.10.19"
+ca-certificates = ">=2026.10.19"
+
+[feature.v2.pypi-dependencies]
+bluesky-queueserver = { path = "bluesky-queueserver", editable = true }
+bluesky-httpserver = { path = ".", editable = true, extras = ["dev"] }
+
 
 [environments]
 py311 = { features = ["py311"] }
 py312 = { features = ["py312"] }
 py313 = { features = ["py313"] }
 py314 = { features = ["py314"] }
+v2-py311 = { features = ["py311", "v2"], no-default-feature = true }
+v2-py312 = { features = ["py312", "v2"], no-default-feature = true }
+v2-py313 = { features = ["py313", "v2"], no-default-feature = true }
+v2-py314 = { features = ["py314", "v2"], no-default-feature = true }
