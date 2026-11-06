@@ -15,10 +15,16 @@ from .api import Services, create_app
 from .gateway import WorkerGateway
 from .identity import OidcAuthenticator
 from .relay import ManagerRelay, RelayUnreachable
-from .settings import Settings
+from .settings import ServerSettings, Settings
 from .store import Store
 
 logger = logging.getLogger(__name__)
+
+SHUTDOWN_GRACE_SECONDS = 5
+"""How long shutdown waits for requests to finish before cancelling them.
+
+Event streams never finish on their own.
+"""
 
 
 def create_server_app(
@@ -93,6 +99,20 @@ def create_server_app(
     return create_app(lifespan)
 
 
+def uvicorn_config(app: FastAPI, server: ServerSettings) -> uvicorn.Config:
+    """Return uvicorn's configuration for serving ``app`` at ``server``."""
+    return uvicorn.Config(
+        app,
+        host=server.host,
+        port=server.port,
+        # With lifespan "auto", uvicorn would serve without services if the lifespan failed to start.
+        lifespan="on",
+        # uvicorn waits for open responses before shutting down; event streams stay open, so they are cancelled
+        # after the grace period.
+        timeout_graceful_shutdown=SHUTDOWN_GRACE_SECONDS,
+    )
+
+
 async def serve(settings: Settings, relay: ManagerRelay) -> bool:
     """Serve the controller's HTTP API at ``settings.server`` until it is stopped or the worker gateway fails.
 
@@ -109,8 +129,13 @@ async def serve(settings: Settings, relay: ManagerRelay) -> bool:
     Returns
     -------
     bool
-        False if the app failed to start, e.g. because the store is open elsewhere, or the worker gateway
-        failed; uvicorn has logged why.
+        False if the worker gateway failed; the failure was logged.
+
+    Raises
+    ------
+    SystemExit
+        Status 3, uvicorn's startup failure: the app failed to start (e.g. the store is open elsewhere, or the
+        manager is not controller-fronted) or the address could not be bound; uvicorn has logged why.
     """
     gateway_failed = False
 
@@ -120,8 +145,7 @@ async def serve(settings: Settings, relay: ManagerRelay) -> bool:
         server.should_exit = True
 
     app = create_server_app(settings, relay, on_gateway_failure=stop)
-    # With lifespan "auto", uvicorn would serve without services if the lifespan failed to start.
-    config = uvicorn.Config(app, host=settings.server.host, port=settings.server.port, lifespan="on")
+    config = uvicorn_config(app, settings.server)
     server = uvicorn.Server(config)
     await server.serve()
-    return server.started and not gateway_failed
+    return not gateway_failed
