@@ -21,7 +21,7 @@ from bluesky_httpserver.v2.store import (
     Store,
 )
 
-from .conftest import FakeMonotonic, claimed, start
+from .conftest import CLIENT, FakeMonotonic, claimed, start
 from .fake_relay import DEMO_COUNT, FakeRelay
 
 _FINISHED = {
@@ -41,6 +41,7 @@ async def queue_and_start(
         record, _ = await store.write(
             lambda tx: tx.submit(
                 principal="alice",
+                client_id=CLIENT,
                 expected_revision=revision,
                 operation_id="demo.count",
                 operation_version="1",
@@ -88,7 +89,11 @@ async def acknowledge(store: Store, gateway: WorkerGateway) -> tuple[QueueExecut
     revision = await store.read(lambda tx: tx.revision())
     return await store.write(
         lambda tx: tx.acknowledge_recovery(
-            principal="alice", expected_revision=revision, note="checked", fence=gateway.fence_evidence
+            principal="alice",
+            client_id=CLIENT,
+            expected_revision=revision,
+            note="checked",
+            fence=gateway.fence_evidence,
         )
     )
 
@@ -327,7 +332,7 @@ async def test_safe_stop_pauses_then_aborts(store, relay, gateway):
     _, x = await queue_and_start(store)
     await gateway.step()
     uid = (await only_attempt(store)).attempt_uid
-    await store.write(lambda tx: tx.request_safe_stop(principal="alice", attempt_uid=uid))
+    await store.write(lambda tx: tx.request_safe_stop(principal="alice", client_id=CLIENT, attempt_uid=uid))
 
     await gateway.step()
     assert "re_pause deferred" in relay.calls
@@ -344,7 +349,7 @@ async def test_stop_now_pauses_at_once_then_aborts(store, relay, gateway):
     (_, second), x = await queue_and_start(store, count=2)
     await gateway.step()
     uid = (await only_attempt(store)).attempt_uid
-    await store.write(lambda tx: tx.request_stop_now(principal="bob", attempt_uid=uid))
+    await store.write(lambda tx: tx.request_stop_now(principal="bob", client_id=CLIENT, attempt_uid=uid))
 
     await gateway.step()
     assert "re_pause immediate" in relay.calls
@@ -365,13 +370,13 @@ async def test_stop_now_escalates_a_safe_stop_that_has_not_landed(store, relay, 
     await gateway.step()
     uid = (await only_attempt(store)).attempt_uid
     relay.deferred_pause_lands = False
-    await store.write(lambda tx: tx.request_safe_stop(principal="alice", attempt_uid=uid))
+    await store.write(lambda tx: tx.request_safe_stop(principal="alice", client_id=CLIENT, attempt_uid=uid))
     await gateway.step()
     await gateway.step()
     assert relay.calls.count("re_pause deferred") == 1
     assert (await only_attempt(store)).state is AttemptState.RUNNING
 
-    await store.write(lambda tx: tx.request_stop_now(principal="alice", attempt_uid=uid))
+    await store.write(lambda tx: tx.request_stop_now(principal="alice", client_id=CLIENT, attempt_uid=uid))
     await gateway.step()
     assert relay.calls.count("re_pause immediate") == 1
     await gateway.step()
@@ -390,7 +395,7 @@ async def test_completion_before_safe_stop_wins_and_the_execution_stops(store, r
     (_, second), x = await queue_and_start(store, count=2)
     await gateway.step()
     uid = (await only_attempt(store)).attempt_uid
-    await store.write(lambda tx: tx.request_safe_stop(principal="alice", attempt_uid=uid))
+    await store.write(lambda tx: tx.request_safe_stop(principal="alice", client_id=CLIENT, attempt_uid=uid))
     relay.finish_running("completed")
     await gateway.step()
     await gateway.step()

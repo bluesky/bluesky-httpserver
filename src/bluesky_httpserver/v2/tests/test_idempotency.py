@@ -8,7 +8,7 @@ from bluesky_httpserver.v2.store import (
     StoredResponse,
 )
 
-from .conftest import acquire
+from .conftest import CLIENT, acquire
 
 SCOPE = IdempotencyScope("alice", "POST", "/api/v2/operations", "k1")
 
@@ -25,6 +25,7 @@ class SubmitFn:
         self.calls += 1
         record, revision = await tx.submit(
             principal=self.principal,
+            client_id=CLIENT,
             expected_revision=self.expected_revision,
             operation_id="demo.count",
             operation_version="1",
@@ -68,7 +69,7 @@ async def test_reused_key_with_different_request_conflicts(store):
 @pytest.mark.asyncio
 async def test_keys_are_scoped_by_principal(store):
     alice = await store.write_idempotent(SCOPE, "h1", SubmitFn())
-    await store.write(lambda tx: tx.release_lease(principal="alice"))
+    await store.write(lambda tx: tx.release_lease(principal="alice", client_id=CLIENT))
     await acquire(store, "bob")
     bob_scope = IdempotencyScope("bob", SCOPE.method, SCOPE.path, SCOPE.key)
     bob = await store.write_idempotent(bob_scope, "h1", SubmitFn(expected_revision=1, principal="bob"))

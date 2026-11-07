@@ -19,7 +19,7 @@ from .principal import AuthenticationFailed, IdentityProviderUnavailable, Princi
 logger = logging.getLogger(__name__)
 
 MAX_TOKEN_LENGTH = 16_384
-MAX_PRINCIPAL_LENGTH = 255  # OIDC Core caps sub at 255 ASCII characters
+MAX_ID_LENGTH = 255  # OIDC Core caps sub at 255 ASCII characters; client ids get the same bound
 KEY_REFRESH_SECONDS = 86_400  # check signing keys daily
 MIN_KEY_FETCH_INTERVAL_SECONDS = 60  # bounds refetches triggered by unknown kids
 KEY_FETCH_TIMEOUT_SECONDS = 10.0
@@ -42,6 +42,9 @@ class OidcSettings:
         HTTPS URL of the issuer's signing keys (JWK Set).
     principal_claim : str
         Claim whose string value identifies the caller.
+    client_claim : str
+        Claim whose string value identifies the client application the caller acts through; required, so that
+        every change records which client made it.
     roles_claim : str
         Claim holding the caller's rights, as a space-delimited string or a list of strings.
     leeway_seconds : int
@@ -52,6 +55,7 @@ class OidcSettings:
     audience: str
     jwks_uri: str
     principal_claim: str = "sub"
+    client_claim: str = "azp"
     roles_claim: str = "scope"
     leeway_seconds: int = 60
 
@@ -59,6 +63,7 @@ class OidcSettings:
         _require_text("issuer", self.issuer)
         _require_text("audience", self.audience)
         _require_text("principal_claim", self.principal_claim)
+        _require_text("client_claim", self.client_claim)
         _require_text("roles_claim", self.roles_claim)
         url = urlsplit(self.jwks_uri)
         if url.scheme != "https" or not url.hostname or url.username is not None or url.password is not None:
@@ -74,8 +79,10 @@ class OidcSettings:
 
         The caller is identified by ``oid``, the object ID of the user or service principal. Entra's ``sub``
         is pairwise per client app: the same person would be a different principal in each client app, and
-        audit ids could not be looked up in Entra or Microsoft Graph. Rights come from ``roles`` because app
-        roles are the only rights claim present in both user tokens and app-only (client-credentials) tokens.
+        audit ids could not be looked up in Entra or Microsoft Graph. The client app comes from ``azp``: the
+        user's own client, or, in an on-behalf-of token, the agent's app that exchanged the user's token, which
+        then acts as the user. Rights come from ``roles`` because app roles are the only rights claim present in
+        both user tokens and app-only (client-credentials) tokens.
         The API registration must set ``requestedAccessTokenVersion: 2``; v1.0 tokens have issuer
         ``https://sts.windows.net/{tenant}/`` and are rejected. The API registration must not also sign users
         in: Entra puts app roles in the ID tokens of an app that signs users in, and such an ID token has the
@@ -98,6 +105,7 @@ class OidcSettings:
             audience=client,
             jwks_uri=f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys",
             principal_claim="oid",
+            client_claim="azp",
             roles_claim="roles",
             leeway_seconds=leeway_seconds,
         )
@@ -177,15 +185,10 @@ class OidcAuthenticator:
             raise AuthenticationFailed("malformed token")
         except jwt.InvalidTokenError:
             raise AuthenticationFailed("invalid token claims")
-        principal_id = claims.get(self._settings.principal_claim)
-        if (
-            not isinstance(principal_id, str)
-            or not principal_id.strip()
-            or len(principal_id) > MAX_PRINCIPAL_LENGTH
-        ):
-            raise AuthenticationFailed("missing or malformed principal claim")
+        principal_id = _identifier(claims, self._settings.principal_claim, "principal")
+        client_id = _identifier(claims, self._settings.client_claim, "client")
         role = _highest_role(claims.get(self._settings.roles_claim))
-        return Principal(id=principal_id, role=role, expires_at=int(claims["exp"]))
+        return Principal(id=principal_id, client_id=client_id, role=role, expires_at=int(claims["exp"]))
 
     async def _signing_key(self, kid: str) -> jwt.PyJWK:
         key = self._keys.get(kid)
@@ -271,6 +274,14 @@ class OidcAuthenticator:
 
 class _KeyFetchError(Exception):
     """The signing keys could not be fetched or contained no usable key."""
+
+
+def _identifier(claims: dict[str, Any], name: str, kind: str) -> str:
+    """The value of identifier claim ``name``: a non-blank string of at most `MAX_ID_LENGTH` characters."""
+    value = claims.get(name)
+    if not isinstance(value, str) or not value.strip() or len(value) > MAX_ID_LENGTH:
+        raise AuthenticationFailed(f"missing or malformed {kind} claim")
+    return value
 
 
 def _highest_role(raw: Any) -> Role | None:

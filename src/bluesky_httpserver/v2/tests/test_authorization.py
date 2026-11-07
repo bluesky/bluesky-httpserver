@@ -43,7 +43,7 @@ def test_bearer_token_refused(authorization, reason):
     ],
 )
 def test_authorize(held, required, allowed):
-    principal = Principal(id="p", role=held, expires_at=0)
+    principal = Principal(id="p", client_id="cli", role=held, expires_at=0)
     if allowed:
         authorize(principal, required)
         return

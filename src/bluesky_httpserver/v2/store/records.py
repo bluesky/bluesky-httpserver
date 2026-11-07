@@ -225,6 +225,8 @@ class OperationRecord:
         Identifies the descriptor the parameters were validated against.
     submitted_by : str
         Who submitted it.
+    submitted_via : str
+        Client application it was submitted through: the submitter's own client or an agent acting for it.
     submitted_at : int
         When it was submitted.
     state : OperationState
@@ -241,6 +243,7 @@ class OperationRecord:
     parameters: dict[str, Any]
     descriptor_sha256: str
     submitted_by: str
+    submitted_via: str
     submitted_at: int
     state: OperationState
     updated_at: int
@@ -299,6 +302,8 @@ class QueueExecutionRecord:
         What a failed operation does to the run.
     started_by : str
         Who started it.
+    started_via : str
+        Client application it was started through.
     started_at : int
         When it started.
     updated_at : int
@@ -309,6 +314,7 @@ class QueueExecutionRecord:
     state: QueueExecutionState
     policy: FailurePolicy
     started_by: str
+    started_via: str
     started_at: int
     updated_at: int
 
@@ -367,6 +373,8 @@ class EventRecord:
         What kind of actor caused it.
     actor_id : str
         Who caused it.
+    client_id : str or None
+        Client application a principal actor acted through; None for the scheduler and the system.
     event_type : EventType
         What happened.
     operation_uid : str or None
@@ -385,6 +393,7 @@ class EventRecord:
     timestamp: int
     actor_kind: ActorKind
     actor_id: str
+    client_id: str | None
     event_type: EventType
     operation_uid: str | None
     queue_execution_uid: str | None

@@ -62,11 +62,15 @@ PERSONAS = [
     {"sub": "agent-7", "role": "run", "title": "Autonomous agent"},
 ]
 
+# The client application the browser UI's tokens are issued to.
+CLIENT = "lab-ui"
+
 # Tokens the identity demos send; each must be refused with 401 before any handler runs.
 BAD_TOKENS = {
     "expired": "Signed by the identity provider, but expired an hour ago",
     "wrong_audience": "Signed by the identity provider for a different API",
     "wrong_issuer": "Signed with the right key, but claiming another issuer",
+    "missing_client": "Signed by the identity provider, but naming no client application (azp)",
     "hs256": "HS256 with a shared secret, the way v1 minted its own tokens",
     "alg_none": "Unsigned (alg: none)",
     "foreign_key": "Signed by an attacker's RSA key, reusing the provider's key id",
@@ -91,6 +95,7 @@ def _claims(sub: str, role: str, ttl_seconds: int, **overrides: Any) -> dict[str
         "iss": lab.ISSUER,
         "aud": lab.AUDIENCE,
         "sub": sub,
+        "azp": CLIENT,
         "scope": f"QueueServer.{role.capitalize()}",
         "iat": now,
         "nbf": now,
@@ -114,6 +119,10 @@ def bad_token(kind: str, sub: str, role: str) -> str:
         )
     if kind == "wrong_issuer":
         claims = _claims(sub, role, 600, iss="https://idp.example.org")
+        return jwt.encode(claims, key, algorithm="RS256", headers={"kid": kid})
+    if kind == "missing_client":
+        claims = _claims(sub, role, 600)
+        del claims["azp"]
         return jwt.encode(claims, key, algorithm="RS256", headers={"kid": kid})
     if kind == "hs256":
         return jwt.encode(_claims(sub, role, 600), "secret", algorithm="HS256")
@@ -221,7 +230,7 @@ def create_app(settings: Lab) -> Starlette:
             return JSONResponse({"error": f"role must be one of {', '.join(lab.ROLES)}"}, status_code=400)
         if kind == "valid":
             ttl = int(body.get("ttl_seconds", 3600))
-            encoded = lab.mint(sub, role, ttl)
+            encoded = lab.mint(sub, role, ttl, CLIENT)
         elif kind in BAD_TOKENS:
             encoded = bad_token(kind, sub, role)
         else:

@@ -110,6 +110,9 @@ class Operation(_View):
     """Identifies the catalog descriptor the parameters were validated against."""
     submitted_by: str
     """Principal that submitted it."""
+    submitted_via: str
+    """Client application it was submitted through: the principal's own client, or an agent acting on its
+    behalf."""
     submitted_at: datetime
     """When it was submitted."""
     state: str
@@ -130,7 +133,7 @@ class Queue(_View):
 
 
 class Lease(_View):
-    """Control of the instrument held by one principal."""
+    """Control of the instrument, held by one principal and shared by every client acting as it."""
 
     lease_uid: str
     """Identifies this grant of control."""
@@ -153,6 +156,8 @@ class QueueExecution(_View):
     """Whether a failed operation stops it: `stop_on_failure` or `continue_on_failure`."""
     started_by: str
     """Principal that started it."""
+    started_via: str
+    """Client application it was started through."""
     started_at: datetime
     """When it started."""
     updated_at: datetime
@@ -206,7 +211,9 @@ class Event(_View):
     actor_kind: str
     """What kind of actor caused it."""
     actor_id: str
-    """Who caused it."""
+    """Who caused it: a principal, or the queue execution the scheduler acted for."""
+    client_id: str | None
+    """Client application a principal acted through; None for the scheduler and the system."""
     event_type: str
     """What happened, e.g. `operation.submitted`."""
     operation_uid: str | None

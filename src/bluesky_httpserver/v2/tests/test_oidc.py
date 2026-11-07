@@ -35,6 +35,10 @@ SETTINGS = OidcSettings(issuer=ISSUER, audience=AUDIENCE, jwks_uri=JWKS_URI)
 TENANT = "11111111-2222-3333-4444-555555555555"
 CLIENT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 OID = "99999999-8888-7777-6666-555555555555"
+CALLER_APP = "beamline-ui"
+"""Client application the generic tokens are issued to."""
+AGENT_APP = "77777777-6666-5555-4444-333333333333"
+"""Entra app registration of an agent that exchanged a user's token on behalf of the user."""
 
 ABSENT = object()
 """Claim override that removes the claim."""
@@ -158,6 +162,7 @@ def claims(**overrides: Any) -> dict[str, Any]:
         "nbf": FromNow(0),
         "exp": FromNow(3600),
         "sub": "alice-subject",
+        "azp": CALLER_APP,
         "scope": "openid QueueServer.Edit",
     }
     return resolved(base, overrides)
@@ -178,7 +183,7 @@ async def test_accepts_valid_token(idp, idp_key):
     authenticator, fake, _ = idp
     expires_at = int(time.time()) + 3600
     token = valid(idp_key, exp=expires_at, scope="openid QueueServer.Read QueueServer.Run other")
-    expected = Principal(id="alice-subject", role=Role.RUN, expires_at=expires_at)
+    expected = Principal(id="alice-subject", client_id=CALLER_APP, role=Role.RUN, expires_at=expires_at)
     assert await authenticator.authenticate(token) == expected
     assert await authenticator.authenticate(token) == expected
     assert fake.fetches == 1
@@ -254,6 +259,8 @@ async def test_forged_signature_is_refused(idp, idp_key, attacker_key, build):
         ({"sub": ""}, "missing or malformed principal claim"),
         ({"sub": "   "}, "missing or malformed principal claim"),
         ({"sub": "x" * 256}, "missing or malformed principal claim"),
+        ({"azp": ABSENT}, "missing or malformed client claim"),
+        ({"azp": 42}, "missing or malformed client claim"),
         ({"scope": 42}, "malformed roles claim"),
         ({"scope": ["QueueServer.Read", 1]}, "malformed roles claim"),
     ],
@@ -394,6 +401,17 @@ async def test_concurrent_callers_share_one_fetch(idp, idp_key):
 
 
 @pytest.mark.asyncio
+async def test_client_claim_is_configurable(idp_key):
+    # RFC 9068 access tokens name the client in client_id; azp is then not read at all.
+    settings = dataclasses.replace(SETTINGS, client_claim="client_id")
+    fake = FakeIdentityProvider(JWKS_URI, [idp_key])
+    async with make_authenticator(settings, fake, FakeMonotonic()) as authenticator:
+        principal = await authenticator.authenticate(valid(idp_key, azp=ABSENT, client_id="agent-app"))
+        assert (principal.id, principal.client_id) == ("alice-subject", "agent-app")
+        assert await refusal(authenticator, valid(idp_key)) == "missing or malformed client claim"
+
+
+@pytest.mark.asyncio
 async def test_entra_preset(idp_key):
     settings = OidcSettings.entra(tenant_id=TENANT.upper(), client_id="{" + CLIENT + "}")
     assert settings.issuer == f"https://login.microsoftonline.com/{TENANT}/v2.0"
@@ -410,6 +428,8 @@ async def test_entra_preset(idp_key):
         "nbf": FromNow(0),
         "exp": expires_at,
         "oid": OID,
+        # An on-behalf-of token: the user is the caller, acting through the agent's app.
+        "azp": AGENT_APP,
         "sub": "pairwise-subject",
         "tid": TENANT,
         "ver": "2.0",
@@ -423,7 +443,8 @@ async def test_entra_preset(idp_key):
 
     fake = FakeIdentityProvider(settings.jwks_uri, [idp_key])
     async with make_authenticator(settings, fake, FakeMonotonic()) as authenticator:
-        assert await authenticator.authenticate(token()) == Principal(id=OID, role=Role.RUN, expires_at=expires_at)
+        expected = Principal(id=OID, client_id=AGENT_APP, role=Role.RUN, expires_at=expires_at)
+        assert await authenticator.authenticate(token()) == expected
         assert await refusal(authenticator, token(oid=ABSENT)) == "missing or malformed principal claim"
         v1_issuer = f"https://sts.windows.net/{TENANT}/"
         assert await refusal(authenticator, token(iss=v1_issuer)) == "invalid token claims"

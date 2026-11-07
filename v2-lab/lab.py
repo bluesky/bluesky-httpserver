@@ -3,7 +3,8 @@
     python lab.py init     create state/: signing and TLS keys, the controller's settings, the socket directory,
                            and the settings of bluesky-httpserver v1 for compare.py (state/v1/)
     python lab.py issuer   serve the token signing keys at https://localhost:8443/jwks.json
-    python lab.py token    print an access token; --sub names the caller, --role grants its rights
+    python lab.py token    print an access token; --sub names the caller, --role grants its rights, --client names
+                           the application it acts through, e.g. an agent acting for --sub
 
 The issuer stands in for the facility identity provider: the controller verifies tokens as it would in production,
 fetching the signing keys over HTTPS. Whoever can read state/signing-key.pem can mint any token, so this is for a
@@ -47,6 +48,8 @@ ISSUER_PORT = 8443
 ISSUER = f"https://localhost:{ISSUER_PORT}"
 JWKS_URI = f"{ISSUER}/jwks.json"
 AUDIENCE = "bluesky-httpserver-lab"
+# The client application the lab's scripts act through, named by each token's azp claim.
+CLIENT = "lab-cli"
 CONTROLLER_URL = "http://127.0.0.1:8000"
 ROLES = ("read", "edit", "run", "admin")
 
@@ -145,14 +148,16 @@ def init() -> None:
             _write_secret(V1_SETTINGS, _V1_SETTINGS.format(**{k: json.dumps(v) for k, v in yaml.items()}).encode())
 
 
-def mint(sub: str = "alice", role: str = "admin", ttl_seconds: int = 3600) -> str:
-    """Return an access token for ``sub`` that grants ``role`` and expires ``ttl_seconds`` from now."""
+def mint(sub: str = "alice", role: str = "admin", ttl_seconds: int = 3600, client: str = CLIENT) -> str:
+    """Return an access token for ``sub``, acting through ``client``, that grants ``role`` and expires
+    ``ttl_seconds`` from now."""
     key = _signing_key()
     now = int(time.time())
     claims = {
         "iss": ISSUER,
         "aud": AUDIENCE,
         "sub": sub,
+        "azp": client,
         "scope": f"QueueServer.{role.capitalize()}",
         "iat": now,
         "nbf": now,
@@ -279,13 +284,16 @@ def main() -> None:
     token.add_argument("--sub", default="alice", help="the caller (default: alice)")
     token.add_argument("--role", choices=ROLES, default="admin", help="rights granted (default: admin)")
     token.add_argument("--ttl", type=int, default=3600, help="seconds until it expires (default: 3600)")
+    token.add_argument(
+        "--client", default=CLIENT, help=f"the client application it acts through (default: {CLIENT})"
+    )
     args = parser.parse_args()
     if args.command == "init":
         init()
     elif args.command == "issuer":
         serve_issuer()
     else:
-        print(mint(args.sub, args.role, args.ttl))
+        print(mint(args.sub, args.role, args.ttl, args.client))
 
 
 if __name__ == "__main__":

@@ -53,6 +53,7 @@ _MIGRATION_1 = Migration(
             parameters_json TEXT NOT NULL,
             descriptor_sha256 TEXT NOT NULL,
             submitted_by TEXT NOT NULL,
+            submitted_via TEXT NOT NULL,
             submitted_at INTEGER NOT NULL CHECK(submitted_at >= 0),
             state TEXT NOT NULL CHECK(state IN (
                 'queued', 'cancelled', 'replaced', 'claimed', 'running', 'succeeded', 'failed', 'aborted',
@@ -84,6 +85,7 @@ _MIGRATION_1 = Migration(
             state TEXT NOT NULL CHECK(state IN ('running', 'stopping', 'blocked', 'completed', 'stopped')),
             policy TEXT NOT NULL CHECK(policy IN ('stop_on_failure', 'continue_on_failure')),
             started_by TEXT NOT NULL,
+            started_via TEXT NOT NULL,
             started_at INTEGER NOT NULL CHECK(started_at >= 0),
             updated_at INTEGER NOT NULL CHECK(updated_at >= 0)
         )
@@ -120,6 +122,7 @@ _MIGRATION_1 = Migration(
             timestamp INTEGER NOT NULL CHECK(timestamp >= 0),
             actor_kind TEXT NOT NULL CHECK(actor_kind IN ('principal', 'scheduler', 'system')),
             actor_id TEXT NOT NULL,
+            client_id TEXT CHECK((actor_kind = 'principal') = (client_id IS NOT NULL)),
             event_type TEXT NOT NULL,
             operation_uid TEXT REFERENCES operations(operation_uid),
             queue_execution_uid TEXT REFERENCES queue_executions(queue_execution_uid),
@@ -145,7 +148,7 @@ _MIGRATION_1 = Migration(
         """
         CREATE TRIGGER operations_identity_immutable
         BEFORE UPDATE OF operation_uid, operation_id, operation_version, parameters_json,
-                         descriptor_sha256, submitted_by, submitted_at
+                         descriptor_sha256, submitted_by, submitted_via, submitted_at
         ON operations
         BEGIN
             SELECT RAISE(ABORT, 'operation identity is immutable');

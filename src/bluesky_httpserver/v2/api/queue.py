@@ -116,7 +116,10 @@ async def reorder_queue(
 
     async def action(tx: Transaction) -> StoredResponse:
         snapshot = await tx.reorder(
-            principal=principal.id, expected_revision=revision, operation_uids=body.operation_uids
+            principal=principal.id,
+            client_id=principal.client_id,
+            expected_revision=revision,
+            operation_uids=body.operation_uids,
         )
         return _stored(200, QueueView.from_snapshot(snapshot), snapshot.revision)
 
@@ -160,6 +163,7 @@ async def submit_operation(
         descriptor = services.worker.catalog().validate(body.operation_id, body.operation_version, body.parameters)
         record, new_revision = await tx.submit(
             principal=principal.id,
+            client_id=principal.client_id,
             expected_revision=revision,
             operation_id=body.operation_id,
             operation_version=body.operation_version,
@@ -204,6 +208,7 @@ async def replace_operation(
         descriptor = services.worker.catalog().validate(body.operation_id, body.operation_version, body.parameters)
         record, new_revision = await tx.replace(
             principal=principal.id,
+            client_id=principal.client_id,
             expected_revision=revision,
             operation_uid=operation_uid,
             operation_id=body.operation_id,
@@ -235,7 +240,10 @@ async def cancel_operation(
 
     async def action(tx: Transaction) -> StoredResponse:
         record, new_revision = await tx.cancel(
-            principal=principal.id, expected_revision=revision, operation_uid=operation_uid
+            principal=principal.id,
+            client_id=principal.client_id,
+            expected_revision=revision,
+            operation_uid=operation_uid,
         )
         return _stored(200, OperationView.from_record(record), new_revision)
 
@@ -299,7 +307,9 @@ async def safe_stop_attempt(
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        record, revision = await tx.request_safe_stop(principal=principal.id, attempt_uid=attempt_uid)
+        record, revision = await tx.request_safe_stop(
+            principal=principal.id, client_id=principal.client_id, attempt_uid=attempt_uid
+        )
         return _stored(202, AttemptView.from_record(record), revision)
 
     return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
@@ -326,7 +336,9 @@ async def stop_attempt_now(
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        record, revision = await tx.request_stop_now(principal=principal.id, attempt_uid=attempt_uid)
+        record, revision = await tx.request_stop_now(
+            principal=principal.id, client_id=principal.client_id, attempt_uid=attempt_uid
+        )
         return _stored(202, AttemptView.from_record(record), revision)
 
     return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
@@ -370,7 +382,7 @@ async def start_queue_execution(
 
     async def action(tx: Transaction) -> StoredResponse:
         record, new_revision = await tx.start_queue_execution(
-            principal=principal.id, expected_revision=revision, policy=body.policy
+            principal=principal.id, client_id=principal.client_id, expected_revision=revision, policy=body.policy
         )
         return _stored(201, QueueExecutionView.from_record(record), new_revision)
 
@@ -400,7 +412,10 @@ async def stop_queue_execution(
 
     async def action(tx: Transaction) -> StoredResponse:
         record, new_revision = await tx.stop_queue_execution(
-            principal=principal.id, expected_revision=revision, queue_execution_uid=queue_execution_uid
+            principal=principal.id,
+            client_id=principal.client_id,
+            expected_revision=revision,
+            queue_execution_uid=queue_execution_uid,
         )
         return _stored(200, QueueExecutionView.from_record(record), new_revision)
 
@@ -430,6 +445,7 @@ async def acknowledge_recovery(
     async def action(tx: Transaction) -> StoredResponse:
         record, new_revision = await tx.acknowledge_recovery(
             principal=principal.id,
+            client_id=principal.client_id,
             expected_revision=revision,
             note=body.note,
             fence=services.worker.fence_evidence,

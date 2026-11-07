@@ -193,9 +193,9 @@ class QueueServerClient:
         """Blocking `AsyncQueueServerClient.renew_lease`."""
         return self._run(self._client.renew_lease(ttl_seconds, idempotency_key=idempotency_key))
 
-    def release_lease(self, *, idempotency_key: str | None = None) -> None:
+    def release_lease(self, *, lease_uid: str | None = None, idempotency_key: str | None = None) -> None:
         """Blocking `AsyncQueueServerClient.release_lease`."""
-        return self._run(self._client.release_lease(idempotency_key=idempotency_key))
+        return self._run(self._client.release_lease(lease_uid=lease_uid, idempotency_key=idempotency_key))
 
     def override_lease(self, reason: str, ttl_seconds: int, *, idempotency_key: str | None = None) -> Lease:
         """Blocking `AsyncQueueServerClient.override_lease`."""
@@ -297,9 +297,9 @@ class QueueServerClient:
         return edit(self.queue())
 
     @contextlib.contextmanager
-    def hold_lease(self, ttl_seconds: int = 60) -> Generator[LeaseHolder, None, None]:
+    def hold_lease(self, ttl_seconds: int = 60, *, release: bool = True) -> Generator[LeaseHolder, None, None]:
         """Blocking `AsyncQueueServerClient.hold_lease`; renewal runs on the client's thread meanwhile."""
-        manager = self._client.hold_lease(ttl_seconds)
+        manager = self._client.hold_lease(ttl_seconds, release=release)
         holder = self._run(manager.__aenter__())
         try:
             yield holder

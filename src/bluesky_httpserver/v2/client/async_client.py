@@ -417,12 +417,15 @@ class AsyncQueueServerClient:
         return Lease.model_validate_json(response.content)
 
     async def renew_lease(self, ttl_seconds: int, *, idempotency_key: str | None = None) -> Lease:
-        """Extend the caller's control to ``ttl_seconds`` from now. Needs the Edit role and the lease.
+        """Extend the caller's control to at least ``ttl_seconds`` from now. Needs the Edit role and the lease.
+
+        A renewal never shortens the lease, so a client renewing it briefly cannot cut short a longer renewal by
+        another client acting as the caller.
 
         Parameters
         ----------
         ttl_seconds : int
-            Seconds from now until control lapses unless renewed again.
+            Control lasts at least this many seconds from now, unless released or overridden.
         idempotency_key : str, optional
             Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
@@ -444,24 +447,30 @@ class AsyncQueueServerClient:
         )
         return Lease.model_validate_json(response.content)
 
-    async def release_lease(self, *, idempotency_key: str | None = None) -> None:
+    async def release_lease(self, *, lease_uid: str | None = None, idempotency_key: str | None = None) -> None:
         """Give up the caller's control. Needs the Edit role and the lease.
 
-        A running queue execution keeps running.
+        The lease is the caller's, so this ends control for every client acting as the caller, such as an agent
+        acting on its behalf. A running queue execution keeps running.
 
         Parameters
         ----------
+        lease_uid : str, optional
+            Release only this grant, so as to end only control this client took: if the caller holds another grant,
+            e.g. one taken through another client after this one lapsed, nothing is released.
         idempotency_key : str, optional
             Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Raises
         ------
         ApiError
-            Code ``lease_required`` if the caller does not hold the lease.
+            Code ``lease_required`` if the caller does not hold the lease, or holds another grant than
+            ``lease_uid``.
         """
         await self._mutate(
             "POST",
             f"{_API}/control-lease/release",
+            json=None if lease_uid is None else {"lease_uid": lease_uid},
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -892,16 +901,29 @@ class AsyncQueueServerClient:
         return await edit(await self.queue())
 
     @contextlib.asynccontextmanager
-    async def hold_lease(self, ttl_seconds: int = 60) -> AsyncGenerator[LeaseHolder, None]:
-        """Hold the control lease while in the context: acquire it, renew it in the background, release it on exit.
+    async def hold_lease(
+        self, ttl_seconds: int = 60, *, release: bool = True
+    ) -> AsyncGenerator[LeaseHolder, None]:
+        """Hold the control lease while in the context, renewing it in the background.
 
-        A lease the caller already holds is adopted. Renewal happens every third of ``ttl_seconds``; if the lease
-        is lost (expired, overridden or released elsewhere), renewal stops and `LeaseHolder.lost` says why.
+        Takes control, or adopts the lease if the caller already holds it: the lease belongs to the caller, not to
+        this client, and every client acting as the caller shares it, such as an agent acting on its behalf.
+
+        On exit renewal stops, and with ``release`` a lease this context took is released, so control passes on at
+        once. A lease it adopted is left to the client that took it, since releasing it would end control for that
+        client too. The release names the grant this context took, so it never ends a newer one taken through
+        another client after this one lapsed. A release that fails is logged, and control lapses at its expiry.
+
+        Renewal happens every third of ``ttl_seconds``; if the lease is lost (expired, overridden or released
+        elsewhere), renewal stops and `LeaseHolder.lost` says why.
 
         Parameters
         ----------
         ttl_seconds : int, optional
-            Seconds each grant lasts unless renewed.
+            The lease is held for at least this many seconds after each renewal.
+        release : bool, optional
+            Release on exit a lease this context took. If false, control outlives the context until it lapses or
+            is released, e.g. to hand it to the caller's next session without a gap another principal could take.
 
         Yields
         ------
@@ -910,11 +932,12 @@ class AsyncQueueServerClient:
         Raises
         ------
         ApiError
-            Code ``lease_held`` if someone else holds the lease; on exit, any error releasing it, unless the
-            context's body raised, in which case that error is logged.
+            Code ``lease_held`` if someone else holds the lease.
         """
+        taken: str | None = None
         try:
             lease = await self.acquire_lease(ttl_seconds)
+            taken = lease.lease_uid
         except ApiError as error:
             if error.code != "lease_held":
                 raise
@@ -927,23 +950,13 @@ class AsyncQueueServerClient:
                 raise
         holder = LeaseHolder(lease)
         task = asyncio.create_task(self._keep_renewed(holder, ttl_seconds), name="lease-renewal")
-        body_failed = True
         try:
             yield holder
-            body_failed = False
         finally:
             task.cancel()
             await asyncio.wait([task])
-            if holder.lost is None:
-                try:
-                    await self.release_lease()
-                except (ApiError, httpx.TransportError) as error:
-                    if isinstance(error, ApiError) and error.code == "lease_required":
-                        pass  # it lapsed or was taken since the last renewal
-                    elif not body_failed:
-                        raise
-                    else:
-                        logger.warning("could not release the control lease: %s", error)
+            if release and taken is not None and holder.lost is None:
+                await self._release_taken(taken)
 
     async def _keep_renewed(self, holder: LeaseHolder, ttl_seconds: int) -> None:
         interval = ttl_seconds / 3
@@ -958,6 +971,14 @@ class AsyncQueueServerClient:
                     return
                 # The lease stays valid until it expires, so two more tries remain.
                 logger.warning("could not renew the control lease, retrying in %g s: %s", interval, error)
+
+    async def _release_taken(self, lease_uid: str) -> None:
+        try:
+            await self.release_lease(lease_uid=lease_uid)
+        except (ApiError, httpx.TransportError) as error:
+            # lease_required: the grant has ended already, by expiry, override or a release elsewhere.
+            if not (isinstance(error, ApiError) and error.code == "lease_required"):
+                logger.warning("could not release the control lease, which lapses at its expiry: %s", error)
 
     async def stream_events(
         self,

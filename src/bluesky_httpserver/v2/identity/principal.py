@@ -40,7 +40,11 @@ class Principal:
     Attributes
     ----------
     id : str
-        Stable identifier of the caller; recorded as lease holder, submitter and event actor.
+        Stable identifier of the caller; recorded as lease holder, submitter and event actor. The lease is the
+        caller's, whichever client it acts through.
+    client_id : str
+        Client application the caller acts through: its own client, or an agent acting on its behalf. Recorded
+        with every change the caller makes; it grants nothing.
     role : Role or None
         Highest role held; None if the caller holds no controller role.
     expires_at : int
@@ -49,6 +53,7 @@ class Principal:
     """
 
     id: str
+    client_id: str
     role: Role | None
     expires_at: int
 

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from ..store import StoredResponse, Transaction
 from .dependencies import AdminPrincipal, EditPrincipal, ReadPrincipal, ServicesDep
 from .errors import error_responses
-from .models import ControlLeaseView, LeaseOverrideRequest, LeaseRequest, LeaseView
+from .models import ControlLeaseView, LeaseOverrideRequest, LeaseReleaseRequest, LeaseRequest, LeaseView
 from .preconditions import IDEMPOTENCY_ERRORS, mutation_headers, require_idempotency_key, run_idempotent
 
 router = APIRouter(tags=["lease"])
@@ -34,13 +34,16 @@ async def acquire_control_lease(
 ) -> JSONResponse:
     """Take control of the instrument. Needs the Edit role.
 
-    Only the holder may edit the queue or start and stop queue executions. Fails with `lease_held` if anyone
-    holds control, the caller included; the holder renews instead.
+    Only the holder may edit the queue, start queue executions or acknowledge recovery. The lease is the
+    principal's: every client acting as the principal, such as an agent acting on a user's behalf, shares it.
+    Fails with `lease_held` if anyone holds control, the caller included; the holder renews instead.
     """
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        lease = await tx.acquire_lease(principal=principal.id, ttl_seconds=body.ttl_seconds)
+        lease = await tx.acquire_lease(
+            principal=principal.id, client_id=principal.client_id, ttl_seconds=body.ttl_seconds
+        )
         return StoredResponse(201, LeaseView.from_record(lease).model_dump(mode="json"), None)
 
     return await run_idempotent(request, services, principal, key=key, body=body, revision=None, action=action)
@@ -55,11 +58,17 @@ async def acquire_control_lease(
 async def renew_control_lease(
     request: Request, body: LeaseRequest, services: ServicesDep, principal: EditPrincipal
 ) -> JSONResponse:
-    """Extend the caller's control to `ttl_seconds` from now. Needs the Edit role and the lease."""
+    """Extend the caller's control to at least `ttl_seconds` from now. Needs the Edit role and the lease.
+
+    A renewal never shortens the lease, so a client renewing it briefly cannot cut short a longer renewal by
+    another client acting as the same principal.
+    """
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        lease = await tx.renew_lease(principal=principal.id, ttl_seconds=body.ttl_seconds)
+        lease = await tx.renew_lease(
+            principal=principal.id, client_id=principal.client_id, ttl_seconds=body.ttl_seconds
+        )
         return StoredResponse(200, LeaseView.from_record(lease).model_dump(mode="json"), None)
 
     return await run_idempotent(request, services, principal, key=key, body=body, revision=None, action=action)
@@ -68,21 +77,30 @@ async def renew_control_lease(
 @router.post(
     "/control-lease/release",
     response_model=ControlLeaseView,
-    responses=error_responses(*IDEMPOTENCY_ERRORS, "lease_required"),
+    responses=error_responses("invalid_request", *IDEMPOTENCY_ERRORS, "lease_required"),
     openapi_extra=mutation_headers(if_match=False),
 )
-async def release_control_lease(request: Request, services: ServicesDep, principal: EditPrincipal) -> JSONResponse:
+async def release_control_lease(
+    request: Request, services: ServicesDep, principal: EditPrincipal, body: LeaseReleaseRequest | None = None
+) -> JSONResponse:
     """Give up the caller's control. Needs the Edit role and the lease.
 
-    A running queue execution keeps running.
+    Ends control for every client acting as the caller. A running queue execution keeps running. A body naming
+    `lease_uid` releases only that grant, so a client ends only control it took: if the caller holds another grant,
+    e.g. one taken through another client after this one lapsed, the call fails with `lease_required` and nothing
+    changes.
     """
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        await tx.release_lease(principal=principal.id)
+        await tx.release_lease(
+            principal=principal.id,
+            client_id=principal.client_id,
+            lease_uid=None if body is None else body.lease_uid,
+        )
         return StoredResponse(200, ControlLeaseView(lease=None).model_dump(mode="json"), None)
 
-    return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
+    return await run_idempotent(request, services, principal, key=key, body=body, revision=None, action=action)
 
 
 @router.post(
@@ -101,7 +119,9 @@ async def override_control_lease(
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
-        lease = await tx.override_lease(principal=principal.id, reason=body.reason, ttl_seconds=body.ttl_seconds)
+        lease = await tx.override_lease(
+            principal=principal.id, client_id=principal.client_id, reason=body.reason, ttl_seconds=body.ttl_seconds
+        )
         return StoredResponse(200, LeaseView.from_record(lease).model_dump(mode="json"), None)
 
     return await run_idempotent(request, services, principal, key=key, body=body, revision=None, action=action)

@@ -80,9 +80,11 @@ class LeaseHeld(StoreError):
 
 
 class LeaseRequired(StoreError):
-    def __init__(self, principal: str):
+    def __init__(self, principal: str, lease_uid: str | None = None):
         self.principal = principal
-        super().__init__(f"{principal} does not hold the control lease")
+        self.lease_uid = lease_uid
+        held = "the control lease" if lease_uid is None else f"control lease {lease_uid}"
+        super().__init__(f"{principal} does not hold {held}")
 
 
 class QueueEmpty(StoreError):

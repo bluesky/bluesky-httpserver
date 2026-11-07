@@ -17,12 +17,13 @@ from bluesky_httpserver.v2.identity import AuthenticationFailed, IdentityProvide
 from bluesky_httpserver.v2.server import create_server_app
 from bluesky_httpserver.v2.store import Store
 
-from ..conftest import server_settings
+from ..conftest import CLIENT, server_settings
 from ..fake_relay import FakeRelay
 
 
 class FakeAuthenticator:
-    """Accepts each name in `ROLES` as a token for that principal; ``idp-down`` fails to verify.
+    """Accepts each name in `ROLES` as a token for that principal, acting through `CLIENT`, and each name in
+    `AGENTS` as a token of an agent acting on a principal's behalf; ``idp-down`` fails to verify.
 
     The store fixture gives alice the lease; carol has alice's role but not the lease.
     """
@@ -35,6 +36,8 @@ class FakeAuthenticator:
         "admin": Role.ADMIN,
         "nobody": None,
     }
+    AGENTS: dict[str, str] = {"agent-for-alice": "alice"}
+    AGENT_CLIENT = "agent"
 
     def __init__(self) -> None:
         self.expires_at = int(time.time()) + 3600
@@ -42,8 +45,13 @@ class FakeAuthenticator:
     async def authenticate(self, token: str) -> Principal:
         if token == "idp-down":
             raise IdentityProviderUnavailable()
+        if token in self.AGENTS:
+            principal = self.AGENTS[token]
+            return Principal(
+                id=principal, client_id=self.AGENT_CLIENT, role=self.ROLES[principal], expires_at=self.expires_at
+            )
         if token in self.ROLES:
-            return Principal(id=token, role=self.ROLES[token], expires_at=self.expires_at)
+            return Principal(id=token, client_id=CLIENT, role=self.ROLES[token], expires_at=self.expires_at)
         raise AuthenticationFailed("invalid token signature")
 
 

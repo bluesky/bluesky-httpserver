@@ -21,7 +21,7 @@ from bluesky_httpserver.v2.gateway import WorkerGateway
 from bluesky_httpserver.v2.store import AttemptState, EventRecord, EventType, OperationState, Store
 from bluesky_httpserver.v2.zmq_relay import ZmqManagerRelay
 
-from .conftest import acquire, start
+from .conftest import CLIENT, acquire, start
 
 # Startup code of the worker, which runs in RE Manager's environment.
 STARTUP = """
@@ -183,6 +183,7 @@ async def test_gateway_runs_an_operation_on_re_manager(re_manager, db_path):
             _, revision = await store.write(
                 lambda tx: tx.submit(
                     principal="alice",
+                    client_id=CLIENT,
                     expected_revision=0,
                     operation_id="demo.count",
                     operation_version="1",
@@ -249,6 +250,7 @@ async def test_killed_controller_resumes_the_running_attempt(re_manager, db_path
             _, revision = await store.write(
                 lambda tx: tx.submit(
                     principal="alice",
+                    client_id=CLIENT,
                     expected_revision=0,
                     operation_id="demo.count",
                     operation_version="1",
@@ -328,6 +330,7 @@ async def test_stop_now_interrupts_a_wait(re_manager, db_path):
                 record, revision = await store.write(
                     lambda tx, parameters=parameters, revision=revision: tx.submit(
                         principal="alice",
+                        client_id=CLIENT,
                         expected_revision=revision,
                         operation_id="demo.count",
                         operation_version="1",
@@ -344,7 +347,9 @@ async def test_stop_now_interrupts_a_wait(re_manager, db_path):
             await asyncio.sleep(2)  # the first reading is taken; the plan waits
 
             # Bob does not hold the lease, which alice does.
-            await store.write(lambda tx: tx.request_stop_now(principal="bob", attempt_uid=attempt_uid))
+            await store.write(
+                lambda tx: tx.request_stop_now(principal="bob", client_id=CLIENT, attempt_uid=attempt_uid)
+            )
             requested = time.monotonic()
             async with asyncio.timeout(15):
                 events = await events_until(store, EventType.QUEUE_EXECUTION_STOPPED)

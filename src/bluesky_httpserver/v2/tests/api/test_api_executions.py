@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from ..conftest import acquire, claimed
+from ..conftest import CLIENT, acquire, claimed
 from .conftest import headers, new_key, queue, submit
 
 EXECUTIONS = "/api/v2/queue-executions"
@@ -41,13 +41,30 @@ async def test_start_guards(client):
 
 @pytest.mark.asyncio
 async def test_start_requires_run_role(client, store):
-    await store.write(lambda tx: tx.release_lease(principal="alice"))
+    await store.write(lambda tx: tx.release_lease(principal="alice", client_id=CLIENT))
     await acquire(store, "bob")
     assert (await submit(client, 0, token="bob")).status_code == 201
     response = await start(client, 1, token="bob")
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "insufficient_role"
     assert response.json()["error"]["details"]["required_role"] == "QueueServer.Run"
+
+
+@pytest.mark.asyncio
+async def test_an_agent_acting_for_the_holder_uses_her_lease_and_is_recorded(client):
+    # The store fixture gave alice the lease through her own client; the agent's token names alice as the caller.
+    submitted = await submit(client, 0, token="agent-for-alice")
+    assert submitted.status_code == 201
+    assert (submitted.json()["submitted_by"], submitted.json()["submitted_via"]) == ("alice", "agent")
+    started = await start(client, 1, token="agent-for-alice")
+    assert started.status_code == 201
+    assert (started.json()["started_by"], started.json()["started_via"]) == ("alice", "agent")
+    events = (await client.get("/api/v2/events", headers=headers("reader"))).json()["events"]
+    assert [(e["event_type"], e["actor_id"], e["client_id"]) for e in events[:3]] == [
+        ("lease.acquired", "alice", CLIENT),
+        ("operation.submitted", "alice", "agent"),
+        ("queue_execution.started", "alice", "agent"),
+    ]
 
 
 @pytest.mark.asyncio

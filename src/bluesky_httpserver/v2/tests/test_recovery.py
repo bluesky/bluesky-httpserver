@@ -20,6 +20,7 @@ from bluesky_httpserver.v2.store import (
 )
 
 from .conftest import (
+    CLIENT,
     cancel,
     claim,
     claimed,
@@ -60,7 +61,9 @@ async def acknowledge(
     store: Store, revision: int, note: str = "checked", fence: Callable[[], Mapping[str, Any]] = idle
 ) -> tuple[QueueExecutionRecord, int]:
     return await store.write(
-        lambda tx: tx.acknowledge_recovery(principal="alice", expected_revision=revision, note=note, fence=fence)
+        lambda tx: tx.acknowledge_recovery(
+            principal="alice", client_id=CLIENT, expected_revision=revision, note=note, fence=fence
+        )
     )
 
 
@@ -134,7 +137,7 @@ async def test_stop_request(store, clock, method, field, event_type):
 
     # Alice holds the lease; a stop needs none, so bob may ask.
     def request(principal: str = "bob"):
-        return store.write(lambda tx: getattr(tx, method)(principal=principal, attempt_uid=uid))
+        return store.write(lambda tx: getattr(tx, method)(principal=principal, client_id=CLIENT, attempt_uid=uid))
 
     revision, count = await revision_and_event_count(store)
     requested, new_revision = await request()
@@ -166,7 +169,9 @@ async def test_stop_request_stops_the_execution_whatever_the_outcome(store, meth
     b, revision = await submit(store, 1)
     started, _ = await start(store, revision, FailurePolicy.CONTINUE_ON_FAILURE)
     attempt, _, _ = await claimed(store)
-    await store.write(lambda tx: getattr(tx, method)(principal="bob", attempt_uid=attempt.attempt_uid))
+    await store.write(
+        lambda tx: getattr(tx, method)(principal="bob", client_id=CLIENT, attempt_uid=attempt.attempt_uid)
+    )
 
     await finish(store, attempt.attempt_uid, outcome)
     assert (await execution(store, started.queue_execution_uid)).state is QueueExecutionState.STOPPED

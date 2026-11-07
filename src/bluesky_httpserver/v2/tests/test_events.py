@@ -6,7 +6,7 @@ import pytest
 
 from bluesky_httpserver.v2.store import EventType, StaleRevision, Store
 
-from .conftest import acquire, claimed, mark_running, start, submit
+from .conftest import CLIENT, acquire, claimed, mark_running, start, submit
 
 
 @pytest.mark.asyncio
@@ -19,6 +19,7 @@ async def test_queue_and_events_survive_reopen(db_path, clock):
         c, revision = await store.write(
             lambda tx: tx.replace(
                 principal="alice",
+                client_id=CLIENT,
                 expected_revision=revision,
                 operation_uid=a.operation_uid,
                 operation_id="demo.count",
@@ -28,12 +29,17 @@ async def test_queue_and_events_survive_reopen(db_path, clock):
             )
         )
         _, revision = await store.write(
-            lambda tx: tx.cancel(principal="alice", expected_revision=revision, operation_uid=b.operation_uid)
+            lambda tx: tx.cancel(
+                principal="alice", client_id=CLIENT, expected_revision=revision, operation_uid=b.operation_uid
+            )
         )
         d, revision = await submit(store, revision)
         reordered = await store.write(
             lambda tx: tx.reorder(
-                principal="alice", expected_revision=revision, operation_uids=[d.operation_uid, c.operation_uid]
+                principal="alice",
+                client_id=CLIENT,
+                expected_revision=revision,
+                operation_uids=[d.operation_uid, c.operation_uid],
             )
         )
         execution, _ = await start(store, reordered.revision)

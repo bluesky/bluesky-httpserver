@@ -233,17 +233,22 @@ async def test_submit_is_checked_against_the_catalog(live: LiveController):
 
 
 @pytest.mark.asyncio
-async def test_hold_lease_renews_releases_and_notices_loss(live: LiveController):
+async def test_hold_lease_renews_shares_and_notices_loss(live: LiveController):
     async with (
         AsyncQueueServerClient(live.url, "alice") as alice,
+        AsyncQueueServerClient(live.url, "agent-for-alice") as agent,
         AsyncQueueServerClient(live.url, "admin") as admin,
     ):
         async with alice.hold_lease(ttl_seconds=5) as holder:
             expires_at = holder.lease.expires_at
             await asyncio.sleep(2.5)
             assert holder.lease.expires_at > expires_at
+            # An agent acting for alice adopts her lease; leaving its context does not end it for her.
+            async with agent.hold_lease(ttl_seconds=5) as shared:
+                assert shared.lease.lease_uid == holder.lease.lease_uid
             lease = await alice.lease()
-            assert lease is not None and lease.holder == "alice"
+            assert lease is not None and lease.lease_uid == holder.lease.lease_uid
+        # Leaving hers releases the lease she took.
         assert await alice.lease() is None
 
         await alice.acquire_lease(60)
@@ -255,6 +260,27 @@ async def test_hold_lease_renews_releases_and_notices_loss(live: LiveController)
             assert holder.lost.code == "lease_required"
         lease = await alice.lease()
         assert lease is not None and lease.holder == "admin"
+
+
+@pytest.mark.asyncio
+async def test_hold_lease_keeps_or_releases_only_the_grant_it_took(live: LiveController):
+    async with (
+        AsyncQueueServerClient(live.url, "alice") as alice,
+        AsyncQueueServerClient(live.url, "agent-for-alice") as agent,
+    ):
+        async with alice.hold_lease(ttl_seconds=60, release=False) as kept:
+            pass
+        lease = await alice.lease()
+        assert lease is not None and lease.lease_uid == kept.lease.lease_uid
+        await alice.release_lease()
+
+        # The grant this context took ends, and the agent takes a new one for alice before the context exits: the
+        # release on exit names the ended grant, so the agent's stays.
+        async with alice.hold_lease(ttl_seconds=60):
+            await agent.release_lease()
+            newer = await agent.acquire_lease(60)
+        lease = await alice.lease()
+        assert lease is not None and lease.lease_uid == newer.lease_uid
 
 
 @pytest.mark.asyncio

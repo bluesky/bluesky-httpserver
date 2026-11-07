@@ -1618,7 +1618,8 @@ const FILTERS = {
 };
 
 function actorChip(ev) {
-  if (ev.actor_kind === "principal") return h("span", { class: "actor", title: "principal (from the verified token)" }, ev.actor_id);
+  if (ev.actor_kind === "principal")
+    return h("span", { class: "actor", title: `principal ${ev.actor_id} acting through client ${ev.client_id} (from the verified token)` }, ev.actor_id, h("span", { class: "dim" }, ` via ${ev.client_id}`));
   return h("span", { class: `actor ${ev.actor_kind}`, title: `${ev.actor_kind} ${ev.actor_id}` }, ev.actor_kind);
 }
 

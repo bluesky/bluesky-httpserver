@@ -65,6 +65,13 @@ class LeaseRequest(_RequestBody):
     """Seconds from now until control lapses unless renewed."""
 
 
+class LeaseReleaseRequest(_RequestBody):
+    """Give up control of the instrument, if the caller's lease is still the grant named."""
+
+    lease_uid: str
+    """The grant to release; if the caller holds another grant, nothing is released."""
+
+
 class LeaseOverrideRequest(_RequestBody):
     """Take control of the instrument from its holder."""
 
@@ -121,6 +128,9 @@ class OperationView(_Model):
     """Identifies the catalog descriptor the parameters were validated against."""
     submitted_by: str
     """Principal that submitted it."""
+    submitted_via: str
+    """Client application it was submitted through: the principal's own client, or an agent acting on its
+    behalf."""
     submitted_at: datetime
     """When it was submitted."""
     state: OperationState
@@ -139,6 +149,7 @@ class OperationView(_Model):
             parameters=record.parameters,
             descriptor_sha256=record.descriptor_sha256,
             submitted_by=record.submitted_by,
+            submitted_via=record.submitted_via,
             submitted_at=utc(record.submitted_at),
             state=record.state,
             updated_at=utc(record.updated_at),
@@ -163,7 +174,7 @@ class QueueView(_Model):
 
 
 class LeaseView(_Model):
-    """Control of the instrument held by one principal."""
+    """Control of the instrument, held by one principal and shared by every client acting as it."""
 
     lease_uid: str
     """Identifies this grant of control."""
@@ -202,6 +213,8 @@ class QueueExecutionView(_Model):
     """Whether a failed operation stops it."""
     started_by: str
     """Principal that started it."""
+    started_via: str
+    """Client application it was started through."""
     started_at: datetime
     """When it started."""
     updated_at: datetime
@@ -214,6 +227,7 @@ class QueueExecutionView(_Model):
             state=record.state,
             policy=record.policy,
             started_by=record.started_by,
+            started_via=record.started_via,
             started_at=utc(record.started_at),
             updated_at=utc(record.updated_at),
         )
@@ -287,7 +301,9 @@ class EventView(_Model):
     actor_kind: ActorKind
     """What kind of actor caused it."""
     actor_id: str
-    """Who caused it."""
+    """Who caused it: a principal, or the queue execution the scheduler acted for."""
+    client_id: str | None
+    """Client application a principal acted through; null for the scheduler and the system."""
     event_type: EventType
     """What happened."""
     operation_uid: str | None
@@ -309,6 +325,7 @@ class EventView(_Model):
             timestamp=utc(record.timestamp),
             actor_kind=record.actor_kind,
             actor_id=record.actor_id,
+            client_id=record.client_id,
             event_type=record.event_type,
             operation_uid=record.operation_uid,
             queue_execution_uid=record.queue_execution_uid,

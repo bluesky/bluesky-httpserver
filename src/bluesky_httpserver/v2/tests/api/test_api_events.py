@@ -8,6 +8,7 @@ import pytest
 
 from bluesky_httpserver.v2.api.models import EventView
 
+from ..conftest import CLIENT
 from .conftest import headers, submit
 
 STREAM = "/api/v2/events/stream"
@@ -80,6 +81,6 @@ async def test_heartbeat(client, authenticator):
 async def test_live_delivery(client, authenticator, store):
     authenticator.expires_at = int(time.time()) + 1
     task = asyncio.create_task(stream(client, last_event_id="1"))
-    await store.write(lambda tx: tx.release_lease(principal="alice"))
+    await store.write(lambda tx: tx.release_lease(principal="alice", client_id=CLIENT))
     response = await task
     assert "id: 2\nevent: lease.released\n" in response.text

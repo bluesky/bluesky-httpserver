@@ -32,12 +32,20 @@ the facility identity provider. Its roles bound what the caller may do; each rol
 | Run | `QueueServer.Run` | starting queue executions, stopping them and their operations, and recovery |
 | Admin | `QueueServer.Admin` | taking the control lease from its holder |
 
+The token must also name the client application it was issued to, such as an agent acting on a user's
+behalf; a token that does not is refused. Every change is recorded as the principal's, together with that
+client: `submitted_via` on operations, `started_via` on queue executions and `client_id` on events.
+
 ## Queueing work
 
 1. `GET /api/v2/catalog` lists the operations that may be submitted, with the JSON Schema of each one's
    `parameters`.
 2. `POST /api/v2/control-lease` takes control of the instrument: only the holder may edit the queue, start a
-   queue execution or acknowledge recovery. Renew before `expires_at`; release when done.
+   queue execution or acknowledge recovery. Control belongs to the principal, not the client: every client
+   acting as it, such as an agent acting for a user, shares one lease. On `lease_held`, renew instead; that
+   fails with `lease_required` if someone else holds it. Renew before `expires_at`; a renewal never shortens
+   the lease. Releasing ends control for all of the principal's clients, so a client that is done just stops
+   renewing.
 3. `GET /api/v2/queue` returns the queue, and its revision as the `ETag` header, e.g. `"qrev-7"`.
 4. `POST /api/v2/operations` with `If-Match: "qrev-7"` and a new `Idempotency-Key`. The response's `ETag` is
    the new revision, for the next edit.

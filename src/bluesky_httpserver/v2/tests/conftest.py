@@ -108,8 +108,16 @@ def server_settings(store_path: Path, **gateway: float) -> Settings:
     )
 
 
-async def acquire(store: Store, principal: str = "alice", ttl_seconds: int = 3600) -> LeaseRecord:
-    return await store.write(lambda tx: tx.acquire_lease(principal=principal, ttl_seconds=ttl_seconds))
+# The client application the tests' principals act through, unless a test names another.
+CLIENT = "cli"
+
+
+async def acquire(
+    store: Store, principal: str = "alice", ttl_seconds: int = 3600, *, client_id: str = CLIENT
+) -> LeaseRecord:
+    return await store.write(
+        lambda tx: tx.acquire_lease(principal=principal, client_id=client_id, ttl_seconds=ttl_seconds)
+    )
 
 
 async def submit(
@@ -119,10 +127,12 @@ async def submit(
     parameters: dict[str, Any] | None = None,
     *,
     principal: str = "alice",
+    client_id: str = CLIENT,
 ) -> tuple[OperationRecord, int]:
     return await store.write(
         lambda tx: tx.submit(
             principal=principal,
+            client_id=client_id,
             expected_revision=revision,
             operation_id=operation_id,
             operation_version="1",
@@ -133,19 +143,22 @@ async def submit(
 
 
 async def cancel(
-    store: Store, revision: int, operation_uid: str, *, principal: str = "alice"
+    store: Store, revision: int, operation_uid: str, *, principal: str = "alice", client_id: str = CLIENT
 ) -> tuple[OperationRecord, int]:
     return await store.write(
-        lambda tx: tx.cancel(principal=principal, expected_revision=revision, operation_uid=operation_uid)
+        lambda tx: tx.cancel(
+            principal=principal, client_id=client_id, expected_revision=revision, operation_uid=operation_uid
+        )
     )
 
 
 async def replace(
-    store: Store, revision: int, operation_uid: str, *, principal: str = "alice"
+    store: Store, revision: int, operation_uid: str, *, principal: str = "alice", client_id: str = CLIENT
 ) -> tuple[OperationRecord, int]:
     return await store.write(
         lambda tx: tx.replace(
             principal=principal,
+            client_id=client_id,
             expected_revision=revision,
             operation_uid=operation_uid,
             operation_id="demo.count",
@@ -157,10 +170,17 @@ async def replace(
 
 
 async def reorder(
-    store: Store, revision: int, operation_uids: Sequence[str], *, principal: str = "alice"
+    store: Store,
+    revision: int,
+    operation_uids: Sequence[str],
+    *,
+    principal: str = "alice",
+    client_id: str = CLIENT,
 ) -> QueueSnapshot:
     return await store.write(
-        lambda tx: tx.reorder(principal=principal, expected_revision=revision, operation_uids=operation_uids)
+        lambda tx: tx.reorder(
+            principal=principal, client_id=client_id, expected_revision=revision, operation_uids=operation_uids
+        )
     )
 
 
@@ -169,19 +189,29 @@ async def revision_and_event_count(store: Store) -> tuple[int, int]:
 
 
 async def start(
-    store: Store, revision: int, policy: FailurePolicy = FailurePolicy.STOP_ON_FAILURE
+    store: Store,
+    revision: int,
+    policy: FailurePolicy = FailurePolicy.STOP_ON_FAILURE,
+    *,
+    principal: str = "alice",
+    client_id: str = CLIENT,
 ) -> tuple[QueueExecutionRecord, int]:
     return await store.write(
-        lambda tx: tx.start_queue_execution(principal="alice", expected_revision=revision, policy=policy)
+        lambda tx: tx.start_queue_execution(
+            principal=principal, client_id=client_id, expected_revision=revision, policy=policy
+        )
     )
 
 
 async def stop(
-    store: Store, revision: int, queue_execution_uid: str, *, principal: str = "alice"
+    store: Store, revision: int, queue_execution_uid: str, *, principal: str = "alice", client_id: str = CLIENT
 ) -> tuple[QueueExecutionRecord, int]:
     return await store.write(
         lambda tx: tx.stop_queue_execution(
-            principal=principal, expected_revision=revision, queue_execution_uid=queue_execution_uid
+            principal=principal,
+            client_id=client_id,
+            expected_revision=revision,
+            queue_execution_uid=queue_execution_uid,
         )
     )
 

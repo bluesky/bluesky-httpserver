@@ -220,7 +220,9 @@ the default `user` role has `write:execute` (`authorization/_defaults.py`).
 **Change.** The v2 app accepts one credential: a JWT access token from one configured
 OIDC identity provider. Configuration names the issuer, the audience that identifies
 this API, the HTTPS URL of the issuer's signing keys, the claim that identifies the
-caller (default `sub`) and the claim that carries rights (default `scope`). Tokens are
+caller (default `sub`), the claim that names the client application the caller acts
+through (default `azp`; required, so every change records which client made it) and the
+claim that carries rights (default `scope`). Tokens are
 verified with RS256 against those keys (refreshed daily and on an unknown `kid`), with
 `iss` exact, `aud` containing the audience, and `exp`/`iat`/`nbf` checked with bounded
 skew (default 60 s, at most 300 s). Rights are four values, `QueueServer.Read` ⊂
@@ -232,22 +234,30 @@ for 0.x. The first deployment uses Microsoft Entra ID through a preset: issuer
 `https://login.microsoftonline.com/{tenant}/v2.0` (the API registration sets
 `requestedAccessTokenVersion: 2`), audience the API's client ID, principal `oid`
 (Entra's `sub` differs per client app, so `oid` keeps one principal per person and
-audit ids resolvable in the directory), rights from the app-role `roles` claim.
+audit ids resolvable in the directory), client `azp`, rights from the app-role `roles`
+claim.
 
 **Acceptance.** Unknown `kid`, wrong issuer or audience, an expired token, a missing
-principal claim, `alg: none` or an HS256 token → 401 before any handler; a
+principal or client claim, `alg: none` or an HS256 token → 401 before any handler; a
 `QueueServer.Read` caller cannot reach a mutating route → 403; a body naming an actor →
 422; the configuration contains no signing secret.
 
 **Size.** S–M; the verification exists, the work is removing the fallbacks.
 
-**Agents.** Agents use machine tokens from the same identity provider
-(client-credentials flow). In Entra ID each agent is its own app registration with a
-certificate credential and one app role; its token carries `roles` and its service
-principal's `oid`. People sign in through a separate public client registration (device
-or authorization-code flow); the API registration itself must not sign users in, because
-Entra puts app roles in the ID tokens of an app that signs users in and those ID tokens
-carry the API's client ID as `aud`.
+**Agents.** An agent acts either as itself or on a person's behalf, with tokens from the
+same identity provider. Acting as itself, it uses a machine token (client-credentials
+flow): in Entra ID each such agent is its own app registration with a certificate
+credential and one app role, and its token carries `roles` and its service principal's
+`oid`, so it is a principal of its own, with a lease of its own. Acting on a person's
+behalf, it exchanges the person's token for one to this API (Entra's on-behalf-of flow):
+that token's principal is the person, with the person's roles, and its `azp` is the
+agent's app. To the controller the agent then is the person: it shares the person's
+lease (B3), and the client claim records which of them made each change
+(`submitted_via`, `started_via`, the events' `client_id`). People sign in through a
+separate public client registration (device or authorization-code flow); the API
+registration itself must not sign users in, because Entra puts app roles in the ID
+tokens of an app that signs users in and those ID tokens carry the API's client ID as
+`aud`.
 
 ### B2. Public operation API — **blocking (P2)**
 
@@ -278,7 +288,10 @@ link.
 
 **Change.**
 
-- **Lease.** One per instrument, bound to the authenticated principal, TTL 5 s–1 h,
+- **Lease.** One per instrument, bound to the authenticated principal and shared by every
+  client acting as it: a renewal through any of them never shortens it, and a release
+  through any of them ends it for all, unless it names a grant (`lease_uid`) that is no
+  longer the current one, so a client can end only control it took. TTL 5 s–1 h,
   acquire/renew/release, admin override with a recorded reason. Submit, replace,
   cancel, reorder, start execution and recovery acknowledgement require the caller's
   active lease; another principal gets 403. Stops (execution stop, safe-stop, stop-now)
@@ -431,7 +444,8 @@ open the same database. The controller does not check the filesystem at startup;
 the database on local disk is a deployment requirement (D2).
 Every mutation — client or scheduler — is one transaction writing the domain change, the
 revision bump (none for lease changes; see B4), the actor and an append-only event with
-a monotonic id, actor (principal/scheduler/system), related UIDs, revision and typed
+a monotonic id, actor (principal/scheduler/system), for a principal the client it acted
+through, related UIDs, revision and typed
 payload.
 `GET /events?after=&limit=` and `GET /events/stream` with `Last-Event-ID` resume, a
 heartbeat comment, and closure at token expiry. Schema migrations with checksums;

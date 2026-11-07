@@ -72,7 +72,9 @@ ERRORS: dict[str, ErrorCode] = {
     "invalid_if_match": ErrorCode(400, 'The `If-Match` header is not exactly one entity tag `"qrev-N"`.'),
     "invalid_last_event_id": ErrorCode(400, "The `Last-Event-ID` header is not a non-negative integer."),
     "lease_required": ErrorCode(
-        403, "The caller does not hold the control lease; take it with `POST /api/v2/control-lease`."
+        403,
+        "The caller does not hold the control lease, or not the grant it named; take it with"
+        " `POST /api/v2/control-lease`.",
     ),
     "lease_held": ErrorCode(
         409, "Someone holds the control lease, the caller included; `details` gives `holder` and `expires_at`."

@@ -137,6 +137,7 @@ def _row_to_operation(row: sqlite3.Row) -> OperationRecord:
         parameters=json.loads(row["parameters_json"]),
         descriptor_sha256=row["descriptor_sha256"],
         submitted_by=row["submitted_by"],
+        submitted_via=row["submitted_via"],
         submitted_at=row["submitted_at"],
         state=OperationState(row["state"]),
         updated_at=row["updated_at"],
@@ -159,6 +160,7 @@ def _row_to_execution(row: sqlite3.Row) -> QueueExecutionRecord:
         state=QueueExecutionState(row["state"]),
         policy=FailurePolicy(row["policy"]),
         started_by=row["started_by"],
+        started_via=row["started_via"],
         started_at=row["started_at"],
         updated_at=row["updated_at"],
     )
@@ -185,6 +187,7 @@ def _row_to_event(row: sqlite3.Row) -> EventRecord:
         timestamp=row["timestamp"],
         actor_kind=ActorKind(row["actor_kind"]),
         actor_id=row["actor_id"],
+        client_id=row["client_id"],
         event_type=EventType(row["event_type"]),
         operation_uid=row["operation_uid"],
         queue_execution_uid=row["queue_execution_uid"],
@@ -699,6 +702,7 @@ class Transaction(ReadTransaction):
         self,
         *,
         principal: str,
+        client_id: str,
         expected_revision: int,
         operation_id: str,
         operation_version: str,
@@ -711,6 +715,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal making the edit.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the edit is based on.
         operation_id : str
@@ -740,7 +746,7 @@ class Transaction(ReadTransaction):
         await self._require_lease(principal)
         await self._check_revision(expected_revision)
         record = await self._insert_operation(
-            principal, operation_id, operation_version, parameters, descriptor_sha256
+            principal, client_id, operation_id, operation_version, parameters, descriptor_sha256
         )
         await self._conn.execute(
             "INSERT INTO queue_entries(operation_uid, position)"
@@ -754,6 +760,7 @@ class Transaction(ReadTransaction):
             EventType.OPERATION_SUBMITTED,
             revision,
             _submitted_payload(record),
+            client_id=client_id,
             operation_uid=record.operation_uid,
             queue_execution_uid=await self._running_execution_uid(),
         )
@@ -763,6 +770,7 @@ class Transaction(ReadTransaction):
         self,
         *,
         principal: str,
+        client_id: str,
         expected_revision: int,
         operation_uid: str,
         operation_id: str,
@@ -778,6 +786,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal making the edit.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the edit is based on.
         operation_uid : str
@@ -814,7 +824,7 @@ class Transaction(ReadTransaction):
         position = entry["position"]
         # Insert before update: replaced_by references the replacement row.
         record = await self._insert_operation(
-            principal, operation_id, operation_version, parameters, descriptor_sha256
+            principal, client_id, operation_id, operation_version, parameters, descriptor_sha256
         )
         await self._conn.execute("DELETE FROM queue_entries WHERE operation_uid=?", (operation_uid,))
         await self._conn.execute(
@@ -831,6 +841,7 @@ class Transaction(ReadTransaction):
             EventType.OPERATION_REPLACED,
             revision,
             {"replaced_by": record.operation_uid},
+            client_id=client_id,
             operation_uid=operation_uid,
         )
         await self._append_event(
@@ -839,13 +850,14 @@ class Transaction(ReadTransaction):
             EventType.OPERATION_SUBMITTED,
             revision,
             {**_submitted_payload(record), "replaces": operation_uid},
+            client_id=client_id,
             operation_uid=record.operation_uid,
             queue_execution_uid=await self._running_execution_uid(),
         )
         return record, revision
 
     async def cancel(
-        self, *, principal: str, expected_revision: int, operation_uid: str
+        self, *, principal: str, client_id: str, expected_revision: int, operation_uid: str
     ) -> tuple[OperationRecord, int]:
         """Remove a queued operation from the queue and mark it cancelled.
 
@@ -853,6 +865,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal making the edit.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the edit is based on.
         operation_uid : str
@@ -889,14 +903,15 @@ class Transaction(ReadTransaction):
             EventType.OPERATION_CANCELLED,
             revision,
             {},
+            client_id=client_id,
             operation_uid=operation_uid,
         )
         # Cancelling the last queued operation while nothing runs leaves nothing to claim.
-        await self._end_execution_if_done(ActorKind.PRINCIPAL, principal, revision)
+        await self._end_execution_if_done(ActorKind.PRINCIPAL, principal, revision, client_id=client_id)
         return await self.operation(operation_uid), revision
 
     async def reorder(
-        self, *, principal: str, expected_revision: int, operation_uids: Sequence[str]
+        self, *, principal: str, client_id: str, expected_revision: int, operation_uids: Sequence[str]
     ) -> QueueSnapshot:
         """Reorder the queue; an unchanged order still counts as an edit.
 
@@ -904,6 +919,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal making the edit.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the edit is based on.
         operation_uids : sequence of str
@@ -941,16 +958,19 @@ class Transaction(ReadTransaction):
             EventType.QUEUE_REORDERED,
             revision,
             {"operation_uids": list(operation_uids)},
+            client_id=client_id,
         )
         return await self.queue()
 
-    async def acquire_lease(self, *, principal: str, ttl_seconds: int) -> LeaseRecord:
+    async def acquire_lease(self, *, principal: str, client_id: str, ttl_seconds: int) -> LeaseRecord:
         """Take control of the instrument if nobody holds it.
 
         Parameters
         ----------
         principal : str
-            Principal taking control.
+            Principal taking control; the lease is its own, whichever client acts as it.
+        client_id : str
+            Client application the principal acts through; recorded in the event only.
         ttl_seconds : int
             Seconds until control lapses unless renewed, from `LEASE_TTL_MIN_SECONDS` to
             `LEASE_TTL_MAX_SECONDS`.
@@ -979,18 +999,24 @@ class Transaction(ReadTransaction):
             EventType.LEASE_ACQUIRED,
             await self._revision(),
             {"lease_uid": record.lease_uid, "expires_at": expires_at},
+            client_id=client_id,
         )
         return record
 
-    async def renew_lease(self, *, principal: str, ttl_seconds: int) -> LeaseRecord:
-        """Extend the caller's control to ``ttl_seconds`` from now.
+    async def renew_lease(self, *, principal: str, client_id: str, ttl_seconds: int) -> LeaseRecord:
+        """Extend the caller's control to at least ``ttl_seconds`` from now; a renewal never shortens it.
+
+        Every client acting as ``principal`` shares its lease, so a client renewing briefly must not cut short a
+        longer renewal by another.
 
         Parameters
         ----------
         principal : str
             Principal holding the lease.
+        client_id : str
+            Client application the principal acts through; recorded in the event only.
         ttl_seconds : int
-            Seconds until control lapses unless renewed again, as for `acquire_lease`.
+            Seconds until control lapses at the earliest, as for `acquire_lease`.
 
         Returns
         -------
@@ -1007,6 +1033,7 @@ class Transaction(ReadTransaction):
         self._require_active()
         expires_at = self._lease_expiry(ttl_seconds)
         lease = await self._require_lease(principal)
+        expires_at = max(expires_at, lease.expires_at)
         await self._conn.execute("UPDATE control_lease SET expires_at=? WHERE singleton=1", (expires_at,))
         await self._append_event(
             ActorKind.PRINCIPAL,
@@ -1014,24 +1041,32 @@ class Transaction(ReadTransaction):
             EventType.LEASE_RENEWED,
             await self._revision(),
             {"lease_uid": lease.lease_uid, "expires_at": expires_at},
+            client_id=client_id,
         )
         return LeaseRecord(lease.lease_uid, lease.holder, lease.acquired_at, expires_at)
 
-    async def release_lease(self, *, principal: str) -> None:
-        """Give up the caller's control of the instrument.
+    async def release_lease(self, *, principal: str, client_id: str, lease_uid: str | None = None) -> None:
+        """Give up the caller's control of the instrument, for every client acting as it.
 
         Parameters
         ----------
         principal : str
             Principal holding the lease.
+        client_id : str
+            Client application the principal acts through; recorded in the event only.
+        lease_uid : str, optional
+            Release only this grant, so a client ends only control it took: if ``principal`` holds another grant,
+            e.g. one taken through another client after this one lapsed, nothing is released.
 
         Raises
         ------
         LeaseRequired
-            ``principal`` does not hold the control lease.
+            ``principal`` does not hold the control lease, or holds another grant than ``lease_uid``.
         """
         self._require_active()
         lease = await self._require_lease(principal)
+        if lease_uid is not None and lease.lease_uid != lease_uid:
+            raise LeaseRequired(principal, lease_uid)
         await self._conn.execute("DELETE FROM control_lease")
         await self._append_event(
             ActorKind.PRINCIPAL,
@@ -1039,9 +1074,12 @@ class Transaction(ReadTransaction):
             EventType.LEASE_RELEASED,
             await self._revision(),
             {"lease_uid": lease.lease_uid},
+            client_id=client_id,
         )
 
-    async def override_lease(self, *, principal: str, reason: str, ttl_seconds: int) -> LeaseRecord:
+    async def override_lease(
+        self, *, principal: str, client_id: str, reason: str, ttl_seconds: int
+    ) -> LeaseRecord:
         """Take control of the instrument, displacing any holder.
 
         Whether ``principal`` may override is for the caller to decide.
@@ -1050,6 +1088,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal taking control.
+        client_id : str
+            Client application the principal acts through; recorded in the event only.
         reason : str
             Why control was taken, recorded in the event.
         ttl_seconds : int
@@ -1082,6 +1122,7 @@ class Transaction(ReadTransaction):
                 "previous_holder": previous.holder if previous else None,
                 "reason": reason,
             },
+            client_id=client_id,
         )
         return record
 
@@ -1089,6 +1130,7 @@ class Transaction(ReadTransaction):
         self,
         *,
         principal: str,
+        client_id: str,
         expected_revision: int,
         policy: FailurePolicy = FailurePolicy.STOP_ON_FAILURE,
     ) -> tuple[QueueExecutionRecord, int]:
@@ -1102,6 +1144,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal starting the execution.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the start is based on, so that the queue admitted is the queue the client saw.
         policy : FailurePolicy, optional
@@ -1141,13 +1185,14 @@ class Transaction(ReadTransaction):
             raise QueueEmpty()
         queue_execution_uid = str(uuid.uuid4())
         await self._conn.execute(
-            "INSERT INTO queue_executions(queue_execution_uid, state, policy, started_by, started_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queue_executions(queue_execution_uid, state, policy, started_by, started_via, started_at,"
+            " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 queue_execution_uid,
                 QueueExecutionState.RUNNING.value,
                 policy.value,
                 principal,
+                client_id,
                 self._now,
                 self._now,
             ),
@@ -1159,12 +1204,13 @@ class Transaction(ReadTransaction):
             EventType.QUEUE_EXECUTION_STARTED,
             revision,
             {"policy": policy.value, "operation_uids": queued},
+            client_id=client_id,
             queue_execution_uid=queue_execution_uid,
         )
         return await self.queue_execution(queue_execution_uid), revision
 
     async def stop_queue_execution(
-        self, *, principal: str, expected_revision: int, queue_execution_uid: str
+        self, *, principal: str, client_id: str, expected_revision: int, queue_execution_uid: str
     ) -> tuple[QueueExecutionRecord, int]:
         """Stop a running queue execution once its current operation finishes.
 
@@ -1175,6 +1221,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal stopping the execution.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the stop is based on.
         queue_execution_uid : str
@@ -1212,9 +1260,10 @@ class Transaction(ReadTransaction):
             EventType.QUEUE_EXECUTION_STOP_REQUESTED,
             revision,
             {},
+            client_id=client_id,
             queue_execution_uid=queue_execution_uid,
         )
-        await self._end_execution_if_done(ActorKind.PRINCIPAL, principal, revision)
+        await self._end_execution_if_done(ActorKind.PRINCIPAL, principal, revision, client_id=client_id)
         return await self.queue_execution(queue_execution_uid), revision
 
     async def claim_next(self) -> tuple[AttemptRecord, OperationRecord, int] | None:
@@ -1458,7 +1507,9 @@ class Transaction(ReadTransaction):
         )
         return await self.attempt(attempt_uid), revision
 
-    async def request_safe_stop(self, *, principal: str, attempt_uid: str) -> tuple[AttemptRecord, int]:
+    async def request_safe_stop(
+        self, *, principal: str, client_id: str, attempt_uid: str
+    ) -> tuple[AttemptRecord, int]:
         """Ask for a live attempt to be paused at its next checkpoint and aborted.
 
         Takes no revision and needs no lease, so a stop never fails because the queue changed or because
@@ -1469,6 +1520,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal asking.
+        client_id : str
+            Client application the principal acts through.
         attempt_uid : str
             Claimed or running attempt.
 
@@ -1487,10 +1540,12 @@ class Transaction(ReadTransaction):
             ``attempt_uid`` has already ended.
         """
         return await self._request_stop(
-            principal, attempt_uid, "safe_stop_requested_at", EventType.OPERATION_SAFE_STOP_REQUESTED
+            principal, client_id, attempt_uid, "safe_stop_requested_at", EventType.OPERATION_SAFE_STOP_REQUESTED
         )
 
-    async def request_stop_now(self, *, principal: str, attempt_uid: str) -> tuple[AttemptRecord, int]:
+    async def request_stop_now(
+        self, *, principal: str, client_id: str, attempt_uid: str
+    ) -> tuple[AttemptRecord, int]:
         """Ask for a live attempt to be paused at once and aborted.
 
         Unlike `request_safe_stop`, the pause interrupts whatever the plan is doing, such as a move or a wait,
@@ -1503,6 +1558,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal asking.
+        client_id : str
+            Client application the principal acts through.
         attempt_uid : str
             Claimed or running attempt.
 
@@ -1521,11 +1578,11 @@ class Transaction(ReadTransaction):
             ``attempt_uid`` has already ended.
         """
         return await self._request_stop(
-            principal, attempt_uid, "stop_now_requested_at", EventType.OPERATION_STOP_NOW_REQUESTED
+            principal, client_id, attempt_uid, "stop_now_requested_at", EventType.OPERATION_STOP_NOW_REQUESTED
         )
 
     async def _request_stop(
-        self, principal: str, attempt_uid: str, column: _StopColumn, event_type: EventType
+        self, principal: str, client_id: str, attempt_uid: str, column: _StopColumn, event_type: EventType
     ) -> tuple[AttemptRecord, int]:
         self._require_active()
         attempt = await self.attempt(attempt_uid)
@@ -1542,6 +1599,7 @@ class Transaction(ReadTransaction):
             event_type,
             revision,
             {},
+            client_id=client_id,
             operation_uid=attempt.operation_uid,
             queue_execution_uid=attempt.queue_execution_uid,
             attempt_uid=attempt_uid,
@@ -1552,6 +1610,7 @@ class Transaction(ReadTransaction):
         self,
         *,
         principal: str,
+        client_id: str,
         expected_revision: int,
         note: str,
         fence: Callable[[], Mapping[str, Any]],
@@ -1564,6 +1623,8 @@ class Transaction(ReadTransaction):
         ----------
         principal : str
             Principal acknowledging.
+        client_id : str
+            Client application the principal acts through.
         expected_revision : int
             Queue revision the acknowledgement is based on.
         note : str
@@ -1613,6 +1674,7 @@ class Transaction(ReadTransaction):
             EventType.WORKER_FENCED,
             revision,
             {"note": note, "status": evidence},
+            client_id=client_id,
             queue_execution_uid=queue_execution_uid,
         )
         await self._append_event(
@@ -1621,6 +1683,7 @@ class Transaction(ReadTransaction):
             EventType.QUEUE_EXECUTION_STOPPED,
             revision,
             {},
+            client_id=client_id,
             queue_execution_uid=queue_execution_uid,
         )
         return await self.queue_execution(queue_execution_uid), revision
@@ -1631,6 +1694,7 @@ class Transaction(ReadTransaction):
             raise StaleRevision(expected, current)
 
     async def _require_lease(self, principal: str) -> LeaseRecord:
+        # The lease is the principal's: every client acting as it may use it, whichever client acquired it.
         lease = await self.lease()
         if lease is None or lease.holder != principal:
             raise LeaseRequired(principal)
@@ -1675,7 +1739,13 @@ class Transaction(ReadTransaction):
         )
 
     async def _end_execution_if_done(
-        self, actor_kind: ActorKind, actor_id: str, revision: int, *, stop: bool = False
+        self,
+        actor_kind: ActorKind,
+        actor_id: str,
+        revision: int,
+        *,
+        client_id: str | None = None,
+        stop: bool = False,
     ) -> None:
         # Ends the active execution once nothing is claimed or running: stopped if asked to stop, completed if
         # nothing is left to claim. Runs inside a change that has already bumped the revision.
@@ -1694,7 +1764,13 @@ class Transaction(ReadTransaction):
             (state.value, self._now, queue_execution_uid),
         )
         await self._append_event(
-            actor_kind, actor_id, event_type, revision, {}, queue_execution_uid=queue_execution_uid
+            actor_kind,
+            actor_id,
+            event_type,
+            revision,
+            {},
+            client_id=client_id,
+            queue_execution_uid=queue_execution_uid,
         )
 
     async def _block_execution(self, attempt: AttemptRecord, revision: int) -> None:
@@ -1733,6 +1809,7 @@ class Transaction(ReadTransaction):
     async def _insert_operation(
         self,
         principal: str,
+        client_id: str,
         operation_id: str,
         operation_version: str,
         parameters: Mapping[str, Any],
@@ -1742,8 +1819,8 @@ class Transaction(ReadTransaction):
         parameters_json = _dumps(dict(parameters))
         await self._conn.execute(
             "INSERT INTO operations(operation_uid, operation_id, operation_version, parameters_json,"
-            " descriptor_sha256, submitted_by, submitted_at, state, updated_at, replaced_by)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+            " descriptor_sha256, submitted_by, submitted_via, submitted_at, state, updated_at, replaced_by)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
             (
                 operation_uid,
                 operation_id,
@@ -1751,6 +1828,7 @@ class Transaction(ReadTransaction):
                 parameters_json,
                 descriptor_sha256,
                 principal,
+                client_id,
                 self._now,
                 OperationState.QUEUED.value,
                 self._now,
@@ -1764,6 +1842,7 @@ class Transaction(ReadTransaction):
             parameters=json.loads(parameters_json),
             descriptor_sha256=descriptor_sha256,
             submitted_by=principal,
+            submitted_via=client_id,
             submitted_at=self._now,
             state=OperationState.QUEUED,
             updated_at=self._now,
@@ -1778,17 +1857,21 @@ class Transaction(ReadTransaction):
         queue_revision: int,
         payload: Mapping[str, Any],
         *,
+        client_id: str | None = None,
         operation_uid: str | None = None,
         queue_execution_uid: str | None = None,
         attempt_uid: str | None = None,
     ) -> None:
+        # ``client_id`` names the client a principal acted through; a CHECK requires it for exactly those events.
         await self._conn.execute(
-            "INSERT INTO events(timestamp, actor_kind, actor_id, event_type, operation_uid, queue_execution_uid,"
-            " attempt_uid, queue_revision, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO events(timestamp, actor_kind, actor_id, client_id, event_type, operation_uid,"
+            " queue_execution_uid, attempt_uid, queue_revision, payload_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 self._now,
                 actor_kind.value,
                 actor_id,
+                client_id,
                 event_type.value,
                 operation_uid,
                 queue_execution_uid,

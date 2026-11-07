@@ -12,9 +12,11 @@ shown by running code, against the test fixtures (fake relay) or a real RE Manag
 read from the code and not run.
 
 **Status, later the same day.** A first pass fixed G1, G2 and G4 (on the fork), G6 and G16, and parts of G3, G7,
-G8 and G9; each of those sections ends with what changed. All changes are uncommitted, the fork's in
+G8 and G9. A second settled G17 and part of G15: the control lease is the principal's, shared by every client
+acting as it, and every change records the client it came through; G30, new, is what that leaves open for agents
+acting for users. Each of those sections ends with what changed. All changes are uncommitted, the fork's in
 `./bluesky-queueserver`, and line numbers in the findings still refer to the reviewed commits. The v2 suite now
-has 255 tests and passes against the fixed fork with Redis running, including the three in
+has 262 tests and passes against the fixed fork with Redis running, including the three in
 `tests/test_re_manager.py` that use a real RE Manager; pyright and ruff are clean.
 
 ## What already holds
@@ -292,6 +294,21 @@ models that have validators. Require each parameter without a default to be in `
 equal the signature's (or have the controller fill them in). Check map values in `_process_plan` and when
 building `plans_allowed`.
 
+### G30. An agent acting for a user gets all of the user's rights (B1, B3)
+
+An on-behalf-of token makes the agent the user it acts for: the same principal, the user's roles and the user's
+lease. The agent's own app shows only in the record (G15). Nothing bounds an agent below its user:
+
+- The delegated permissions the user consented to for the agent's app (Entra's `scp`) are not read; rights come
+  from `roles`, which in an on-behalf-of token are the user's.
+- No setting lists the client apps that may call, or caps the role a client app may use.
+- No admin action suspends one client app. Disabling it in the identity provider leaves its tokens valid until
+  they expire, and an admin override of the lease takes control from the user as well.
+
+**Fix.** Decide whether an agent's rights are its user's or their intersection with the delegated permissions it
+holds. Add an allowlist of client apps, each with a role cap, to the settings, and an Admin route that refuses a
+client app's tokens until lifted.
+
 ## Robustness and operations
 
 ### G12. Unbounded inputs and a single store lock (B1, B4, B6)
@@ -353,6 +370,13 @@ their age. 401 for an unknown `kid`. Optional `typ` and `nonce` checks; require 
 **Fix.** A structured access log, metrics and alerts; record actor type and delegation; create the database 0600
 and `state/` 0700, with `UMask=0077` and `StateDirectoryMode=0700` in D2's units.
 
+**Status.** Partly fixed. A token must name the client app its caller acts through (`azp` by default,
+`client_claim` in the settings) or it gets 401, and every change records that client next to the principal:
+`client_id` on events (null for the scheduler), `submitted_via` on operations and `started_via` on queue
+executions. An agent acting for a user through an on-behalf-of token is recorded as the user, through the agent's
+app (G30). Still open: user or app (`idtyp`), a delegation chain (`act`), the access log, metrics and alerts,
+and the file permissions.
+
 ## Smaller findings
 
 ### G16. A run-plan timeout counts as a proven failure (B5)
@@ -375,6 +399,15 @@ registration both "hold" the lease; the first to exit releases it, and the other
 
 **Fix.** Raise `lease_held` unless the caller opts in to adoption; tie release to the grant this context made
 (needs a server parameter); set `lost` on persistent 401 or 403.
+
+**Status.** Settled the other way: adoption is the design. The lease belongs to the principal, so every client
+acting as it shares one lease: the user's own client, an agent acting for the user, or two sessions of one agent
+registration. `hold_lease` releases on exit only a lease it took, and only that grant: the release names its
+`lease_uid`, which `POST /control-lease/release` now checks, so a context whose grant lapsed can't end a newer one
+taken through another client. A lease it adopted is left to the client that took it, and `release=False` keeps
+control past the block until it lapses or is released. A renewal never shortens the lease, so a client renewing
+briefly can't cut short another's longer renewal (`tests/test_leases.py`, `tests/api/test_client.py`). Still open:
+persistent 401 or 403 renewal errors are retried until the lease lapses.
 
 ### G18. The client treats redirects as success (C1)
 
@@ -473,8 +506,9 @@ None of it exists yet:
   off and a read timeout above the heartbeat for SSE.
 - Redis placement and persistence (G4).
 - A backup and restore runbook (G5).
-- Identity provider registration for users and agent apps. The lab's stand-in issuer uses `sub` and `scope`; the
-  Entra preset (`oid`, `roles`), client-credentials agents and token refresh have never been exercised.
+- Identity provider registration for users and agent apps. The lab's stand-in issuer uses `sub`, `azp` and
+  `scope`; the Entra preset (`oid`, `azp`, `roles`), client-credentials and on-behalf-of agents, and token refresh
+  have never been exercised against Entra.
 - The security review itself.
 
 ### G29. Documentation
@@ -509,8 +543,8 @@ By reading the code unless marked reproduced, so these need no second look:
 
 1. Finish the worker-side boundary: the rest of G3 (socket directory check, saved lock), G25 and G26; commit the
    fork's fixes and take A1-A3 upstream (G22).
-2. The client, before agents use it: G17, G18, G19.
-3. Roles and stopping: G7's admission rule, and G8's deadline escalation.
+2. The client, before agents use it: the rest of G17, G18, G19.
+3. Roles and stopping: G7's admission rule, G8's deadline escalation, and G30's bounds on agents.
 4. Recovery and scheduling: G5, G10, G13.
 5. Limits and hardening: the rest of G9, G11, G12, G14, G15.
 6. Release and deployment: G4's Redis placement, G23, G24, G27, G28, G29; G20 and G21 when the lab becomes the

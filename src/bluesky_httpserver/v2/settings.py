@@ -55,6 +55,9 @@ class OidcIdentity(_Section):
     """HTTPS URL of the issuer's signing keys (JWK Set)."""
     principal_claim: str | None = None
     """Claim whose string value identifies the caller; None takes the default: ``sub``."""
+    client_claim: str | None = None
+    """Claim naming the client application the caller acts through, e.g. ``client_id`` for RFC 9068 tokens;
+    None takes the default: ``azp``."""
     roles_claim: str | None = None
     """Claim holding the caller's rights; None takes the default: ``scope``."""
     leeway_seconds: int | None = None
