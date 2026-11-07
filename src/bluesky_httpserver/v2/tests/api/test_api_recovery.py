@@ -22,8 +22,8 @@ async def start(client: httpx.AsyncClient, revision: int) -> httpx.Response:
     return await client.post(EXECUTIONS, json={}, headers=headers("alice", if_match=revision, key=new_key()))
 
 
-async def safe_stop(client: httpx.AsyncClient, attempt_uid: str, token: str = "alice") -> httpx.Response:
-    return await client.post(f"/api/v2/attempts/{attempt_uid}/safe-stop", headers=headers(token, key=new_key()))
+async def stop_attempt(client: httpx.AsyncClient, route: str, attempt_uid: str, token: str) -> httpx.Response:
+    return await client.post(f"/api/v2/attempts/{attempt_uid}/{route}", headers=headers(token, key=new_key()))
 
 
 async def acknowledge(client: httpx.AsyncClient, revision: int) -> httpx.Response:
@@ -62,25 +62,52 @@ def error_code(response: httpx.Response) -> str:
 
 
 @pytest.mark.asyncio
-async def test_safe_stop(client, relay, worker):
+@pytest.mark.parametrize(
+    ("route", "field"), [("safe-stop", "safe_stop_requested_at"), ("stop-now", "stop_now_requested_at")]
+)
+async def test_stop_attempt(client, relay, worker, route, field):
     a = await dispatched(client, worker)
-    response = await safe_stop(client, a)
+    # Carol has the Run role but not the lease, which alice holds: a stop needs only the role.
+    response = await stop_attempt(client, route, a, "carol")
     assert response.status_code == 202
     assert response.headers["ETag"]
-    assert response.json()["safe_stop_requested_at"].endswith("Z")
+    assert response.json()[field].endswith("Z")
 
-    forbidden = await safe_stop(client, a, token="bob")
+    forbidden = await stop_attempt(client, route, a, "bob")
     assert forbidden.status_code == 403
     assert error_code(forbidden) == "insufficient_role"
     assert forbidden.json()["error"]["details"]["required_role"] == "QueueServer.Run"
 
-    missing = await safe_stop(client, "no-such-attempt")
+    missing = await stop_attempt(client, route, "no-such-attempt", "alice")
     assert (missing.status_code, error_code(missing)) == (404, "not_found")
 
     relay.finish_running("completed")
     await worker.step()
-    ended = await safe_stop(client, a)
+    ended = await stop_attempt(client, route, a, "alice")
     assert (ended.status_code, error_code(ended)) == (409, "attempt_not_live")
+
+
+@pytest.mark.asyncio
+async def test_active_execution(client, relay, worker):
+    async def active() -> dict[str, Any]:
+        response = await client.get("/api/v2/active-execution", headers=headers("reader"))
+        assert response.status_code == 200
+        assert response.headers["ETag"]
+        return response.json()
+
+    assert await active() == {"queue_execution": None, "live_attempt": None}
+    a = await dispatched(client, worker)
+    relay.open_run("run-a")
+    await worker.step()
+    running = await active()
+    execution, attempt = running["queue_execution"], running["live_attempt"]
+    assert execution["state"] == "running"
+    assert (attempt["attempt_uid"], attempt["state"], attempt["current_run_uids"]) == (a, "running", ["run-a"])
+    assert attempt["queue_execution_uid"] == execution["queue_execution_uid"]
+
+    relay.finish_running("completed", run_uids=["run-a"])
+    await worker.step()
+    assert await active() == {"queue_execution": None, "live_attempt": None}
 
 
 @pytest.mark.asyncio

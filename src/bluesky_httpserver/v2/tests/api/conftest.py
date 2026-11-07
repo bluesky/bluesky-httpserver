@@ -22,12 +22,16 @@ from ..fake_relay import FakeRelay
 
 
 class FakeAuthenticator:
-    """Accepts each name in `ROLES` as a token for that principal; ``idp-down`` fails to verify."""
+    """Accepts each name in `ROLES` as a token for that principal; ``idp-down`` fails to verify.
+
+    The store fixture gives alice the lease; carol has alice's role but not the lease.
+    """
 
     ROLES: dict[str, Role | None] = {
         "reader": Role.READ,
         "alice": Role.RUN,
         "bob": Role.EDIT,
+        "carol": Role.RUN,
         "admin": Role.ADMIN,
         "nobody": None,
     }

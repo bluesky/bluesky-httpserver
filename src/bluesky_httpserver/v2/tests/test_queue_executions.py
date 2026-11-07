@@ -102,7 +102,8 @@ async def test_stop_after_current(store):
     x = execution.queue_execution_uid
     attempt, _, revision = await claimed(store)
 
-    stopping, _ = await stop(store, revision, x)
+    # Alice holds the lease; a stop needs none.
+    stopping, _ = await stop(store, revision, x, principal="bob")
     assert stopping.state is QueueExecutionState.STOPPING
     assert await claim(store) is None
     await finish(store, attempt.attempt_uid)

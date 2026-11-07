@@ -176,10 +176,12 @@ async def start(
     )
 
 
-async def stop(store: Store, revision: int, queue_execution_uid: str) -> tuple[QueueExecutionRecord, int]:
+async def stop(
+    store: Store, revision: int, queue_execution_uid: str, *, principal: str = "alice"
+) -> tuple[QueueExecutionRecord, int]:
     return await store.write(
         lambda tx: tx.stop_queue_execution(
-            principal="alice", expected_revision=revision, queue_execution_uid=queue_execution_uid
+            principal=principal, expected_revision=revision, queue_execution_uid=queue_execution_uid
         )
     )
 

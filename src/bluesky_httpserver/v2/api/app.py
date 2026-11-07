@@ -29,15 +29,15 @@ the facility identity provider. Its roles bound what the caller may do; each rol
 |---|---|---|
 | Read | `QueueServer.Read` | every `GET` |
 | Edit | `QueueServer.Edit` | taking the control lease and editing the queue |
-| Run | `QueueServer.Run` | starting and stopping queue executions, safe stops and recovery |
+| Run | `QueueServer.Run` | starting queue executions, stopping them and their operations, and recovery |
 | Admin | `QueueServer.Admin` | taking the control lease from its holder |
 
 ## Queueing work
 
 1. `GET /api/v2/catalog` lists the operations that may be submitted, with the JSON Schema of each one's
    `parameters`.
-2. `POST /api/v2/control-lease` takes control of the instrument: only the holder may edit the queue or start
-   and stop queue executions. Renew before `expires_at`; release when done.
+2. `POST /api/v2/control-lease` takes control of the instrument: only the holder may edit the queue, start a
+   queue execution or acknowledge recovery. Renew before `expires_at`; release when done.
 3. `GET /api/v2/queue` returns the queue, and its revision as the `ETag` header, e.g. `"qrev-7"`.
 4. `POST /api/v2/operations` with `If-Match: "qrev-7"` and a new `Idempotency-Key`. The response's `ETag` is
    the new revision, for the next edit.
@@ -57,8 +57,17 @@ the facility identity provider. Its roles bound what the caller may do; each rol
 
 ## Stopping and recovery
 
-- `POST /api/v2/attempts/{attempt_uid}/safe-stop` (Run role) pauses the running operation at its next
-  checkpoint and aborts it; the queue execution then stops.
+Stopping needs the Run role but not the control lease, so an operator can stop work that another principal
+started. `GET /api/v2/active-execution` names the running queue execution and its live attempt.
+
+- `POST /api/v2/attempts/{attempt_uid}/safe-stop` pauses the running operation at its next checkpoint and
+  aborts it. A move or a wait in progress runs to its end first.
+- `POST /api/v2/attempts/{attempt_uid}/stop-now` pauses the running operation at once, interrupting a move or
+  a wait, and aborts it; it also escalates a safe stop that has not taken effect.
+- After either, the queue execution stops once the operation ends, whatever its outcome. Neither can be
+  undone: no route pauses an operation to resume it later.
+- `POST /api/v2/queue-executions/{queue_execution_uid}/stop` lets the current operation finish and then stops
+  the queue execution; it takes `If-Match`.
 - If the controller cannot prove how an operation ended, for example because RE Manager stopped answering,
   the operation becomes `unknown` and nothing more runs: starting a queue execution is refused with 409
   `dispatch_blocked`. Once RE Manager reports nothing running, `POST /api/v2/recovery/acknowledge` (Run role)

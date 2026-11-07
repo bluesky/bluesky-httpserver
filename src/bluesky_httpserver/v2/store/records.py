@@ -91,6 +91,8 @@ class EventType(StrEnum):
         An operation's outcome could not be proven; its queue execution is blocked.
     OPERATION_SAFE_STOP_REQUESTED
         A principal asked for a live operation to be paused at its next checkpoint and aborted.
+    OPERATION_STOP_NOW_REQUESTED
+        A principal asked for a live operation to be paused at once and aborted.
     QUEUE_EXECUTION_STARTED
         The queue started running.
     QUEUE_EXECUTION_STOP_REQUESTED
@@ -124,6 +126,7 @@ class EventType(StrEnum):
     OPERATION_ABORTED = "operation.aborted"
     OPERATION_UNKNOWN = "operation.unknown"
     OPERATION_SAFE_STOP_REQUESTED = "operation.safe_stop_requested"
+    OPERATION_STOP_NOW_REQUESTED = "operation.stop_now_requested"
     QUEUE_EXECUTION_STARTED = "queue_execution.started"
     QUEUE_EXECUTION_STOP_REQUESTED = "queue_execution.stop_requested"
     QUEUE_EXECUTION_COMPLETED = "queue_execution.completed"
@@ -334,6 +337,8 @@ class AttemptRecord:
         Why it ended as it did, if known.
     safe_stop_requested_at : int or None
         When a principal asked for a safe stop; None if nobody did.
+    stop_now_requested_at : int or None
+        When a principal asked for an immediate stop; None if nobody did.
     """
 
     attempt_uid: str
@@ -345,6 +350,7 @@ class AttemptRecord:
     item_uid: str | None
     diagnostic: str | None
     safe_stop_requested_at: int | None
+    stop_now_requested_at: int | None
 
 
 @dataclass(frozen=True)

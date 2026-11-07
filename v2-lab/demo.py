@@ -11,9 +11,9 @@ from __future__ import annotations
 import sys
 import time
 
-from bluesky_httpserver.v2.client import QueueServerClient
-
 from lab import CONTROLLER_URL, mint
+
+from bluesky_httpserver.v2.client import QueueServerClient
 
 _ENDS = {"queue_execution.completed", "queue_execution.stopped", "queue_execution.blocked"}
 
@@ -43,6 +43,7 @@ def main() -> None:
         print("catalog:", ", ".join(f"{d.operation_id} v{d.operation_version}" for d in catalog.operations))
         cursor = newest_event_id(client)
         with client.hold_lease(ttl_seconds=60):
+            client.queue()  # the submit and start below are based on the queue as read here
             operation = client.submit("tst.count", "1", {"detectors": detectors, "num": 2})
             print(f"queued {operation.operation_id} as {operation.operation_uid}")
             execution = client.start_execution()

@@ -21,6 +21,9 @@ _ENERGY_MIN, _ENERGY_MAX = 6000, 8000
 _ENERGY_EV = {"type": "number", "minimum": _ENERGY_MIN, "maximum": _ENERGY_MAX}
 _BAND_EV = {"type": "number", "exclusiveMinimum": 0}
 _DEVICE_LIST = {"type": "array", "items": {"type": "string"}, "minItems": 1}
+# Bounds on how long one operation may hold the instrument: a count takes at most _COUNT_MAX x _DELAY_MAX s
+# (about 17 min), a scan visits at most _ENERGIES_MAX energies.
+_COUNT_MAX, _DELAY_MAX, _ENERGIES_MAX = 100, 10, 50
 
 # The same contract for RE Manager. Its ranges are inclusive, so the band's lower bound is only approximate.
 _V1_DETECTORS = {"annotation": "typing.List[Detectors]", "devices": {"Detectors": _DETECTOR_NAMES}}
@@ -36,8 +39,8 @@ _V1_BAND = {"annotation": "float", "min": 0}
         "type": "object",
         "properties": {
             "detectors": _DEVICE_LIST,
-            "num": {"type": "integer", "minimum": 1},
-            "delay": {"type": "number", "minimum": 0},
+            "num": {"type": "integer", "minimum": 1, "maximum": _COUNT_MAX},
+            "delay": {"type": "number", "minimum": 0, "maximum": _DELAY_MAX},
         },
         "required": ["detectors"],
         "additionalProperties": False,
@@ -48,8 +51,8 @@ _V1_BAND = {"annotation": "float", "min": 0}
     {
         "parameters": {
             "detectors": _V1_DETECTORS,
-            "num": {"annotation": "int", "min": 1},
-            "delay": {"annotation": "float", "min": 0},
+            "num": {"annotation": "int", "min": 1, "max": _COUNT_MAX},
+            "delay": {"annotation": "float", "min": 0, "max": _DELAY_MAX},
         }
     }
 )
@@ -82,7 +85,7 @@ def change_energy_operation(energy, crystal, band=1.0):
         "type": "object",
         "properties": {
             "detectors": _DEVICE_LIST,
-            "energies": {"type": "array", "items": _ENERGY_EV, "minItems": 1},
+            "energies": {"type": "array", "items": _ENERGY_EV, "minItems": 1, "maxItems": _ENERGIES_MAX},
             "crystal": {"type": "string"},
             "band": _BAND_EV,
         },

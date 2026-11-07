@@ -13,9 +13,11 @@ async def start(client: httpx.AsyncClient, revision: int, *, token: str = "alice
     return await client.post(EXECUTIONS, json={}, headers=headers(token, if_match=revision, key=new_key()))
 
 
-async def stop(client: httpx.AsyncClient, queue_execution_uid: str, revision: int) -> httpx.Response:
+async def stop(
+    client: httpx.AsyncClient, queue_execution_uid: str, revision: int, *, token: str = "alice"
+) -> httpx.Response:
     return await client.post(
-        f"{EXECUTIONS}/{queue_execution_uid}/stop", headers=headers("alice", if_match=revision, key=new_key())
+        f"{EXECUTIONS}/{queue_execution_uid}/stop", headers=headers(token, if_match=revision, key=new_key())
     )
 
 
@@ -65,7 +67,8 @@ async def test_claim_between_read_and_write_then_stop(client, store):
     assert current.json()["state"] == "claimed"
     assert current.headers["ETag"] == '"qrev-4"'
 
-    stopping = await stop(client, queue_execution_uid, 4)
+    # Carol has the Run role but not the lease, which alice holds: a stop needs only the role.
+    stopping = await stop(client, queue_execution_uid, 4, token="carol")
     assert stopping.status_code == 200
     assert stopping.json()["state"] == "stopping"
     again = await stop(client, queue_execution_uid, 5)

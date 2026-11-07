@@ -1,8 +1,9 @@
 """Client of the v2 controller's HTTP API."""
 
 from .async_client import AsyncQueueServerClient, LeaseHolder, Token
-from .errors import ApiError, InvalidParameters, StaleRevision, UnknownOperation
+from .errors import ApiError, InvalidParameters, OutcomeUnknown, StaleRevision, UnknownOperation
 from .models import (
+    ActiveExecution,
     Attempt,
     Descriptor,
     Event,
@@ -16,6 +17,7 @@ from .models import (
 from .sync_client import QueueServerClient
 
 __all__ = [
+    "ActiveExecution",
     "ApiError",
     "AsyncQueueServerClient",
     "Attempt",
@@ -26,6 +28,7 @@ __all__ = [
     "LeaseHolder",
     "Operation",
     "OperationCatalog",
+    "OutcomeUnknown",
     "Queue",
     "QueueExecution",
     "QueueServerClient",

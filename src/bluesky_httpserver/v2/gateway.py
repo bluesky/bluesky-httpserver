@@ -20,14 +20,17 @@ WorkerReachability = Literal["reachable", "unreachable", "not_controller_fronted
 EnvironmentPresence = Literal["present", "absent", "unknown"]
 CatalogState = Literal["compatible", "incompatible", "unavailable"]
 DispatchState = Literal["open", "blocked"]
+PauseOption = Literal["deferred", "immediate"]
 
 # ``failed`` history messages that do not prove the plan failed. The first is the A2 diagnostic of a dead
-# worker; the other two are manager paths where the worker's real outcome is unknown.
+# worker; the others are manager paths where the worker's real outcome is unknown, including a run request
+# that timed out after the worker may have started the plan.
 _UNPROVEN_FAILURES = frozenset(
     {
         "RE Worker process terminated unexpectedly",
         "RE Worker environment was destroyed",
         "Internal RE Manager error occurred. Report the error to the development team",
+        "Timeout occurred while processing the request",
     }
 )
 
@@ -175,8 +178,8 @@ class WorkerGateway:
         self._blocked = False
         # Attempt uid -> monotonic time at which waiting for evidence of its outcome ends.
         self._deadlines: dict[str, float] = {}
-        # Attempt uids a pause or abort was sent for, so each is sent once.
-        self._pause_sent: str | None = None
+        # The pause sent for an attempt, and the attempt an abort was sent for, so each is sent once.
+        self._pause_sent: tuple[str, PauseOption] | None = None
         self._abort_sent: str | None = None
         self._environment_opened_at: float | None = None
         # The live attempt's runs as RE Manager last reported them, and the run list uid they were read at.
@@ -419,8 +422,8 @@ class WorkerGateway:
             if status.running_item_uid == attempt.item_uid:
                 self._deadlines.pop(uid, None)
                 await self._refresh_runs(attempt, status)
-                if attempt.safe_stop_requested_at is not None:
-                    await self._safe_stop(attempt, status)
+                if attempt.safe_stop_requested_at is not None or attempt.stop_now_requested_at is not None:
+                    await self._stop(attempt, status)
                 return
             logger.error(
                 "RE Manager is running item %s, but the controller dispatched %s",
@@ -453,9 +456,15 @@ class WorkerGateway:
             return
         self._runs, self._run_list_uid = (uid, runs), status.run_list_uid
 
-    async def _safe_stop(self, attempt: AttemptRecord, status: ManagerStatus) -> None:
+    async def _stop(self, attempt: AttemptRecord, status: ManagerStatus) -> None:
+        """Pause the plan, at its next checkpoint for a safe stop or at once for a stop now, then abort it.
+
+        A stop now requested after a safe stop sends the immediate pause as well.
+        """
         uid = attempt.attempt_uid
-        if status.manager_state == "paused" and self._abort_sent != uid:
+        if status.manager_state == "paused":
+            if self._abort_sent == uid:
+                return
             self._abort_sent = uid
             try:
                 await self._relay.re_abort()
@@ -465,16 +474,19 @@ class WorkerGateway:
             except RelayUnreachable:
                 self._abort_sent = None
                 raise
-        elif self._pause_sent != uid:
-            self._pause_sent = uid
-            try:
-                await self._relay.re_pause("deferred")
-            except RelayRejected as error:
-                self._pause_sent = None
-                logger.warning("RE Manager refused to pause attempt %s: %s", uid, error.message)
-            except RelayUnreachable:
-                self._pause_sent = None
-                raise
+            return
+        option: PauseOption = "immediate" if attempt.stop_now_requested_at is not None else "deferred"
+        if self._pause_sent in ((uid, option), (uid, "immediate")):
+            return
+        self._pause_sent = (uid, option)
+        try:
+            await self._relay.re_pause(option)
+        except RelayRejected as error:
+            self._pause_sent = None
+            logger.warning("RE Manager refused to pause attempt %s: %s", uid, error.message)
+        except RelayUnreachable:
+            self._pause_sent = None
+            raise
 
     async def _open_environment(self, status: ManagerStatus, now: float) -> None:
         if status.manager_state != "idle":
@@ -555,7 +567,7 @@ class WorkerGateway:
         self._deadlines.pop(uid, None)
         if self._runs is not None and self._runs[0] == uid:
             self._runs = None
-        if self._pause_sent == uid:
+        if self._pause_sent is not None and self._pause_sent[0] == uid:
             self._pause_sent = None
         if self._abort_sent == uid:
             self._abort_sent = None

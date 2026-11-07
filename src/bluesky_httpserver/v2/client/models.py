@@ -180,9 +180,20 @@ class Attempt(_View):
     """Why it ended as it did, if known."""
     safe_stop_requested_at: datetime | None
     """When a safe stop was requested; None if none was."""
+    stop_now_requested_at: datetime | None
+    """When a stop-now was requested; None if none was."""
     current_run_uids: list[str] | None
     """Bluesky runs a running attempt has opened so far; None for an attempt that is not running, or whose runs
     RE Manager has not reported yet."""
+
+
+class ActiveExecution(_View):
+    """What runs now: the queue execution and its live attempt, which the stop methods take."""
+
+    queue_execution: QueueExecution | None
+    """The running or stopping queue execution; None if the queue is not running."""
+    live_attempt: Attempt | None
+    """The claimed or running attempt; None if no operation is being executed."""
 
 
 class Event(_View):

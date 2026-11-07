@@ -129,10 +129,14 @@ def fly2d_operation(detectors, fast_axis, ...):
   decorated function's source.
 - `qserver-list-plans-devices` emits an `operations:` section alongside plans and
   devices, with a `catalog_sha256` over it; `plans_existing` / `plans_allowed` return it.
-- `(id, version)` must be unique; a duplicate fails list generation.
-- No execution-path change. The controller turns an operation into an ordinary plan
-  item (name + kwargs with map values substituted) and the worker validates it as it
-  validates any plan today.
+- `(id, version)` must be unique; a duplicate fails list generation. Device-map values
+  must be device or subdevice names, not patterns.
+- One execution-path change: for a plan carrying a descriptor, the worker converts no
+  plan names and evaluates no expressions, and converts device names only in
+  device-mapped parameters, each of which accepts exactly its map's values. Every other
+  parameter reaches the plan as sent. The controller turns an operation into an
+  ordinary plan item (name + kwargs with map values substituted) and the worker
+  validates it as it validates any plan today.
 
 **Acceptance.** A profile with one `@operation` plan produces a descriptor in the list
 file and in `plans_allowed`; a duplicate `(id, version)` fails generation with a clear
@@ -173,12 +177,11 @@ that reaches the socket is the controller.
 **Change.** A configuration flag `controller_fronted: true` under which the manager:
 
 - refuses to start unless both the control and info sockets are bound to `ipc://`
-  paths;
-- returns `{"success": false, "msg": "disabled in controller-fronted mode"}` from
-  `queue_item_add`, `queue_item_add_batch`, `queue_item_update`, `queue_item_move*`,
-  `queue_item_remove*`, `queue_clear`, `queue_start`, `queue_stop`, `queue_autostart`,
-  `queue_mode_set`, `script_upload`, `function_execute`, `permissions_set`,
-  `permissions_reload`, `environment_update`, `lock`, `unlock`, and changes no state;
+  absolute paths (no abstract `ipc://@name`, no relative path), and refuses to start
+  with the IPython kernel enabled;
+- returns `{"success": false, "msg": "disabled in controller-fronted mode"}` from every
+  method not kept below, and changes no state; among them `manager_stop`, so a
+  controller-fronted manager is stopped with a signal (SIGTERM), as a service is;
 - keeps `ping`, `status`, `config_get`, `plans_existing`, `plans_allowed`,
   `devices_existing`, `devices_allowed`, `queue_item_execute`, `history_get`,
   `history_clear`, `re_pause`, `re_resume`, `re_stop`, `re_abort`, `re_halt`,
@@ -258,7 +261,8 @@ carry the API's client ID as `aud`.
 - `PUT /operations/{uid}` (replace pending), `DELETE /operations/{uid}` (cancel
   pending), `POST /queue/reorder` (must name every pending operation once).
 - `GET /queue`, `GET /operations/{uid}`, `GET /attempts/{uid}`,
-  `GET /queue-executions/{uid}`.
+  `GET /queue-executions/{uid}`, and `GET /active-execution`: the running execution and
+  its live attempt, which the stop routes take.
 
 No route forwards a raw 0MQ method; no plan names, scripts, functions, environment or
 permissions routes exist in this mode.
@@ -276,14 +280,16 @@ link.
 
 - **Lease.** One per instrument, bound to the authenticated principal, TTL 5 s–1 h,
   acquire/renew/release, admin override with a recorded reason. Submit, replace,
-  cancel, reorder, start/stop execution, safe-stop and recovery acknowledgement require
-  the caller's active lease; another principal gets 403.
+  cancel, reorder, start execution and recovery acknowledgement require the caller's
+  active lease; another principal gets 403. Stops (execution stop, safe-stop, stop-now)
+  need no lease: a stop only reduces what runs, so an operator can stop work that
+  another principal controls.
 - **Roles.** `QueueServer.Read`: every `GET`, events and SSE. `QueueServer.Edit`: lease
   acquire, renew and release; submit, replace, cancel and reorder. `QueueServer.Run`:
-  start and stop execution, safe-stop, recovery acknowledgement. `QueueServer.Admin`:
-  lease override. Each role includes the ones before it. The role says what a caller may
-  do and the lease says who is in control now, so Edit and Run actions need both; a
-  missing role → 403.
+  start and stop execution, safe-stop, stop-now, recovery acknowledgement.
+  `QueueServer.Admin`: lease override. Each role includes the ones before it. The role
+  says what a caller may do and the lease says who is in control now, so Edit and Run
+  actions need both, except stops, which need only the role; a missing role → 403.
 - **Queue execution.** `POST /queue-executions` records initiator, policy and the
   admitted operations. Pending work is admitted at start and as it is added while the
   execution is `running`. The record authorizes the scheduler; admitted work continues
@@ -293,8 +299,9 @@ link.
   `blocked`.
 - **Failure policy** per execution: `stop_on_failure` (default) or
   `continue_on_failure`. Under either, a `failed` attempt is never retried. `unknown`
-  and `interrupted` block regardless of policy. `aborted` (operator safe-stop) stops the
-  execution.
+  and `interrupted` block regardless of policy. `aborted` (operator safe-stop or
+  stop-now) stops the execution, and so does any attempt a principal asked to stop,
+  whatever its outcome, so nothing else starts once someone has asked to stop.
 
 **Acceptance.** (1) Live add/replace/reorder during a running execution is picked up in
 order; no operation is claimed twice. (2) Lease expiry mid-execution: admitted work
@@ -360,8 +367,10 @@ for in-progress display.
 
 **Outcome mapping** from the history entry's `exit_status`: `completed` →
 `succeeded`; `stopped` → `succeeded` (Bluesky closed the run cleanly); `failed` →
-`failed`; `aborted`, `halted` → `aborted`; the A2 diagnostic, or `unknown` (the
-manager's own post-restart fallback, `manager.py:3950-3958`) → `unknown`.
+`failed`; `aborted`, `halted` → `aborted`; the A2 diagnostic, another `failed` message
+of a manager path where the worker's outcome is unknown (environment destroyed, internal
+error, a run request that timed out), or `unknown` (the manager's own post-restart
+fallback, `manager.py:3950-3958`) → `unknown`.
 
 **Unprovable → `unknown`, always with a dispatch block:**
 - `queue_item_execute` timed out and, after the grace window, no history entry carries
@@ -385,9 +394,13 @@ nothing converts `unknown` back into `running`.
 **Reconnect after a controller restart** follows the same rules as relay loss, with
 the stored `item_uid` as the thing verified.
 
-**Safe stop.** `POST /attempts/{uid}/safe-stop` → `re_pause` (deferred) then
-`re_abort`; the resulting `aborted` entry is handled like any other. A completion that
-arrives first wins.
+**Safe stop and stop now.** `POST /attempts/{uid}/safe-stop` → `re_pause` (deferred)
+then `re_abort`; a move or wait in progress runs to its end first, since the pause lands
+at the next checkpoint. `POST /attempts/{uid}/stop-now` → `re_pause` (immediate) then
+`re_abort`; it interrupts the move or wait, and escalates a safe stop that has not
+landed. The resulting `aborted` entry is handled like any other. A completion that
+arrives first wins. Neither takes `If-Match` or needs the lease. Neither leaves the plan
+paused for an operator to resume, stop or halt; see "Added later".
 
 **Recovery.** A block clears only through `POST /recovery/acknowledge` with lease,
 current revision and a non-blank note, and only once fence evidence exists: `status`
@@ -463,10 +476,14 @@ Add a test that walks the router and fails if any route other than `/health` and
 
 A `QueueServerClient` (sync and async) for `/api/v2`: caller-supplied bearer token;
 `catalog()`; `submit(operation_id, version, parameters)` validated client-side against
-the descriptor; automatic `If-Match` from the last seen ETag with a typed
-`StaleRevision` error; automatic `Idempotency-Key`; lease helpers; `start_execution`,
-`stop_after_current`, `safe_stop`, `acknowledge_recovery`; `events(after=)` and an SSE
-iterator with cursor resume. No plan-name, script, function or environment calls.
+the descriptor; `If-Match` from the caller's own last queue read or edit, kept per task
+or thread and never taken from events or other responses, with a typed `StaleRevision`
+error and a client-side 428 when there is none; one `Idempotency-Key` per call, resent
+with the same `If-Match` when a network error or a 502-504 is retried, and both carried
+by the raised error; lease helpers; `start_execution`, `stop_after_current`,
+`safe_stop`, `stop_now`, `active_execution`, `acknowledge_recovery`; `events(after=)`
+and an SSE iterator with cursor resume that reconnects through network errors, 408,
+429 and 5xx with capped backoff. No plan-name, script, function or environment calls.
 
 **Acceptance.** A command-line walkthrough (take control, submit, start, stream events,
 observe a failure, acknowledge) in under 100 lines on top of the client; the SSE
@@ -508,16 +525,19 @@ Each is an independent improvement on top of the above:
 - The worker's bounded self-stop: a silence timer, a per-operation orphan
   policy (`continue` / `request-stop`) and a result file, so a plan with no manager
   present is stopped or recorded within a bounded time.
-- Worker-side enforcement of the operation catalog and device map, so the catalog holds
-  at the 0MQ socket as well as at the HTTPS door.
+- Worker-side enforcement of each operation's parameter schema, so the catalog holds at
+  the 0MQ socket as well as at the HTTPS door. The device map already holds there (A1).
 - A catalog revision hash covering the profile source, for drift detection stronger
   than `plans_allowed_uid`.
 - Loop mode, instructions, batch submission in the controller.
+- Operator choice after a pause: resume, stop, abort or halt (`re_resume`, `re_stop`,
+  `re_abort`, `re_halt`). Today both stop routes pause only to abort.
 
 ## What this accepts
 
-- The catalog is enforced at the HTTPS door, not in the worker. The closed socket is a
-  deployment guarantee, enforced by A3's refusal to bind `tcp://`.
+- Parameter schemas are enforced at the HTTPS door, not in the worker, which enforces
+  only the device map (A1). The closed socket is a deployment guarantee, enforced by
+  A3's refusal to bind `tcp://`.
 - The fence is "the manager reports idle," not a reap or a lock. Adequate with A2 and a
   closed door.
 - Two stores: Redis holds the worker's log; SQLite is the authority; httpserver never

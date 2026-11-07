@@ -155,6 +155,13 @@ async def test_dispatch_sends_the_plan_with_worker_device_names(store, relay, ga
         ("halted", "", AttemptState.ABORTED, QueueExecutionState.STOPPED),
         ("unknown", "", AttemptState.UNKNOWN, QueueExecutionState.BLOCKED),
         ("failed", "RE Worker process terminated unexpectedly", AttemptState.UNKNOWN, QueueExecutionState.BLOCKED),
+        # The worker may have started the plan when the manager's run request timed out.
+        (
+            "failed",
+            "Timeout occurred while processing the request",
+            AttemptState.UNKNOWN,
+            QueueExecutionState.BLOCKED,
+        ),
     ],
 )
 async def test_history_entry_decides_the_outcome(
@@ -333,15 +340,65 @@ async def test_safe_stop_pauses_then_aborts(store, relay, gateway):
 
 
 @pytest.mark.asyncio
-async def test_completion_before_safe_stop_wins(store, relay, gateway):
-    await queue_and_start(store)
+async def test_stop_now_pauses_at_once_then_aborts(store, relay, gateway):
+    (_, second), x = await queue_and_start(store, count=2)
+    await gateway.step()
+    uid = (await only_attempt(store)).attempt_uid
+    await store.write(lambda tx: tx.request_stop_now(principal="bob", attempt_uid=uid))
+
+    await gateway.step()
+    assert "re_pause immediate" in relay.calls
+    await gateway.step()
+    assert "re_abort" in relay.calls
+    await gateway.step()
+    await gateway.step()
+    assert (await only_attempt(store)).state is AttemptState.ABORTED
+    assert await execution_state(store, x) is QueueExecutionState.STOPPED
+    assert await operation_state(store, second) is OperationState.QUEUED
+    assert relay.calls.count("re_pause immediate") == relay.calls.count("re_abort") == 1
+    assert "re_pause deferred" not in relay.calls
+
+
+@pytest.mark.asyncio
+async def test_stop_now_escalates_a_safe_stop_that_has_not_landed(store, relay, gateway):
+    _, x = await queue_and_start(store)
+    await gateway.step()
+    uid = (await only_attempt(store)).attempt_uid
+    relay.deferred_pause_lands = False
+    await store.write(lambda tx: tx.request_safe_stop(principal="alice", attempt_uid=uid))
+    await gateway.step()
+    await gateway.step()
+    assert relay.calls.count("re_pause deferred") == 1
+    assert (await only_attempt(store)).state is AttemptState.RUNNING
+
+    await store.write(lambda tx: tx.request_stop_now(principal="alice", attempt_uid=uid))
+    await gateway.step()
+    assert relay.calls.count("re_pause immediate") == 1
+    await gateway.step()
+    await gateway.step()
+    assert (await only_attempt(store)).state is AttemptState.ABORTED
+    assert await execution_state(store, x) is QueueExecutionState.STOPPED
+    assert [call for call in relay.calls if call.startswith("re_")] == [
+        "re_pause deferred",
+        "re_pause immediate",
+        "re_abort",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_completion_before_safe_stop_wins_and_the_execution_stops(store, relay, gateway):
+    (_, second), x = await queue_and_start(store, count=2)
     await gateway.step()
     uid = (await only_attempt(store)).attempt_uid
     await store.write(lambda tx: tx.request_safe_stop(principal="alice", attempt_uid=uid))
     relay.finish_running("completed")
     await gateway.step()
+    await gateway.step()
     assert (await only_attempt(store)).state is AttemptState.SUCCEEDED
     assert "re_pause deferred" not in relay.calls
+    assert await execution_state(store, x) is QueueExecutionState.STOPPED
+    assert await operation_state(store, second) is OperationState.QUEUED
+    assert relay.calls.count("item_execute") == 1
 
 
 @pytest.mark.asyncio

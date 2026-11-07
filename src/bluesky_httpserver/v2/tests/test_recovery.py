@@ -10,8 +10,8 @@ from bluesky_httpserver.v2.store import (
     AttemptState,
     DispatchBlocked,
     EventType,
+    FailurePolicy,
     InvalidAttemptTransition,
-    LeaseRequired,
     NotBlocked,
     OperationState,
     QueueExecutionRecord,
@@ -119,36 +119,59 @@ async def test_late_evidence_resolves_unknown_attempt_but_not_the_block(store):
 
 
 @pytest.mark.asyncio
-async def test_safe_stop_request(store, clock):
+@pytest.mark.parametrize(
+    ("method", "field", "event_type"),
+    [
+        ("request_safe_stop", "safe_stop_requested_at", EventType.OPERATION_SAFE_STOP_REQUESTED),
+        ("request_stop_now", "stop_now_requested_at", EventType.OPERATION_STOP_NOW_REQUESTED),
+    ],
+)
+async def test_stop_request(store, clock, method, field, event_type):
     _, revision = await submit(store, 0)
     await start(store, revision)
     attempt, _, _ = await claimed(store)
     uid = attempt.attempt_uid
 
-    def request(principal: str = "alice"):
-        return store.write(lambda tx: tx.request_safe_stop(principal=principal, attempt_uid=uid))
+    # Alice holds the lease; a stop needs none, so bob may ask.
+    def request(principal: str = "bob"):
+        return store.write(lambda tx: getattr(tx, method)(principal=principal, attempt_uid=uid))
 
-    with pytest.raises(LeaseRequired):
-        await request("bob")
     revision, count = await revision_and_event_count(store)
     requested, new_revision = await request()
-    assert requested.safe_stop_requested_at == clock.now
+    assert getattr(requested, field) == clock.now
     assert requested.state is AttemptState.CLAIMED
     assert new_revision == revision + 1
     events = await store.events_after(0)
     assert len(events) == count + 1
-    assert events[-1].event_type is EventType.OPERATION_SAFE_STOP_REQUESTED
-    assert (events[-1].actor_id, events[-1].attempt_uid) == ("alice", uid)
+    assert events[-1].event_type is event_type
+    assert (events[-1].actor_id, events[-1].attempt_uid) == ("bob", uid)
 
     clock.advance(1)
-    again, again_revision = await request()
-    assert (again.safe_stop_requested_at, again_revision) == (requested.safe_stop_requested_at, new_revision)
+    again, again_revision = await request("alice")
+    assert (getattr(again, field), again_revision) == (getattr(requested, field), new_revision)
     assert await revision_and_event_count(store) == (new_revision, count + 1)
 
     await finish(store, uid, AttemptState.ABORTED)
     with pytest.raises(AttemptNotLive) as exc_info:
         await request()
     assert exc_info.value.state is AttemptState.ABORTED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["request_safe_stop", "request_stop_now"])
+@pytest.mark.parametrize("outcome", [AttemptState.SUCCEEDED, AttemptState.FAILED])
+async def test_stop_request_stops_the_execution_whatever_the_outcome(store, method, outcome):
+    # Under continue_on_failure, neither outcome would stop the execution by itself.
+    _, _ = await submit(store, 0)
+    b, revision = await submit(store, 1)
+    started, _ = await start(store, revision, FailurePolicy.CONTINUE_ON_FAILURE)
+    attempt, _, _ = await claimed(store)
+    await store.write(lambda tx: getattr(tx, method)(principal="bob", attempt_uid=attempt.attempt_uid))
+
+    await finish(store, attempt.attempt_uid, outcome)
+    assert (await execution(store, started.queue_execution_uid)).state is QueueExecutionState.STOPPED
+    assert (await store.read(lambda tx: tx.operation(b.operation_uid))).state is OperationState.QUEUED
+    assert await claim(store) is None
 
 
 @pytest.mark.asyncio

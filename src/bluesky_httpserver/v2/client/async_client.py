@@ -4,20 +4,34 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
+import email.utils
 import inspect
 import logging
+import random
 import re
 import ssl
+import time
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Self, TypeVar
 from urllib.parse import quote
 
 import httpx
 
-from .errors import ApiError, StaleRevision, UnknownOperation, error_from_response
-from .models import Attempt, Event, Lease, Operation, OperationCatalog, Queue, QueueExecution, Readiness
+from .errors import ApiError, OutcomeUnknown, StaleRevision, UnknownOperation, error_from_response
+from .models import (
+    ActiveExecution,
+    Attempt,
+    Event,
+    Lease,
+    Operation,
+    OperationCatalog,
+    Queue,
+    QueueExecution,
+    Readiness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +42,37 @@ Token = str | Callable[[], str | Awaitable[str]]
 
 _API = "/api/v2"
 _ETAG = re.compile(r'"qrev-(0|[1-9][0-9]*)"')
+
+# Statuses after which a mutation is resent with the same key: a proxy or the server could not handle it now.
+_RETRIED_MUTATION_STATUSES = frozenset({502, 503, 504})
+# Statuses after which the event stream reconnects; any other error status ends it.
+_RETRIED_STREAM_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+
+def _revision_of(response: httpx.Response) -> int | None:
+    """The queue revision a response's ``ETag`` names, if any."""
+    match = _ETAG.fullmatch(response.headers.get("ETag", ""))
+    return None if match is None else int(match.group(1))
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """Seconds a response's ``Retry-After`` asks to wait, if it has a valid one."""
+    value = response.headers.get("Retry-After", "").strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, when.timestamp() - time.time())
+
+
+def _backoff(failures: int, base_seconds: float, cap_seconds: float, retry_after: float | None) -> float:
+    """Seconds to wait before the next try: ``base_seconds`` doubled per failure after the first, capped at
+    ``cap_seconds``, with jitter; at least ``retry_after``, if the server sent one."""
+    delay = min(cap_seconds, base_seconds * 2 ** max(0, failures - 1))
+    delay = random.uniform(delay / 2, delay)
+    return delay if retry_after is None else max(delay, retry_after)
 
 
 @dataclass
@@ -51,6 +96,16 @@ class AsyncQueueServerClient:
 
     A client may be used by many tasks at once. Use it as ``async with``, or call `aclose` when done.
 
+    Queue edits send ``If-Match``: the revision given as ``revision=``, or else `revision`, the revision of the
+    queue the calling task last read with `queue` (or was given by `edit_queue`), advanced by each of its own
+    queue edits since. Each task has its own; events and other tasks never change it. A task that has neither
+    gets `ApiError` ``precondition_required`` before anything is sent.
+
+    Each mutation is sent with one ``Idempotency-Key``, made unless given ``idempotency_key=``. A network error,
+    or a 502, 503 or 504, resends it with the same key and ``If-Match`` up to ``retries`` times, so the server
+    acts at most once. If every try fails, the error raised carries both as ``idempotency_key`` and
+    ``revision``; passing them to the same call again replays the server's original response, if it acted.
+
     Parameters
     ----------
     base_url : str
@@ -62,14 +117,21 @@ class AsyncQueueServerClient:
         Timeout of each network operation: connecting, sending, or waiting for a response.
     verify : ssl.SSLContext or bool, optional
         How to verify the server's TLS certificate; True uses the system's trusted certificates.
+    retries : int, optional
+        Most times a mutation is resent after a network error or a 502, 503 or 504.
+    retry_seconds : float, optional
+        Wait before the first resend; each further one waits about twice as long, or as long as the server's
+        ``Retry-After`` asks, if longer.
 
     Raises
     ------
     ApiError
         From every request the server refuses; `StaleRevision`, `InvalidParameters` and `UnknownOperation` for
         the codes callers most often handle.
+    OutcomeUnknown
+        From every mutation that failed in the network on every try.
     httpx.TransportError
-        From every request that fails in the network.
+        From every read that fails in the network.
     """
 
     def __init__(
@@ -79,11 +141,18 @@ class AsyncQueueServerClient:
         *,
         timeout_seconds: float = 10.0,
         verify: ssl.SSLContext | bool = True,
+        retries: int = 3,
+        retry_seconds: float = 0.5,
     ) -> None:
         self._token = token
         self._timeout = timeout_seconds
+        self._retries = retries
+        self._retry_seconds = retry_seconds
         self._http = httpx.AsyncClient(base_url=base_url, timeout=timeout_seconds, verify=verify)
-        self._revision: int | None = None
+        # A context variable, so each task (and each thread of a QueueServerClient) has its own.
+        self._basis: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+            f"queue_revision_basis_{id(self):x}", default=None
+        )
         self._catalog: OperationCatalog | None = None
 
     async def __aenter__(self) -> Self:
@@ -98,13 +167,12 @@ class AsyncQueueServerClient:
 
     @property
     def revision(self) -> int | None:
-        """Queue revision of the newest queue state this client has seen, from a response's ``ETag`` or an
-        event's ``queue_revision``. Queue edits send it as ``If-Match`` unless given ``revision=``.
+        """Queue revision the calling task's queue edits send as ``If-Match`` unless given ``revision=``.
 
-        A response's ``ETag`` sets it exactly, so after a store restore, reading the queue fixes it. Events only
-        raise it, so replaying old events never lowers it.
+        Set by the task's `queue` reads and advanced by its own successful queue edits; None until it reads the
+        queue. A new task starts with its creator's. Events and other tasks never change it.
         """
-        return self._revision
+        return self._basis.get()
 
     async def _auth(self) -> dict[str, str]:
         token = self._token() if callable(self._token) else self._token
@@ -112,29 +180,23 @@ class AsyncQueueServerClient:
             token = await token
         return {"Authorization": f"Bearer {token}"}
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        json: Any = None,
-        params: Mapping[str, int] | None = None,
-        headers: Mapping[str, str] | None = None,
-    ) -> httpx.Response:
-        response = await self._http.request(
-            method, path, json=json, params=params, headers={**(headers or {}), **await self._auth()}
-        )
+    async def _request(self, method: str, path: str, *, params: Mapping[str, int] | None = None) -> httpx.Response:
+        response = await self._http.request(method, path, params=params, headers=await self._auth())
         if response.is_error:
             raise error_from_response(response)
-        match = _ETAG.fullmatch(response.headers.get("ETag", ""))
-        if match is not None:
-            self._revision = int(match.group(1))
         return response
 
-    def _saw_events(self, events: Iterable[Event]) -> None:
-        newest = max((event.queue_revision for event in events), default=None)
-        if newest is not None and (self._revision is None or newest > self._revision):
-            self._revision = newest
+    def _if_match(self, revision: int | None) -> int:
+        """The revision a queue edit sends as ``If-Match``: ``revision``, or else the calling task's basis."""
+        if revision is None:
+            revision = self._basis.get()
+        if revision is None:
+            raise ApiError(
+                428,
+                "precondition_required",
+                "no queue revision to send as If-Match: read the queue in this task first, or pass revision=",
+            )
+        return revision
 
     async def _mutate(
         self,
@@ -142,17 +204,47 @@ class AsyncQueueServerClient:
         path: str,
         *,
         json: Any = None,
-        if_match: bool,
         revision: int | None,
         idempotency_key: str | None,
     ) -> httpx.Response:
-        headers = {"Idempotency-Key": idempotency_key or str(uuid.uuid4())}
-        if if_match:
-            revision = revision if revision is not None else self._revision
-            if revision is None:
-                revision = (await self.queue()).revision
+        """Send a mutation, with ``If-Match`` if ``revision`` is given, and resend it as the class describes."""
+        key = idempotency_key or str(uuid.uuid4())
+        headers = {"Idempotency-Key": key}
+        if revision is not None:
             headers["If-Match"] = f'"qrev-{revision}"'
-        return await self._request(method, path, json=json, headers=headers)
+        failures = 0
+        while True:
+            try:
+                response = await self._http.request(
+                    method, path, json=json, headers={**headers, **await self._auth()}
+                )
+            except httpx.TransportError as error:
+                failures += 1
+                if failures > self._retries:
+                    raise OutcomeUnknown(
+                        f"{method} {path} failed in the network on all {failures} tries: {error!r}",
+                        request=error.request,
+                        idempotency_key=key,
+                        revision=revision,
+                    ) from error
+                reason, retry_after = repr(error), None
+            else:
+                if response.status_code not in _RETRIED_MUTATION_STATUSES or failures >= self._retries:
+                    break
+                failures += 1
+                reason, retry_after = f"HTTP {response.status_code}", _retry_after(response)
+            delay = _backoff(failures, self._retry_seconds, self._retry_seconds * 2**self._retries, retry_after)
+            logger.info("%s %s failed (%s), resending in %.2g s with the same key", method, path, reason, delay)
+            await asyncio.sleep(delay)
+        if response.is_error:
+            refused = error_from_response(response)
+            refused.idempotency_key, refused.revision = key, revision
+            raise refused
+        made = _revision_of(response)
+        if revision is not None and made is not None:
+            # The revision this edit made on top of the one it was based on.
+            self._basis.set(made)
+        return response
 
     async def _checked(self, operation_id: str, operation_version: str, parameters: Mapping[str, Any]) -> None:
         cached = self._catalog
@@ -194,12 +286,16 @@ class AsyncQueueServerClient:
     async def queue(self) -> Queue:
         """Return the queued operations in the order they will run, and the queue's revision.
 
+        The calling task's later queue edits are based on this revision; see `revision`.
+
         Returns
         -------
         Queue
         """
         response = await self._request("GET", f"{_API}/queue")
-        return Queue.model_validate_json(response.content)
+        queue = Queue.model_validate_json(response.content)
+        self._basis.set(queue.revision)
+        return queue
 
     async def operation(self, operation_uid: str) -> Operation:
         """Return one operation in any state, including cancelled, replaced and finished ones.
@@ -246,6 +342,19 @@ class AsyncQueueServerClient:
         response = await self._request("GET", f"{_API}/queue-executions/{quote(queue_execution_uid, safe='')}")
         return QueueExecution.model_validate_json(response.content)
 
+    async def active_execution(self) -> ActiveExecution:
+        """Return what runs now: the running or stopping queue execution, and its claimed or running attempt.
+
+        Names what `stop_after_current`, `safe_stop` and `stop_now` take, without replaying events.
+
+        Returns
+        -------
+        ActiveExecution
+            Either field is None when there is none.
+        """
+        response = await self._request("GET", f"{_API}/active-execution")
+        return ActiveExecution.model_validate_json(response.content)
+
     async def lease(self) -> Lease | None:
         """Return who controls the instrument, and until when.
 
@@ -274,21 +383,20 @@ class AsyncQueueServerClient:
             Empty when there is nothing newer.
         """
         response = await self._request("GET", f"{_API}/events", params={"after": after, "limit": limit})
-        events = [Event.model_validate(event) for event in response.json()["events"]]
-        self._saw_events(events)
-        return events
+        return [Event.model_validate(event) for event in response.json()["events"]]
 
     async def acquire_lease(self, ttl_seconds: int, *, idempotency_key: str | None = None) -> Lease:
         """Take control of the instrument. Needs the Edit role.
 
-        Only the holder may edit the queue or start and stop queue executions. See also `hold_lease`.
+        Only the holder may edit the queue or start queue executions; stopping needs only the Run role. See also
+        `hold_lease`.
 
         Parameters
         ----------
         ttl_seconds : int
             Seconds from now until control lapses unless renewed.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -303,7 +411,6 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/control-lease",
             json={"ttl_seconds": ttl_seconds},
-            if_match=False,
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -317,7 +424,7 @@ class AsyncQueueServerClient:
         ttl_seconds : int
             Seconds from now until control lapses unless renewed again.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -332,7 +439,6 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/control-lease/renew",
             json={"ttl_seconds": ttl_seconds},
-            if_match=False,
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -346,7 +452,7 @@ class AsyncQueueServerClient:
         Parameters
         ----------
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Raises
         ------
@@ -356,7 +462,6 @@ class AsyncQueueServerClient:
         await self._mutate(
             "POST",
             f"{_API}/control-lease/release",
-            if_match=False,
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -371,7 +476,7 @@ class AsyncQueueServerClient:
         ttl_seconds : int
             Seconds from now until control lapses unless renewed.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -381,7 +486,6 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/control-lease/override",
             json={"reason": reason, "ttl_seconds": ttl_seconds},
-            if_match=False,
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -410,7 +514,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the edit is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -426,6 +530,7 @@ class AsyncQueueServerClient:
         StaleRevision
             The queue changed after ``revision``; nothing was written.
         """
+        revision = self._if_match(revision)
         await self._checked(operation_id, operation_version, parameters)
         response = await self._mutate(
             "POST",
@@ -435,7 +540,6 @@ class AsyncQueueServerClient:
                 "operation_version": operation_version,
                 "parameters": dict(parameters),
             },
-            if_match=True,
             revision=revision,
             idempotency_key=idempotency_key,
         )
@@ -466,7 +570,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the edit is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -484,6 +588,7 @@ class AsyncQueueServerClient:
         ApiError
             Code ``operation_not_queued`` if the operation is no longer queued.
         """
+        revision = self._if_match(revision)
         await self._checked(operation_id, operation_version, parameters)
         response = await self._mutate(
             "PUT",
@@ -493,7 +598,6 @@ class AsyncQueueServerClient:
                 "operation_version": operation_version,
                 "parameters": dict(parameters),
             },
-            if_match=True,
             revision=revision,
             idempotency_key=idempotency_key,
         )
@@ -511,7 +615,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the edit is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -528,8 +632,7 @@ class AsyncQueueServerClient:
         response = await self._mutate(
             "DELETE",
             f"{_API}/operations/{quote(operation_uid, safe='')}",
-            if_match=True,
-            revision=revision,
+            revision=self._if_match(revision),
             idempotency_key=idempotency_key,
         )
         return Operation.model_validate_json(response.content)
@@ -546,7 +649,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the edit is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -564,8 +667,7 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/queue/reorder",
             json={"operation_uids": list(operation_uids)},
-            if_match=True,
-            revision=revision,
+            revision=self._if_match(revision),
             idempotency_key=idempotency_key,
         )
         return Queue.model_validate_json(response.content)
@@ -590,7 +692,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the start is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -607,8 +709,7 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/queue-executions",
             json={"policy": policy},
-            if_match=True,
-            revision=revision,
+            revision=self._if_match(revision),
             idempotency_key=idempotency_key,
         )
         return QueueExecution.model_validate_json(response.content)
@@ -616,7 +717,8 @@ class AsyncQueueServerClient:
     async def stop_after_current(
         self, queue_execution_uid: str, *, revision: int | None = None, idempotency_key: str | None = None
     ) -> QueueExecution:
-        """Stop a running queue execution once its current operation finishes. Needs the Run role and the lease.
+        """Stop a running queue execution once its current operation finishes. Needs the Run role; the lease is
+        not needed.
 
         The execution becomes ``stopping``, or ``stopped`` at once if no operation is claimed or running.
         Operations not yet taken to run stay queued.
@@ -628,7 +730,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the stop is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -644,25 +746,25 @@ class AsyncQueueServerClient:
         response = await self._mutate(
             "POST",
             f"{_API}/queue-executions/{quote(queue_execution_uid, safe='')}/stop",
-            if_match=True,
-            revision=revision,
+            revision=self._if_match(revision),
             idempotency_key=idempotency_key,
         )
         return QueueExecution.model_validate_json(response.content)
 
     async def safe_stop(self, attempt_uid: str, *, idempotency_key: str | None = None) -> Attempt:
-        """Stop a live attempt safely. Needs the Run role and the lease.
+        """Stop a live attempt safely. Needs the Run role; the lease is not needed.
 
-        The controller pauses the plan at its next checkpoint and aborts it; if the operation finishes first, its
-        own outcome stands. An aborted attempt stops the queue execution. Sends no queue revision, so an
-        emergency stop never fails because the queue changed.
+        The controller pauses the plan at its next checkpoint and aborts it; a plan in the middle of a move or a
+        wait continues until then, which `stop_now` does not wait for. If the operation finishes first, its own
+        outcome stands. Either way, the queue execution stops once the attempt ends. Sends no queue revision, so
+        a stop never fails because the queue changed.
 
         Parameters
         ----------
         attempt_uid : str
             The live attempt.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -677,7 +779,39 @@ class AsyncQueueServerClient:
         response = await self._mutate(
             "POST",
             f"{_API}/attempts/{quote(attempt_uid, safe='')}/safe-stop",
-            if_match=False,
+            revision=None,
+            idempotency_key=idempotency_key,
+        )
+        return Attempt.model_validate_json(response.content)
+
+    async def stop_now(self, attempt_uid: str, *, idempotency_key: str | None = None) -> Attempt:
+        """Stop a live attempt at once. Needs the Run role; the lease is not needed.
+
+        The controller pauses the plan immediately, interrupting a move or a wait in progress, and aborts it; this
+        also escalates a `safe_stop` that has not taken effect yet. If the operation finishes first, or fails
+        while being stopped, its own outcome stands. Either way, the queue execution stops once the attempt ends.
+        Sends no queue revision, so a stop never fails because the queue changed.
+
+        Parameters
+        ----------
+        attempt_uid : str
+            The live attempt.
+        idempotency_key : str, optional
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
+
+        Returns
+        -------
+        Attempt
+            The attempt, with ``stop_now_requested_at`` set.
+
+        Raises
+        ------
+        ApiError
+            Code ``attempt_not_live`` if the attempt has already ended.
+        """
+        response = await self._mutate(
+            "POST",
+            f"{_API}/attempts/{quote(attempt_uid, safe='')}/stop-now",
             revision=None,
             idempotency_key=idempotency_key,
         )
@@ -699,7 +833,7 @@ class AsyncQueueServerClient:
         revision : int, optional
             Queue revision the acknowledgement is based on; defaults to `revision`.
         idempotency_key : str, optional
-            Pass your own key to retry safely after a network error; a new key is made otherwise.
+            Sent as ``Idempotency-Key``, so resending the call acts at most once; a new key is made otherwise.
 
         Returns
         -------
@@ -718,18 +852,20 @@ class AsyncQueueServerClient:
             "POST",
             f"{_API}/recovery/acknowledge",
             json={"note": note},
-            if_match=True,
-            revision=revision,
+            revision=self._if_match(revision),
             idempotency_key=idempotency_key,
         )
         return QueueExecution.model_validate_json(response.content)
 
     async def edit_queue(self, edit: Callable[[Queue], Awaitable[T]], *, attempts: int = 3) -> T:
-        """Read the queue and call ``edit`` with it; edits made inside ``edit`` send that queue's revision.
+        """Read the queue and call ``edit`` with it; edits made inside ``edit`` are based on that queue.
 
-        If one fails with `StaleRevision` because the queue changed meanwhile, the queue is read again and
-        ``edit`` is called again, at most ``attempts`` times in all. Edits that succeeded before the stale one stay
-        made, so ``edit`` must decide from the queue it is given.
+        The first edit ``edit`` makes sends the revision of the queue it was given, and each further one the
+        revision its previous edit made, so any change by someone else in between fails the edit with
+        `StaleRevision`. Then the queue is read again and ``edit`` is called again, at most ``attempts`` times in
+        all. Edits that succeeded before the stale one stay made, so ``edit`` must decide from the queue it is
+        given. ``edit`` runs in the calling task; edits it makes in tasks it starts are based on the queue too,
+        but each other's edits do not advance their revisions.
 
         Parameters
         ----------
@@ -824,7 +960,12 @@ class AsyncQueueServerClient:
                 logger.warning("could not renew the control lease, retrying in %g s: %s", interval, error)
 
     async def stream_events(
-        self, after: int = 0, *, reconnect_seconds: float = 1.0, idle_timeout_seconds: float = 60.0
+        self,
+        after: int = 0,
+        *,
+        reconnect_seconds: float = 1.0,
+        max_reconnect_seconds: float = 30.0,
+        idle_timeout_seconds: float = 60.0,
     ) -> AsyncGenerator[Event, None]:
         """Yield every event after ``after``, then each new one; never ends on its own.
 
@@ -832,12 +973,18 @@ class AsyncQueueServerClient:
         expiry; supply a callable token to stream past a token's expiry. Close it with ``aclose()``, e.g. through
         `contextlib.aclosing`; leaving an ``async for`` closes it only once it is garbage collected.
 
+        After a network error or a 408, 429, 500, 502, 503 or 504, it reconnects after ``reconnect_seconds``,
+        doubled after each further failure in a row up to ``max_reconnect_seconds``, with jitter, or after the
+        server's ``Retry-After``, if longer. Events never change `revision`.
+
         Parameters
         ----------
         after : int, optional
             Yield events whose ``event_id`` is greater than this.
         reconnect_seconds : float, optional
-            Wait before reconnecting after the stream ends or the connection fails.
+            Wait before reconnecting after the stream ends or first fails.
+        max_reconnect_seconds : float, optional
+            Longest wait before reconnecting, unless the server's ``Retry-After`` asks for longer.
         idle_timeout_seconds : float, optional
             Longest silence before the connection is deemed lost. The server sends a heartbeat every 15 s by
             default, so this must exceed that.
@@ -849,11 +996,14 @@ class AsyncQueueServerClient:
         Raises
         ------
         ApiError
-            The server refused the stream, e.g. 401 for an expired static token; not retried.
+            The server refused the stream with any other error status, e.g. 401 for an expired static token;
+            not retried.
         """
         cursor = after
         timeout = httpx.Timeout(self._timeout, read=idle_timeout_seconds)
+        failures = 0
         while True:
+            retry_after = None
             try:
                 async with self._http.stream(
                     "GET",
@@ -863,19 +1013,25 @@ class AsyncQueueServerClient:
                 ) as response:
                     if response.is_error:
                         await response.aread()
-                        raise error_from_response(response)
-                    parser = _EventStreamParser()
-                    async for line in response.aiter_lines():
-                        event = parser.feed(line)
-                        if event is not None:
-                            cursor = event.event_id
-                            self._saw_events([event])
-                            yield event
+                        if response.status_code not in _RETRIED_STREAM_STATUSES:
+                            raise error_from_response(response)
+                        failures += 1
+                        retry_after = _retry_after(response)
+                        logger.info("event stream refused with HTTP %d, reconnecting", response.status_code)
+                    else:
+                        failures = 0
+                        parser = _EventStreamParser()
+                        async for line in response.aiter_lines():
+                            event = parser.feed(line)
+                            if event is not None:
+                                cursor = event.event_id
+                                yield event
             except httpx.TransportError as error:
                 # Connection refused or reset, or the idle timeout passed.
-                logger.info("event stream interrupted, reconnecting in %g s: %s", reconnect_seconds, error)
+                failures += 1
+                logger.info("event stream interrupted, reconnecting: %s", error)
             # Also after a normal end, so a server that ends each stream at once is not reconnected to in a loop.
-            await asyncio.sleep(reconnect_seconds)
+            await asyncio.sleep(_backoff(failures, reconnect_seconds, max_reconnect_seconds, retry_after))
 
 
 class _EventStreamParser:

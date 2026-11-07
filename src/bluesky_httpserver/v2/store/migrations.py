@@ -106,6 +106,7 @@ _MIGRATION_1 = Migration(
             item_uid TEXT,
             diagnostic TEXT,
             safe_stop_requested_at INTEGER CHECK(safe_stop_requested_at IS NULL OR safe_stop_requested_at >= 0),
+            stop_now_requested_at INTEGER CHECK(stop_now_requested_at IS NULL OR stop_now_requested_at >= 0),
             CHECK(state != 'running' OR item_uid IS NOT NULL)
         )
         """,

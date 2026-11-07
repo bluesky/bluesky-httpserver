@@ -35,9 +35,9 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 import httpx
+from lab import CONTROLLER_URL, mint
 
 from bluesky_httpserver.v2.client import ApiError, AsyncQueueServerClient, Event, Operation, Queue, StaleRevision
-from lab import CONTROLLER_URL, mint
 
 T = TypeVar("T")
 
@@ -255,14 +255,21 @@ async def reader(run: Run, client: AsyncQueueServerClient, done: asyncio.Event) 
             run.error(kind, error)
 
 
+async def _read_then_submit(
+    client: AsyncQueueServerClient, operation_id: str, parameters: dict[str, Any]
+) -> object:
+    await client.queue()
+    return await client.submit(operation_id, "1", parameters)
+
+
 async def outsiders(
     run: Run, intruder: AsyncQueueServerClient, viewer: AsyncQueueServerClient, done: asyncio.Event
 ) -> None:
     """While the lease is held, a principal without it and one with only the Read role must be refused."""
     attempts: list[tuple[str, Callable[[str, dict[str, Any]], Awaitable[object]], str]] = [
         ("take the lease while it is held", lambda _, __: intruder.acquire_lease(60), "lease_held"),
-        ("submit without the lease", lambda o, p: intruder.submit(o, "1", p), "lease_required"),
-        ("submit with only the Read role", lambda o, p: viewer.submit(o, "1", p), "insufficient_role"),
+        ("submit without the lease", lambda o, p: _read_then_submit(intruder, o, p), "lease_required"),
+        ("submit with only the Read role", lambda o, p: _read_then_submit(viewer, o, p), "insufficient_role"),
     ]
     while not done.is_set() and run.stopped is None:
         for name, attempt, expected in attempts:

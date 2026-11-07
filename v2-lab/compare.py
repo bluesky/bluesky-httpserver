@@ -451,18 +451,9 @@ async def retries(ctx: Lab) -> Result:
     async with lead.hold_lease(ttl_seconds=60), serving(v2_proxy) as url:
         client = await ctx.v2("alice", url)
         for _ in range(n):
-            parameters, key = ctx.energy(), str(uuid.uuid4())
-            revision = (await client.queue()).revision
-            try:
-                await client.submit(
-                    V2_OPERATIONS["energy"], "1", parameters, revision=revision, idempotency_key=key
-                )
-            except ApiError as error:
-                if error.status_code != 502:
-                    raise
-                await client.submit(
-                    V2_OPERATIONS["energy"], "1", parameters, revision=revision, idempotency_key=key
-                )
+            await client.queue()
+            # The client resends after the proxy's 502 itself, with the same Idempotency-Key and If-Match.
+            await client.submit(V2_OPERATIONS["energy"], "1", ctx.energy())
         v2_queued = len((await lead.queue()).operations)
         await v2_clear(lead)
 
@@ -470,8 +461,8 @@ async def retries(ctx: Lab) -> Result:
     result.add("plans queued", v1_queued, v2_queued)
     result.add("duplicate plans queued", v1_queued - n, v2_queued - n, "lower")
     result.notes.append(
-        "v1 always mints a new item uid on add, so the retry queues a second plan. v2 replays the response it"
-        " recorded for the Idempotency-Key, even though the queue revision moved on."
+        "v1 always mints a new item uid on add, so the retry queues a second plan. The v2 client resends the"
+        " same Idempotency-Key and If-Match, and the server replays the response it recorded for the key."
     )
     return result
 

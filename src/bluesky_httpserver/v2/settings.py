@@ -107,9 +107,10 @@ class ManagerSettings(_Section):
     """How to reach RE Manager."""
 
     control_address: str
-    """0MQ control address of RE Manager, an ``ipc://`` path: a controller-fronted manager binds no other."""
+    """0MQ control address of RE Manager, ``ipc://`` and an absolute path: a controller-fronted manager binds no
+    other."""
     info_address: str
-    """0MQ address where RE Manager publishes its status, an ``ipc://`` path. Start RE Manager with
+    """0MQ address where RE Manager publishes its status, ``ipc://`` and an absolute path. Start RE Manager with
     ``--zmq-publish-info=ON``; otherwise the controller sees changes only when it polls."""
     request_timeout_seconds: float = Field(default=5.0, gt=0)
     """How long to wait for RE Manager to answer a request before treating it as unreachable."""
@@ -117,8 +118,10 @@ class ManagerSettings(_Section):
     @field_validator("control_address", "info_address")
     @classmethod
     def _ipc(cls, value: str) -> str:
-        if not value.startswith("ipc://"):
-            raise ValueError("must be an ipc:// address")
+        # Only a socket file's directory limits who may connect: an abstract socket (ipc://@name) has no
+        # permissions, and a relative path depends on the working directory.
+        if not value.startswith("ipc:///") or value == "ipc:///":
+            raise ValueError("must be ipc:// and an absolute path, e.g. ipc:///run/bluesky/manager-control")
         return value
 
 

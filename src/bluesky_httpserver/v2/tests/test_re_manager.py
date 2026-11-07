@@ -18,7 +18,7 @@ import pytest
 import zmq
 
 from bluesky_httpserver.v2.gateway import WorkerGateway
-from bluesky_httpserver.v2.store import AttemptState, EventRecord, EventType, Store
+from bluesky_httpserver.v2.store import AttemptState, EventRecord, EventType, OperationState, Store
 from bluesky_httpserver.v2.zmq_relay import ZmqManagerRelay
 
 from .conftest import acquire, start
@@ -141,8 +141,10 @@ def re_manager(tmp_path: Path) -> Iterator[Manager]:
         assert request(manager.control, "history_clear")["success"]
         yield manager
     finally:
+        # A controller-fronted manager refuses `manager_stop`; it is stopped as a service manager would stop it.
+        # SIGTERM kills the worker as well.
         if process.poll() is None:
-            request(manager.control, "manager_stop", {"option": "safe_off"})
+            process.terminate()
             try:
                 process.wait(30)
             except subprocess.TimeoutExpired:
@@ -305,3 +307,63 @@ async def test_killed_controller_resumes_the_running_attempt(re_manager, db_path
         assert (item["item_uid"], item["result"]["exit_status"]) == (item_uid, "completed")
     finally:
         relay.close()
+
+
+@pytest.mark.asyncio
+async def test_stop_now_interrupts_a_wait(re_manager, db_path):
+    """A count that waits 30 s between its readings ends within seconds of a stop now; a safe stop would wait
+    for the next checkpoint, after the wait. The execution stops, and the operation behind it stays queued."""
+    store = await Store.open(db_path)
+    relay = ZmqManagerRelay(re_manager.control, re_manager.info, timeout_seconds=5.0)
+    try:
+        gateway = WorkerGateway(store=store, relay=relay, user_group="primary", poll_seconds=60)
+        task = asyncio.create_task(gateway.run())
+        try:
+            await wait_until(lambda: gateway.readiness().ready, "the controller to be ready")
+            descriptor = gateway.catalog().descriptor("demo.count", "1")
+            await acquire(store)
+            revision = 0
+            operation_uids: list[str] = []
+            for parameters in ({"detectors": ["primary"], "num": 2, "delay": 30}, {"detectors": ["primary"]}):
+                record, revision = await store.write(
+                    lambda tx, parameters=parameters, revision=revision: tx.submit(
+                        principal="alice",
+                        expected_revision=revision,
+                        operation_id="demo.count",
+                        operation_version="1",
+                        parameters=parameters,
+                        descriptor_sha256=descriptor.sha256,
+                    )
+                )
+                operation_uids.append(record.operation_uid)
+            await start(store, revision)
+            async with asyncio.timeout(60):
+                (*_, running) = await events_until(store, EventType.OPERATION_RUNNING)
+            attempt_uid = running.attempt_uid
+            assert attempt_uid is not None
+            await asyncio.sleep(2)  # the first reading is taken; the plan waits
+
+            # Bob does not hold the lease, which alice does.
+            await store.write(lambda tx: tx.request_stop_now(principal="bob", attempt_uid=attempt_uid))
+            requested = time.monotonic()
+            async with asyncio.timeout(15):
+                events = await events_until(store, EventType.QUEUE_EXECUTION_STOPPED)
+            elapsed = time.monotonic() - requested
+        finally:
+            task.cancel()
+            await asyncio.wait([task])
+
+        assert elapsed < 15
+        (aborted,) = [event for event in events if event.event_type is EventType.OPERATION_ABORTED]
+        assert aborted.attempt_uid == attempt_uid
+        attempt = await store.read(lambda tx: tx.attempt(attempt_uid))
+        assert attempt.state is AttemptState.ABORTED
+        assert attempt.stop_now_requested_at is not None
+        queued = await store.read(lambda tx: tx.operation(operation_uids[1]))
+        assert queued.state is OperationState.QUEUED
+
+        (item,) = request(re_manager.control, "history_get")["items"]
+        assert (item["item_uid"], item["result"]["exit_status"]) == (attempt.item_uid, "aborted")
+    finally:
+        relay.close()
+        await store.close()

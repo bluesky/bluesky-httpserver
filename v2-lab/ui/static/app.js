@@ -390,6 +390,9 @@ function ingest(ev) {
     case "operation.safe_stop_requested":
       if (attempt) Object.assign(attempt, { safe_stop_at: at, safe_stop_by: ev.actor_id });
       break;
+    case "operation.stop_now_requested":
+      if (attempt) Object.assign(attempt, { stop_now_at: at, stop_now_by: ev.actor_id });
+      break;
     case "queue_execution.started":
       S.executions.set(ev.queue_execution_uid, {
         uid: ev.queue_execution_uid,
@@ -702,6 +705,11 @@ async function safeStop(uid) {
   const r = await api("POST", `/api/v2/attempts/${uid}/safe-stop`);
   if (r.ok) toast({ kind: "warn", title: "Safe stop requested", body: "Pausing at the next checkpoint, then aborting." });
   else toastError(r, "Safe stop");
+}
+async function stopNow(uid) {
+  const r = await api("POST", `/api/v2/attempts/${uid}/stop-now`);
+  if (r.ok) toast({ kind: "warn", title: "Stop now requested", body: "Pausing at once, then aborting." });
+  else toastError(r, "Stop now");
 }
 async function acknowledgeRecovery() {
   const r = await api("POST", "/api/v2/recovery/acknowledge", { body: { note: S.recoveryNote }, ifMatch: queueEtag() });
@@ -1377,10 +1385,12 @@ function renderExec() {
           h("span", { class: "ver" }, `v${op?.operation_version}`),
           h("span", { class: "mono muted", "data-elapsed": (live.started_at || live.claimed_at).getTime() }, ""),
           live.safe_stop_at && h("span", { class: "state s-stopping" }, `safe stop requested by ${live.safe_stop_by}`),
+          live.stop_now_at && h("span", { class: "state s-stopping" }, `stop now requested by ${live.stop_now_by}`),
           h(
             "div",
             { class: "right row" },
-            h("button", { class: "btn small danger", onclick: () => safeStop(live.uid), title: "POST /api/v2/attempts/{uid}/safe-stop · Run role + lease · no If-Match, so it never fails on a stale revision" }, "Safe stop", h("span", { class: "role-tag" }, "run")),
+            h("button", { class: "btn small danger", onclick: () => safeStop(live.uid), title: "POST /api/v2/attempts/{uid}/safe-stop · Run role, no lease needed · pauses at the next checkpoint, then aborts · no If-Match, so it never fails on a stale revision" }, "Safe stop", h("span", { class: "role-tag" }, "run")),
+            h("button", { class: "btn small danger", onclick: () => stopNow(live.uid), title: "POST /api/v2/attempts/{uid}/stop-now · Run role, no lease needed · pauses at once, interrupting a move or wait, then aborts · no If-Match" }, "Stop now", h("span", { class: "role-tag" }, "run")),
           ),
         ),
         h("div", { class: "params mono muted", style: { marginTop: "6px" } }, paramsShort(op?.parameters)),
@@ -1592,7 +1602,7 @@ function renderDrawer() {
 
 const EVENT_CLASS = (t) => {
   if (["operation.submitted", "operation.replaced", "operation.cancelled", "queue.reordered"].includes(t)) return "c-queue";
-  if (["operation.claimed", "operation.running", "operation.safe_stop_requested"].includes(t)) return "c-attempt";
+  if (["operation.claimed", "operation.running", "operation.safe_stop_requested", "operation.stop_now_requested"].includes(t)) return "c-attempt";
   if (["operation.succeeded", "queue_execution.completed"].includes(t)) return "c-good";
   if (["operation.failed", "operation.aborted", "operation.unknown", "queue_execution.blocked"].includes(t)) return "c-bad";
   if (t.startsWith("queue_execution.")) return "c-exec";
@@ -1602,7 +1612,7 @@ const EVENT_CLASS = (t) => {
 const FILTERS = {
   all: () => true,
   queue: (t) => EVENT_CLASS(t) === "c-queue",
-  run: (t) => t.startsWith("queue_execution.") || /^operation\.(claimed|running|succeeded|failed|aborted|unknown|safe_stop)/.test(t),
+  run: (t) => t.startsWith("queue_execution.") || /^operation\.(claimed|running|succeeded|failed|aborted|unknown|safe_stop|stop_now)/.test(t),
   lease: (t) => t.startsWith("lease."),
   recovery: (t) => ["operation.unknown", "queue_execution.blocked", "worker.fenced"].includes(t),
 };
@@ -1905,9 +1915,10 @@ const PROPS = [
     n: 6,
     title: "Fail closed when an outcome cannot be proven",
     v1: "After a hard worker death RE Manager kept reporting a running plan on a dead worker until the environment was destroyed or the manager restarted.",
-    v2: "An attempt whose outcome cannot be proven becomes unknown, its execution is blocked and nothing more is dispatched. A proven failure or safe stop just ends the execution.",
+    v2: "An attempt whose outcome cannot be proven becomes unknown, its execution is blocked and nothing more is dispatched. A proven failure or a stop just ends the execution.",
     demos: [
       ["safe-stop", "Safe-stop a running operation"],
+      ["stop-now", "Stop a waiting operation now, without the lease"],
       ["fault-worker", "Kill RE Worker mid-operation", true],
     ],
   },
@@ -2321,6 +2332,25 @@ const DEMOS = {
     const stop = await api("POST", `/api/v2/attempts/${running.attempt_uid}/safe-stop`, { as: ALICE, label: "demo" });
     log.expect("alice requests a safe stop (no If-Match: an emergency stop never fails on a stale revision)", stop, 202);
     await waitStep(log, "RE Worker pauses at a checkpoint and aborts: a proven outcome", (e) => e.event_type === "operation.aborted" && e.operation_uid === s.body.operation_uid, 60000, after);
+    await waitStep(log, "the execution stops — no block, nothing to acknowledge", (e) => e.event_type === "queue_execution.stopped" && e.queue_execution_uid === st.body.queue_execution_uid, 30000, after);
+  },
+
+  async "stop-now"(log) {
+    if (activeExecution()) refuse(log, "note", "A queue execution is already active; let it finish first.");
+    await ensureControl(log);
+    const q = await readQueue();
+    const after = S.cursor;
+    const s = await submit({ ...QUICK, parameters: { detectors: ["diag1"], num: 3, delay: 10 } }, q.etag);
+    must(log.expect("alice queues a count that waits 10 s between readings", s, 201), "submit");
+    const st = await api("POST", "/api/v2/queue-executions", { as: ALICE, body: {}, ifMatch: s.etag, label: "demo" });
+    must(log.expect("alice starts the queue", st, 201), "start");
+    const running = await waitStep(log, "the operation is running", (e) => e.event_type === "operation.running" && e.operation_uid === s.body.operation_uid, 120000, after);
+    await sleep(2500);
+    const stop = await api("POST", `/api/v2/attempts/${running.attempt_uid}/stop-now`, { as: BOB, label: "demo" });
+    log.expect("bob (Run role; alice holds the lease) stops it now: no lease and no If-Match needed", stop, 202);
+    const requested = Date.now();
+    await waitStep(log, "RE Worker pauses mid-wait and aborts: a proven outcome", (e) => e.event_type === "operation.aborted" && e.operation_uid === s.body.operation_uid, 30000, after);
+    log.note("aborted after", `${((Date.now() - requested) / 1000).toFixed(1)} s; a safe stop waits for the next checkpoint, after the wait`);
     await waitStep(log, "the execution stops — no block, nothing to acknowledge", (e) => e.event_type === "queue_execution.stopped" && e.queue_execution_uid === st.body.queue_execution_uid, 30000, after);
   },
 

@@ -35,8 +35,10 @@ _QUEUE_ETAG = re.compile(_QUEUE_ETAG_PATTERN)
 
 IDEMPOTENCY_ERRORS = ("idempotency_key_required", "invalid_idempotency_key", "idempotency_conflict")
 """Errors every mutation may return."""
-QUEUE_EDIT_ERRORS = ("precondition_required", "invalid_if_match", "lease_required", "stale_revision")
-"""Errors every queue mutation may return, besides `IDEMPOTENCY_ERRORS`."""
+REVISION_ERRORS = ("precondition_required", "invalid_if_match", "stale_revision")
+"""Errors of the ``If-Match`` check, which every queue mutation but a stop of an attempt may return."""
+QUEUE_EDIT_ERRORS = (*REVISION_ERRORS, "lease_required")
+"""Errors every queue mutation that needs the lease may return, besides `IDEMPOTENCY_ERRORS`."""
 
 
 def mutation_headers(*, if_match: bool) -> dict[str, Any]:

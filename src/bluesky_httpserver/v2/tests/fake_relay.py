@@ -42,6 +42,8 @@ class FakeRelay:
         self.history_entries: list[HistoryEntry] = []
         self.reachable = True
         self.execute_fault: Literal["reject", "lost", "reply_lost"] | None = None
+        # Whether a deferred pause lands at once, as at a checkpoint; False models a plan in a long move or wait.
+        self.deferred_pause_lands = True
         self.calls: list[str] = []
         self.executed: list[tuple[dict[str, Any], str, str]] = []
         self._running_attempt_uid: str | None = None
@@ -121,7 +123,8 @@ class FakeRelay:
 
     async def re_pause(self, option: Literal["deferred", "immediate"]) -> None:
         self._call("re_pause", f"re_pause {option}")
-        self.state = dataclasses.replace(self.state, manager_state="paused")
+        if option == "immediate" or self.deferred_pause_lands:
+            self.state = dataclasses.replace(self.state, manager_state="paused")
 
     async def re_abort(self) -> None:
         self._call("re_abort")

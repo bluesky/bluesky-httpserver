@@ -240,6 +240,8 @@ class AttemptView(_Model):
     """Why it ended as it did, if known."""
     safe_stop_requested_at: datetime | None
     """When a safe stop was requested; null if none was."""
+    stop_now_requested_at: datetime | None
+    """When a stop now was requested; null if none was."""
     current_run_uids: list[str] | None
     """Bluesky runs a running attempt has opened so far, as RE Manager last reported them; null for an attempt
     that is not running, or whose runs RE Manager has not reported yet. A finished attempt's runs are the
@@ -259,8 +261,20 @@ class AttemptView(_Model):
             safe_stop_requested_at=(
                 None if record.safe_stop_requested_at is None else utc(record.safe_stop_requested_at)
             ),
+            stop_now_requested_at=(
+                None if record.stop_now_requested_at is None else utc(record.stop_now_requested_at)
+            ),
             current_run_uids=None if current_run_uids is None else list(current_run_uids),
         )
+
+
+class ActiveExecutionView(_Model):
+    """What runs now: the queue execution and its live attempt, which the stop routes take."""
+
+    queue_execution: QueueExecutionView | None
+    """The running or stopping queue execution; null if the queue is not running."""
+    live_attempt: AttemptView | None
+    """The claimed or running attempt; null if no operation is being executed."""
 
 
 class EventView(_Model):

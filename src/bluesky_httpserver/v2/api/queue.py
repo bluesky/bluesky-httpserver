@@ -1,9 +1,10 @@
 """Routes of the catalog, the queue, its operations, queue executions, attempts and recovery.
 
-Every queue mutation takes ``Idempotency-Key`` and ``If-Match``, except a safe stop, which takes only
-``Idempotency-Key``; its response carries the new revision as ``ETag``. Parameters are validated against the
-catalog inside the mutation's transaction, after any replay, so a retried request gets its original response
-even if the catalog has changed since. Likewise, recovery's fence check runs after any replay.
+Every queue mutation takes ``Idempotency-Key`` and ``If-Match``, except the stops of an attempt (safe stop and
+stop now), which take only ``Idempotency-Key``; its response carries the new revision as ``ETag``. Stops need the
+Run role but not the lease. Parameters are validated against the catalog inside the mutation's transaction, after
+any replay, so a retried request gets its original response even if the catalog has changed since. Likewise,
+recovery's fence check runs after any replay.
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ..store import ReadTransaction, Store, StoredResponse, Transaction
+from ..store import AttemptRecord, QueueExecutionRecord, ReadTransaction, Store, StoredResponse, Transaction
 from .dependencies import EditPrincipal, ReadPrincipal, RunPrincipal, ServicesDep
 from .errors import error_responses, queue_etag
 from .models import (
+    ActiveExecutionView,
     AttemptView,
     CatalogView,
     OperationSubmission,
@@ -32,6 +34,7 @@ from .models import (
 from .preconditions import (
     IDEMPOTENCY_ERRORS,
     QUEUE_EDIT_ERRORS,
+    REVISION_ERRORS,
     expected_revision,
     mutation_headers,
     require_idempotency_key,
@@ -240,6 +243,30 @@ async def cancel_operation(
 
 
 @router.get(
+    "/active-execution", tags=["executions"], response_model=ActiveExecutionView, responses=_tagged_responses(200)
+)
+async def get_active_execution(services: ServicesDep, principal: ReadPrincipal) -> JSONResponse:
+    """What runs now: the running or stopping queue execution and its claimed or running attempt.
+
+    Names what the stop routes take, without replaying events. Either is null when there is none.
+    """
+
+    async def read(tx: ReadTransaction) -> tuple[QueueExecutionRecord | None, AttemptRecord | None]:
+        return await tx.active_execution(), await tx.live_attempt()
+
+    (execution, attempt), revision = await _read_with_revision(services.store, read)
+    view = ActiveExecutionView(
+        queue_execution=None if execution is None else QueueExecutionView.from_record(execution),
+        live_attempt=(
+            None
+            if attempt is None
+            else AttemptView.from_record(attempt, services.worker.runs(attempt.attempt_uid))
+        ),
+    )
+    return _tagged(view, revision)
+
+
+@router.get(
     "/attempts/{attempt_uid}",
     tags=["executions"],
     response_model=AttemptView,
@@ -256,24 +283,50 @@ async def get_attempt(attempt_uid: str, services: ServicesDep, principal: ReadPr
     tags=["executions"],
     response_model=AttemptView,
     status_code=202,
-    responses=_tagged_responses(
-        202, *IDEMPOTENCY_ERRORS, "lease_required", "invalid_request", "not_found", "attempt_not_live"
-    ),
+    responses=_tagged_responses(202, *IDEMPOTENCY_ERRORS, "invalid_request", "not_found", "attempt_not_live"),
     openapi_extra=mutation_headers(if_match=False),
 )
 async def safe_stop_attempt(
     attempt_uid: str, request: Request, services: ServicesDep, principal: RunPrincipal
 ) -> JSONResponse:
-    """Stop a live attempt safely. Needs the Run role and the lease.
+    """Stop a live attempt safely. Needs the Run role; the lease is not needed.
 
     The request is recorded at once; the controller then pauses the plan at its next checkpoint and aborts it.
-    If the operation finishes first, its own outcome stands. An aborted attempt stops the queue execution.
-    Takes no `If-Match`, so an emergency stop never fails because the queue changed.
+    A plan in the middle of a move or a wait continues until its next checkpoint; `stop-now` interrupts it. If
+    the operation finishes first, its own outcome stands. Either way, the queue execution stops once the attempt
+    ends. Takes no `If-Match`, so a stop never fails because the queue changed.
     """
     key = require_idempotency_key(request)
 
     async def action(tx: Transaction) -> StoredResponse:
         record, revision = await tx.request_safe_stop(principal=principal.id, attempt_uid=attempt_uid)
+        return _stored(202, AttemptView.from_record(record), revision)
+
+    return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
+
+
+@router.post(
+    "/attempts/{attempt_uid}/stop-now",
+    tags=["executions"],
+    response_model=AttemptView,
+    status_code=202,
+    responses=_tagged_responses(202, *IDEMPOTENCY_ERRORS, "invalid_request", "not_found", "attempt_not_live"),
+    openapi_extra=mutation_headers(if_match=False),
+)
+async def stop_attempt_now(
+    attempt_uid: str, request: Request, services: ServicesDep, principal: RunPrincipal
+) -> JSONResponse:
+    """Stop a live attempt at once. Needs the Run role; the lease is not needed.
+
+    The request is recorded at once; the controller then pauses the plan immediately, interrupting a move or a
+    wait in progress, and aborts it. It also escalates a safe stop that has not taken effect yet. If the
+    operation finishes first, or fails while being stopped, its own outcome stands. Either way, the queue
+    execution stops once the attempt ends. Takes no `If-Match`, so a stop never fails because the queue changed.
+    """
+    key = require_idempotency_key(request)
+
+    async def action(tx: Transaction) -> StoredResponse:
+        record, revision = await tx.request_stop_now(principal=principal.id, attempt_uid=attempt_uid)
         return _stored(202, AttemptView.from_record(record), revision)
 
     return await run_idempotent(request, services, principal, key=key, body=None, revision=None, action=action)
@@ -328,13 +381,16 @@ async def start_queue_execution(
     "/queue-executions/{queue_execution_uid}/stop",
     tags=["executions"],
     response_model=QueueExecutionView,
-    responses=_edit_responses(200, "invalid_request", "not_found", "execution_not_running"),
+    responses=_tagged_responses(
+        200, *IDEMPOTENCY_ERRORS, *REVISION_ERRORS, "invalid_request", "not_found", "execution_not_running"
+    ),
     openapi_extra=mutation_headers(if_match=True),
 )
 async def stop_queue_execution(
     queue_execution_uid: str, request: Request, services: ServicesDep, principal: RunPrincipal
 ) -> JSONResponse:
-    """Stop a running queue execution once its current operation finishes. Needs the Run role and the lease.
+    """Stop a running queue execution once its current operation finishes. Needs the Run role; the lease is
+    not needed.
 
     The execution becomes `stopping`, or `stopped` at once if no operation is claimed or running. Operations
     not yet taken to run stay queued.

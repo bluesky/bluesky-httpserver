@@ -1,7 +1,9 @@
-from bluesky_httpserver.v2.client import QueueServerClient
 from lab import CONTROLLER_URL, mint
 
+from bluesky_httpserver.v2.client import QueueServerClient
+
 with QueueServerClient(CONTROLLER_URL, lambda: mint("alice", "admin")) as client, client.hold_lease():
+    client.queue()  # the edits below are based on the queue as read here
     client.submit(
         "bmm.scan_energy", "1", {"detectors": ["xas_det"], "energies": [6500, 7000, 7500], "crystal": "si111"}
     )

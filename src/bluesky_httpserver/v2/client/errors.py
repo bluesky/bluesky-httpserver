@@ -24,6 +24,13 @@ class ApiError(Exception):
         Code-specific data, if any.
     request_id : str, optional
         Identifies the request in the server's logs; None for an error the client found before sending.
+
+    Attributes
+    ----------
+    idempotency_key : str or None
+        The ``Idempotency-Key`` a refused mutation was sent with; None for a read, or if nothing was sent.
+    revision : int or None
+        The queue revision a refused mutation sent as ``If-Match``; None if it sent none.
     """
 
     def __init__(
@@ -39,7 +46,36 @@ class ApiError(Exception):
         self.message = message
         self.details = details
         self.request_id = request_id
+        self.idempotency_key: str | None = None
+        self.revision: int | None = None
         super().__init__(f"{code}: {message}")
+
+
+class OutcomeUnknown(httpx.TransportError):
+    """A mutation failed in the network on every try, so whether the server acted is unknown.
+
+    Call the same method again with ``idempotency_key=`` and ``revision=`` set from this error: if the server
+    acted, it replays its original response instead of acting twice, even if the queue changed meanwhile.
+    The network error of the last try is the ``__cause__``.
+
+    Parameters
+    ----------
+    message : str
+        What failed.
+    request : httpx.Request
+        The last request sent.
+    idempotency_key : str
+        The ``Idempotency-Key`` every try was sent with.
+    revision : int or None
+        The queue revision every try sent as ``If-Match``; None if it sent none.
+    """
+
+    def __init__(
+        self, message: str, *, request: httpx.Request, idempotency_key: str, revision: int | None
+    ) -> None:
+        super().__init__(message, request=request)
+        self.idempotency_key = idempotency_key
+        self.revision = revision
 
 
 class StaleRevision(ApiError):

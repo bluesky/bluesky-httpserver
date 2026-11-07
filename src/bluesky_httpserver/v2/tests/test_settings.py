@@ -77,6 +77,14 @@ def _tcp_manager(settings: dict[str, Any]) -> None:
     settings["manager"]["control_address"] = "tcp://localhost:60615"
 
 
+def _abstract_socket(settings: dict[str, Any]) -> None:
+    settings["manager"]["info_address"] = "ipc://@bluesky-manager-info"
+
+
+def _relative_socket(settings: dict[str, Any]) -> None:
+    settings["manager"]["control_address"] = "ipc://run/manager-control"
+
+
 @pytest.mark.parametrize(
     ("change", "loc"),
     [
@@ -85,6 +93,8 @@ def _tcp_manager(settings: dict[str, Any]) -> None:
         (_relative_store, ("store_path",)),
         (_zero_poll, ("gateway", "poll_seconds")),
         (_tcp_manager, ("manager", "control_address")),
+        (_abstract_socket, ("manager", "info_address")),
+        (_relative_socket, ("manager", "control_address")),
     ],
 )
 def test_invalid_settings_are_refused(change, loc):

@@ -15,7 +15,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import aiosqlite
 
@@ -76,6 +76,9 @@ _TERMINAL_ATTEMPT_EVENTS: Mapping[AttemptState, EventType] = {
 
 # Outcomes later evidence may record for an unknown attempt.
 _PROVEN_OUTCOMES = frozenset({AttemptState.SUCCEEDED, AttemptState.FAILED, AttemptState.ABORTED})
+
+# Attempt columns recording a stop request.
+_StopColumn = Literal["safe_stop_requested_at", "stop_now_requested_at"]
 
 
 def _utc_microseconds() -> int:
@@ -172,6 +175,7 @@ def _row_to_attempt(row: sqlite3.Row) -> AttemptRecord:
         item_uid=row["item_uid"],
         diagnostic=row["diagnostic"],
         safe_stop_requested_at=row["safe_stop_requested_at"],
+        stop_now_requested_at=row["stop_now_requested_at"],
     )
 
 
@@ -642,6 +646,12 @@ class ReadTransaction:
         """Return the blocked queue execution; None if dispatch is not blocked. There is at most one."""
         self._require_active()
         row = await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state='blocked'")
+        return None if row is None else _row_to_execution(row)
+
+    async def active_execution(self) -> QueueExecutionRecord | None:
+        """Return the running or stopping queue execution; None if there is none. There is at most one."""
+        self._require_active()
+        row = await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state IN ('running', 'stopping')")
         return None if row is None else _row_to_execution(row)
 
     async def active_descriptors(self) -> list[tuple[str, str, str]]:
@@ -1123,7 +1133,7 @@ class Transaction(ReadTransaction):
         blocked = await self.blocked_execution()
         if blocked is not None:
             raise DispatchBlocked(blocked.queue_execution_uid)
-        active = await self._active_execution()
+        active = await self.active_execution()
         if active is not None:
             raise ExecutionActive(active.queue_execution_uid)
         queued = await self._queued_uids()
@@ -1158,7 +1168,8 @@ class Transaction(ReadTransaction):
     ) -> tuple[QueueExecutionRecord, int]:
         """Stop a running queue execution once its current operation finishes.
 
-        With no operation claimed or running, the execution stops at once.
+        With no operation claimed or running, the execution stops at once. Needs no lease: a stop only reduces
+        what runs.
 
         Parameters
         ----------
@@ -1178,8 +1189,6 @@ class Transaction(ReadTransaction):
 
         Raises
         ------
-        LeaseRequired
-            ``principal`` does not hold the control lease.
         StaleRevision
             ``expected_revision`` is not the current revision.
         ExecutionNotFound
@@ -1188,7 +1197,6 @@ class Transaction(ReadTransaction):
             ``queue_execution_uid`` is not running.
         """
         self._require_active()
-        await self._require_lease(principal)
         await self._check_revision(expected_revision)
         execution = await self.queue_execution(queue_execution_uid)
         if execution.state is not QueueExecutionState.RUNNING:
@@ -1311,9 +1319,10 @@ class Transaction(ReadTransaction):
     ) -> tuple[AttemptRecord, int]:
         """Record how a claimed or running attempt ended, and end or block its execution accordingly.
 
-        The execution stops after an aborted attempt, and after a failed one under
-        `FailurePolicy.STOP_ON_FAILURE`; it completes when nothing is left to claim. An ``unknown`` outcome
-        blocks the execution under either policy, until `acknowledge_recovery`.
+        The execution stops after an aborted attempt, after an attempt a principal asked to stop (safe stop or
+        stop now) whatever its outcome, and after a failed one under `FailurePolicy.STOP_ON_FAILURE`; it
+        completes when nothing is left to claim. An ``unknown`` outcome blocks the execution under either
+        policy, until `acknowledge_recovery`.
 
         Parameters
         ----------
@@ -1369,8 +1378,13 @@ class Transaction(ReadTransaction):
             await self._block_execution(attempt, revision)
         else:
             execution = await self.queue_execution(attempt.queue_execution_uid)
-            stop = state is AttemptState.ABORTED or (
-                state is AttemptState.FAILED and execution.policy is FailurePolicy.STOP_ON_FAILURE
+            # A stop request ends the execution even if the attempt finished first, or failed because it could
+            # not pause, so that nothing else starts once someone has asked to stop.
+            stop = (
+                state is AttemptState.ABORTED
+                or attempt.safe_stop_requested_at is not None
+                or attempt.stop_now_requested_at is not None
+                or (state is AttemptState.FAILED and execution.policy is FailurePolicy.STOP_ON_FAILURE)
             )
             await self._end_execution_if_done(
                 ActorKind.SCHEDULER, attempt.queue_execution_uid, revision, stop=stop
@@ -1447,8 +1461,9 @@ class Transaction(ReadTransaction):
     async def request_safe_stop(self, *, principal: str, attempt_uid: str) -> tuple[AttemptRecord, int]:
         """Ask for a live attempt to be paused at its next checkpoint and aborted.
 
-        Takes no revision, so an emergency stop never fails because the queue changed. Asking again changes
-        nothing.
+        Takes no revision and needs no lease, so a stop never fails because the queue changed or because
+        another principal holds control. Asking again changes nothing. The attempt's queue execution stops
+        once the attempt ends, whatever its outcome.
 
         Parameters
         ----------
@@ -1466,28 +1481,65 @@ class Transaction(ReadTransaction):
 
         Raises
         ------
-        LeaseRequired
-            ``principal`` does not hold the control lease.
         AttemptNotFound
             ``attempt_uid`` does not exist.
         AttemptNotLive
             ``attempt_uid`` has already ended.
         """
+        return await self._request_stop(
+            principal, attempt_uid, "safe_stop_requested_at", EventType.OPERATION_SAFE_STOP_REQUESTED
+        )
+
+    async def request_stop_now(self, *, principal: str, attempt_uid: str) -> tuple[AttemptRecord, int]:
+        """Ask for a live attempt to be paused at once and aborted.
+
+        Unlike `request_safe_stop`, the pause interrupts whatever the plan is doing, such as a move or a wait,
+        instead of waiting for its next checkpoint; it also escalates a safe stop already requested. Takes no
+        revision and needs no lease, so a stop never fails because the queue changed or because another
+        principal holds control. Asking again changes nothing. The attempt's queue execution stops once the
+        attempt ends, whatever its outcome.
+
+        Parameters
+        ----------
+        principal : str
+            Principal asking.
+        attempt_uid : str
+            Claimed or running attempt.
+
+        Returns
+        -------
+        attempt : AttemptRecord
+            The attempt, with ``stop_now_requested_at`` set.
+        revision : int
+            The queue revision after the request; unchanged if a stop now was already requested.
+
+        Raises
+        ------
+        AttemptNotFound
+            ``attempt_uid`` does not exist.
+        AttemptNotLive
+            ``attempt_uid`` has already ended.
+        """
+        return await self._request_stop(
+            principal, attempt_uid, "stop_now_requested_at", EventType.OPERATION_STOP_NOW_REQUESTED
+        )
+
+    async def _request_stop(
+        self, principal: str, attempt_uid: str, column: _StopColumn, event_type: EventType
+    ) -> tuple[AttemptRecord, int]:
         self._require_active()
-        await self._require_lease(principal)
         attempt = await self.attempt(attempt_uid)
         if attempt.state not in (AttemptState.CLAIMED, AttemptState.RUNNING):
             raise AttemptNotLive(attempt_uid, attempt.state)
-        if attempt.safe_stop_requested_at is not None:
+        if getattr(attempt, column) is not None:
             return attempt, await self._revision()
-        await self._conn.execute(
-            "UPDATE attempts SET safe_stop_requested_at=? WHERE attempt_uid=?", (self._now, attempt_uid)
-        )
+        # ``column`` is one of two literal column names, never caller input.
+        await self._conn.execute(f"UPDATE attempts SET {column}=? WHERE attempt_uid=?", (self._now, attempt_uid))
         revision = await self._bump_revision()
         await self._append_event(
             ActorKind.PRINCIPAL,
             principal,
-            EventType.OPERATION_SAFE_STOP_REQUESTED,
+            event_type,
             revision,
             {},
             operation_uid=attempt.operation_uid,
@@ -1610,12 +1662,8 @@ class Transaction(ReadTransaction):
     async def _queue_is_empty(self) -> bool:
         return await _fetchone(self._conn, "SELECT 1 FROM queue_entries LIMIT 1") is None
 
-    async def _active_execution(self) -> QueueExecutionRecord | None:
-        row = await _fetchone(self._conn, "SELECT * FROM queue_executions WHERE state IN ('running', 'stopping')")
-        return None if row is None else _row_to_execution(row)
-
     async def _running_execution_uid(self) -> str | None:
-        execution = await self._active_execution()
+        execution = await self.active_execution()
         if execution is None or execution.state is not QueueExecutionState.RUNNING:
             return None
         return execution.queue_execution_uid
@@ -1631,7 +1679,7 @@ class Transaction(ReadTransaction):
     ) -> None:
         # Ends the active execution once nothing is claimed or running: stopped if asked to stop, completed if
         # nothing is left to claim. Runs inside a change that has already bumped the revision.
-        execution = await self._active_execution()
+        execution = await self.active_execution()
         if execution is None or await self._has_live_attempt():
             return
         if stop or execution.state is QueueExecutionState.STOPPING:
