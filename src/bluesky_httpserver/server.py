@@ -5,6 +5,8 @@ import pprint
 import sys
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 import bluesky_httpserver
 
 from .app import build_app
@@ -114,12 +116,25 @@ def start_server():
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
+def loggable_settings(settings):
+    """
+    Return the settings as a dictionary that is safe to log: the token signing keys and the single-user
+    API key are masked, and the password is removed from the database URI.
+    """
+    loggable = dict(settings)
+    loggable["secret_keys"] = ["*******"] * len(settings.secret_keys)
+    loggable["single_user_api_key"] = "*******"
+    if settings.database_uri is not None:
+        loggable["database_uri"] = make_url(settings.database_uri).render_as_string(hide_password=True)
+    return loggable
+
+
 def print_admin_api_key_if_generated(web_app, host, port):
     # host = host or "127.0.0.1"
     # port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
 
-    logger.info("APP settings: %s", pprint.pformat(dict(settings)))
+    logger.info("APP settings: %s", pprint.pformat(loggable_settings(settings)))
     authenticators = web_app.dependency_overrides.get(get_authenticators, get_authenticators)()
     if settings.allow_anonymous_access:
         print(
